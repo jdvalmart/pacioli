@@ -347,20 +347,6 @@ def get_transactions(month: int, year: int) -> List[Transaction]:
         return [_row_to_tx(row) for row in cursor.fetchall()]
 
 
-def get_all_transactions() -> List[Transaction]:
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT t.*, c.name as category_name, c.type as category_type, c.color, c.icon,
-                   s.name as subcategory_name, s.icon as subcategory_icon
-            FROM transactions t
-            JOIN categories c ON t.category_id = c.id
-            LEFT JOIN subcategories s ON t.subcategory_id = s.id
-            ORDER BY t.date DESC
-        ''')
-        return [_row_to_tx(row) for row in cursor.fetchall()]
-
-
 def add_transaction(date_val: date, amount: float, category_id: int,
                     description: str = '', is_recurring: bool = False,
                     recurring_day: Optional[int] = None,
@@ -466,17 +452,6 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
 
 def get_monthly_summaries(year: int) -> List[MonthlySummary]:
     return [get_monthly_summary(m, year) for m in range(1, 13)]
-
-
-def get_available_months() -> List[Tuple[int, int]]:
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT DISTINCT strftime('%Y', date) as year, strftime('%m', date) as month
-            FROM transactions
-            ORDER BY year DESC, month DESC
-        ''')
-        return [(int(row['month']), int(row['year'])) for row in cursor.fetchall()]
 
 
 def get_category_spending(month: int, year: int, cat_type: str = 'expense') -> List[Tuple[str, float, str, str]]:
@@ -643,3 +618,41 @@ def get_desc_learnings_context(category: str) -> str:
     for l in learnings:
         lines.append(f'  IA dijo: "{l["ai_description"]}" → Usuario corrigió: "{l["user_description"]}"')
     return "\n".join(lines)
+
+
+# ── Export CSV ───────────────────────────────────────────────
+
+def export_transactions_csv(month: int, year: int, filepath: str):
+    """Exporta transacciones del mes a CSV."""
+    import csv
+    txns = get_transactions(month, year)
+    with open(filepath, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Fecha', 'Categoría', 'Subcategoría', 'Tipo', 'Monto', 'Descripción', 'Recurrente'])
+        for t in txns:
+            cat_map = {c.id: c for c in get_categories()}
+            cat = cat_map.get(t.category_id)
+            cat_name = cat.name if cat else '—'
+            cat_type = cat.type if cat else '—'
+            sub_name = t.subcategory_name or ''
+            writer.writerow([
+                t.date, cat_name, sub_name, cat_type,
+                t.amount, t.description or '', 'Sí' if t.is_recurring else 'No'
+            ])
+
+
+# ── Auto Backup ─────────────────────────────────────────────
+
+def auto_backup():
+    """Crea backup automático de la BD si hay datos del mes actual."""
+    import shutil
+    from datetime import date
+    today = date.today()
+    txns = get_transactions(today.month, today.year)
+    if not txns:
+        return
+    backup_dir = os.path.join(os.path.dirname(DB_PATH), '..', 'backups')
+    os.makedirs(backup_dir, exist_ok=True)
+    backup_path = os.path.join(backup_dir, f'budget_{today.isoformat()}.db')
+    if not os.path.exists(backup_path):
+        shutil.copy2(get_db_path(), backup_path)

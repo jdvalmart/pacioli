@@ -39,14 +39,15 @@ def font(size=14, weight="normal"):
 
 
 # ── Helper: botón primario ───────────────────────────────────
-def btn_primary(parent, text, command=None, width=200, height=40):
+def btn_primary(parent, text, command=None, width=200, height=42):
     return ctk.CTkButton(
         parent, text=text, command=command,
         width=width, height=height,
         corner_radius=10,
         fg_color=ACCENT, hover_color="#4C9AFF",
         font=font(14, "bold"),
-        text_color="#FFFFFF"
+        text_color="#FFFFFF",
+        border_width=0,
     )
 
 
@@ -65,3 +66,24 @@ def btn_danger(parent, text, command=None, width=80, height=32):
 # ── Helper: card ─────────────────────────────────────────────
 def card(parent, **kwargs):
     return ctk.CTkFrame(parent, corner_radius=12, fg_color=CARD, **kwargs)
+
+
+# ── Helper: tabview con estilo ───────────────────────────────
+def styled_tabs(parent, **kwargs):
+    tabs = ctk.CTkTabview(parent, **kwargs)
+    try:
+        tabs._segmented_button.configure(
+            font=("Nunito", 20, "bold"),
+            height=50,
+            selected_color=ACCENT,
+            selected_hover_color="#4C9AFF",
+            unselected_color=CARD,
+            unselected_hover_color=CARD_HOVER,
+            text_color=TEXT,
+            text_color_disabled=TEXT_DIM,
+            corner_radius=10,
+            padding=(20, 8),
+        )
+    except Exception:
+        pass
+    return tabs

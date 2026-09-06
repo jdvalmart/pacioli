@@ -100,15 +100,6 @@ def analyze_spending(month_name: str, data: list, total_expense: float, total_in
     return _call_ollama(prompt, system="Eres un asesor financiero personal. Analiza datos reales, no des tips genéricos.")
 
 
-def suggest_budget(category: str, recent_avg: float) -> Optional[str]:
-    prompt = (
-        f"El gasto promedio reciente en '{category}' es ${recent_avg:,.0f} pesos colombianos mensuales. "
-        "Sugerir un monto de presupuesto ideal para controlar ese gasto. "
-        "Responde solo con el número entero en pesos colombianos, sin símbolos ni texto."
-    )
-    return _call_ollama(prompt, system="Responde solo con un número entero.")
-
-
 def ask_budget_question(question: str, context: str = "",
                         chat_history: str = "", learnings_ctx: str = "") -> Optional[str]:
     prompt = ""
