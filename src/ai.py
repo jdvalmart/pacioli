@@ -8,7 +8,7 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "qwen2.5:3b"
 
 SYSTEM_BASE = (
-    "Eres el asistente de inteligencia artificial de una app de presupuesto personal mensual.\n"
+    "Eres el asistente de inteligencia artificial de Pacioli, una app de presupuesto personal mensual.\n"
     "Moneda: pesos colombianos (COP). Usa el formato $XXX.XXX (punto como separador de miles, sin decimales).\n"
     "Contexto: el usuario controla sus finanzas personales, ingresos y gastos mensuales.\n"
     "Responde siempre en español, sé directo, breve y práctico.\n"
@@ -111,4 +111,4 @@ def ask_budget_question(question: str, context: str = "",
     if context:
         prompt += f"\n\nDatos del mes actual:\n{context}"
 
-    return _call_ollama(prompt, system="Responde preguntas sobre el presupuesto personal del usuario. Usa los datos que te den. Si el usuario te corrige, recuerda esa corrección para futuro.")
+    return _call_ollama(prompt, system="Responde preguntas sobre las finanzas personales del usuario. Usa los datos que te den. Si el usuario te corrige, recuerda esa corrección para futuro.")

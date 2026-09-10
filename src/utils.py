@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Utilidades compartidas para la app de presupuesto."""
-
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""Utilidades compartidas para Pacioli."""
 
 from datetime import date
 from database import get_categories, get_subcategories

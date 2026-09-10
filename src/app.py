@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """App principal - Controlador delgado que orquesta las vistas."""
 
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 import customtkinter as ctk
 from datetime import date
 
@@ -16,7 +13,7 @@ from views import show_dashboard, show_transactions, show_budgets, show_reports,
 class BudgetApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Mi Presupuesto Mensual")
+        self.title("Pacioli")
         self.geometry(f"{S(1280)}x{S(800)}")
         self.minsize(S(900), S(600))
         ctk.set_appearance_mode("dark")
@@ -79,7 +76,7 @@ class BudgetApp(ctk.CTk):
         self.sidebar.grid_propagate(False)
         self.sidebar.grid_rowconfigure(8, weight=1)
 
-        ctk.CTkLabel(self.sidebar, text="💰 Presupuesto",
+        ctk.CTkLabel(self.sidebar, text="💰 Pacioli",
                      font=font(S(20), "bold")).grid(
             row=0, column=0, pady=(S(24), S(24)), padx=S(16))
 

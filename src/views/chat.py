@@ -46,7 +46,7 @@ def open_chat(app):
 
     user_input = ctk.StringVar()
     entry = ctk.CTkEntry(input_frame, textvariable=user_input, width=S(400), height=S(38),
-                         placeholder_text="Pregunta sobre tu presupuesto...",
+                         placeholder_text="Pregúntale a Pacioli...",
                          font=font(S(13)), fg_color=CARD, border_color=BORDER)
     entry.pack(side="left", padx=(0, S(8)))
     entry.bind("<Return>", lambda e: _send())
@@ -64,7 +64,7 @@ def open_chat(app):
             for h in history:
                 _append(h['role'], h['message'])
         else:
-            _append("ai", f"Hola! Soy tu asistente de presupuesto para {app._mh()}.\nPregúntame lo que quieras sobre tus finanzas.")
+            _append("ai", f"Hola! Soy Pacioli, tu asistente financiero para {app._mh()}.\nPregúntame lo que quieras sobre tus finanzas.")
 
     def _send():
         nonlocal learnings_ctx
