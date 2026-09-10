@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Pacioli
+Comment=Gestión de finanzas personales
+Exec=/usr/local/bin/pacioli
+Icon=applications-finance
+Terminal=false
+Type=Application
+Categories=Finance;Office;
+StartupWMClass=pacioli
