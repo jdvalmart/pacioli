@@ -13,7 +13,7 @@ from database import (
     save_chat_message, get_chat_history, get_recent_chat_context,
     save_learning, get_learnings_context
 )
-from ai import ask_budget_question, detect_correction, extract_correction_topic
+from ai import ask_budget_question, detect_correction, extract_correction_topic, MODEL
 from utils import S, fmt_cop
 
 
@@ -94,6 +94,9 @@ def open_chat(app):
         if result:
             save_chat_message("ai", result, app.current_month, app.current_year)
             _append("ai", result)
+        else:
+            _append("ai", "⚠️ No pude conectar con la IA. Verifica que Ollama esté corriendo "
+                          f"(ollama serve) y que el modelo '{MODEL}' esté instalado.")
 
     btn_send = ctk.CTkButton(input_frame, text="Enviar", width=S(80), height=S(38),
                              fg_color=ACCENT, hover_color="#4C9AFF",

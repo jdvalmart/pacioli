@@ -65,7 +65,9 @@ class BudgetApp(ctk.CTk):
             self._resize_after = self.after(300, self._do_resize)
 
     def _do_resize(self):
-        if hasattr(self, '_view'):
+        if not hasattr(self, '_view'):
+            return
+        if getattr(self, '_rerender_on_resize', True):
             self._last_render_size = (self.winfo_width(), self.winfo_height())
             self._view()
 

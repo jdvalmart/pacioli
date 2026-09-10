@@ -19,6 +19,7 @@ def show_budgets(app):
     """Renderiza la vista de presupuestos."""
     app._hl(2)
     app._view = lambda: show_budgets(app)
+    app._rerender_on_resize = True
     app._clear()
     app._title(f"🎯 Presupuestos — {app._mh()}")
 
@@ -75,6 +76,8 @@ def show_budgets(app):
 
 def _paint_bva(app):
     f = app._bva_f
+    if not f.winfo_exists():
+        return
     f.update_idletasks()
     cw = f.winfo_width()
     ch = f.winfo_height()
@@ -136,12 +139,10 @@ def _open_bdlg(app):
             amt_str = av.get().strip()
             try:
                 amt = float(amt_str)
-                if amt <= 0:
-                    raise ValueError("El monto debe ser mayor a 0")
-            except ValueError as e:
-                if "must be greater" in str(e):
-                    raise
+            except ValueError:
                 raise ValueError(f"Monto inválido: '{amt_str}'. Ingrese un número")
+            if amt <= 0:
+                raise ValueError("El monto debe ser mayor a 0")
             if not cn:
                 raise ValueError("No hay categorías disponibles")
             cid = ci[cn.index(cv.get())]

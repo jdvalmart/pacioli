@@ -3,6 +3,7 @@
 
 import customtkinter as ctk
 import threading
+from tkinter import messagebox
 
 from theme import (
     font, btn_primary, card, styled_tabs,
@@ -21,6 +22,7 @@ def show_dashboard(app):
     """Renderiza la vista de dashboard en app.main."""
     app._hl(0)
     app._view = lambda: show_dashboard(app)
+    app._rerender_on_resize = True
     app._clear()
     app._title(f"📊 Dashboard — {app._mh()}")
 
@@ -50,6 +52,11 @@ def show_dashboard(app):
     def _show_result(result):
         btn.configure(state="normal", text="✨ Análisis IA")
         if not result:
+            messagebox.showwarning(
+                "Análisis IA",
+                "No se pudo conectar con Ollama.\nVerifica que esté corriendo: ollama serve",
+                parent=app
+            )
             return
         win = ctk.CTkToplevel(app)
         win.title(f"Análisis IA — {app._mh()}")
@@ -121,6 +128,8 @@ def _stat_card(parent, title, value, color):
 
 def _paint_dash(app):
     f = app._dash_ch
+    if not f.winfo_exists():
+        return
     f.update_idletasks()
     cw = f.winfo_width()
     ch = f.winfo_height()

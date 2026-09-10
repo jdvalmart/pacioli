@@ -23,6 +23,7 @@ def show_transactions(app):
     """Renderiza la vista de transacciones."""
     app._hl(1)
     app._view = lambda: show_transactions(app)
+    app._rerender_on_resize = False
     app._clear()
     app._title(f"💸 Transacciones — {app._mh()}")
 
@@ -66,13 +67,13 @@ def show_transactions(app):
                      text_color=TEXT_SEC, font=font(S(13))).pack(pady=S(30))
         return
 
-    def _filter(*_):
+    rows = ctk.CTkFrame(lf, fg_color="transparent")
+    rows.pack(fill="x")
+
+    def _render():
+        for w in rows.winfo_children():
+            w.destroy()
         q = search_var.get().lower().strip()
-        for w in lf.winfo_children():
-            if w != hdr and not isinstance(w, type(ctk.CTkFrame(lf, height=1, fg_color=BORDER))):
-                w.destroy()
-        if hasattr(lf, '_divider'):
-            lf._divider.destroy()
         shown = 0
         for t in txns:
             icon, color, cn, ct_ = lookup_cat(t.category_id)
@@ -83,7 +84,7 @@ def show_transactions(app):
             if q and q not in searchable:
                 continue
             shown += 1
-            row = ctk.CTkFrame(lf, corner_radius=S(6), fg_color=CARD)
+            row = ctk.CTkFrame(rows, corner_radius=S(6), fg_color=CARD)
             row.pack(fill="x", pady=S(2))
             ctk.CTkLabel(row, text=t.date, width=S(110), anchor="w",
                          font=font(S(13))).pack(side="left", padx=S(8), pady=S(8))
@@ -105,15 +106,19 @@ def show_transactions(app):
             ctk.CTkButton(bf, text="🗑️", width=S(28), height=S(28), fg_color=RED,
                           hover_color="#DA3633", font=font(S(12)),
                           command=lambda tid=t.id: _del_tx(app, tid)).pack(side="left", padx=S(2))
-        if shown == 0 and q:
-            ctk.CTkLabel(lf, text=f'No se encontró "{q}"',
+        if shown == 0:
+            ctk.CTkLabel(rows, text=f'No se encontró "{q}"',
                          text_color=TEXT_SEC, font=font(S(13))).pack(pady=S(20))
 
-    lf._divider = ctk.CTkFrame(lf, height=1, fg_color=BORDER)
-    lf._divider.pack(fill="x", pady=(0, S(4)))
+    debounce = {"job": None}
 
-    search_var.trace_add("write", _filter)
-    _filter()
+    def _on_search(*_):
+        if debounce["job"]:
+            app.after_cancel(debounce["job"])
+        debounce["job"] = app.after(150, _render)
+
+    search_var.trace_add("write", _on_search)
+    _render()
 
 
 def _open_tx(app, cat_type='expense', existing=None):
@@ -217,6 +222,11 @@ def _open_tx(app, cat_type='expense', existing=None):
         if result:
             descv.set(result)
             _last_ai_desc["value"] = result
+        else:
+            messagebox.showwarning(
+                "IA", "No se pudo conectar con Ollama para generar la descripción.",
+                parent=dlg
+            )
 
     btn_ai = ctk.CTkButton(desc_row, text="✨ IA", width=S(60), height=S(36),
                            fg_color=PURPLE, hover_color="#A371F7",
@@ -242,19 +252,24 @@ def _open_tx(app, cat_type='expense', existing=None):
             amt_str = av.get().strip()
             try:
                 amt = float(amt_str)
-                if amt <= 0:
-                    raise ValueError("El monto debe ser mayor a 0")
-            except ValueError as e:
-                if "must be greater" in str(e):
-                    raise
+            except ValueError:
                 raise ValueError(f"Monto inválido: '{amt_str}'. Ingrese un número")
+            if amt <= 0:
+                raise ValueError("El monto debe ser mayor a 0")
 
             if not cnames:
                 raise ValueError("No hay categorías disponibles")
             cid = cids[cnames.index(cv.get())]
             desc = descv.get()
             rec = rv.get()
-            rday = int(dayv.get()) if rec else None
+            rday = None
+            if rec:
+                try:
+                    rday = int(dayv.get())
+                except ValueError:
+                    rday = 0
+                if not 1 <= rday <= 31:
+                    raise ValueError("Día del mes inválido: use un número entre 1 y 31")
             sub_sel = sub_var.get()
             sid = sub_ids_map.get(sub_sel) if sub_sel != "Ninguna" else None
 

@@ -68,6 +68,7 @@ def get_db_path() -> str:
 def get_connection():
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
     try:
         yield conn
     finally:
@@ -279,8 +280,13 @@ def update_category(cat_id: int, name: str, color: str, icon: str):
 def delete_category(cat_id: int):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM categories WHERE id = ?', (cat_id,))
-        conn.commit()
+        try:
+            cursor.execute('DELETE FROM categories WHERE id = ?', (cat_id,))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise ValueError(
+                'No se puede eliminar: la categoría tiene transacciones o presupuestos asociados.'
+            )
 
 
 def get_subcategories(category_id: int) -> List[Subcategory]:
@@ -385,12 +391,10 @@ def delete_transaction(trans_id: int):
 def get_budgets(month: int, year: int) -> List[Budget]:
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('''
-            SELECT b.*, c.name as category_name, c.color, c.icon
-            FROM budgets b
-            JOIN categories c ON b.category_id = c.id
-            WHERE b.month = ? AND b.year = ?
-        ''', (month, year))
+        cursor.execute(
+            'SELECT id, category_id, month, year, amount FROM budgets WHERE month = ? AND year = ?',
+            (month, year)
+        )
         return [Budget(**dict(row)) for row in cursor.fetchall()]
 
 

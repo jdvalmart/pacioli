@@ -19,6 +19,7 @@ def show_categories(app):
     """Renderiza la vista de categorías."""
     app._hl(4)
     app._view = lambda: show_categories(app)
+    app._rerender_on_resize = False
     app._clear()
     app._title("⚙️ Categorías")
 
@@ -167,7 +168,11 @@ def _open_subdlg(app, cat_id):
 
 def _del_cat(app, cid):
     if messagebox.askyesno("Confirmar", "¿Eliminar esta categoría y sus subcategorías?", parent=app):
-        delete_category(cid)
+        try:
+            delete_category(cid)
+        except ValueError as e:
+            messagebox.showerror("Error", str(e), parent=app)
+            return
         invalidate_cat_cache()
         show_categories(app)
 

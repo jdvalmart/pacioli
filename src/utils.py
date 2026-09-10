@@ -34,7 +34,8 @@ def S(v):
 
 # ── Formato COP ─────────────────────────────────────────────
 def fmt_cop(v):
-    return f"${int(round(abs(v))):,.0f}".replace(",", ".")
+    sign = "-" if v < 0 else ""
+    return f"{sign}${int(round(abs(v))):,.0f}".replace(",", ".")
 
 
 # ── Cache de categorías (N+1 fix) ──────────────────────────

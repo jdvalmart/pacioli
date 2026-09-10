@@ -18,6 +18,7 @@ def show_reports(app):
     """Renderiza la vista de reportes."""
     app._hl(3)
     app._view = lambda: show_reports(app)
+    app._rerender_on_resize = True
     app._clear()
     app._title(f"📈 Reportes — {app._mh()}")
 
@@ -32,6 +33,8 @@ def show_reports(app):
 
 def _paint_reports(app):
     tt = app._tab_t
+    if not tt.winfo_exists():
+        return
     tt.update_idletasks()
     tw = max(tt.winfo_width() - S(40), S(400))
     th = max(tt.winfo_height() - S(80), S(250))

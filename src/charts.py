@@ -35,7 +35,8 @@ def _strip_emoji(text):
 
 
 def _fmt_cop(val):
-    return f"${val:,.0f}".replace(",", ".")
+    sign = "-" if val < 0 else ""
+    return f"{sign}${abs(val):,.0f}".replace(",", ".")
 
 
 def _setup(fig, ax, title=''):
