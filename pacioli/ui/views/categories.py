@@ -4,15 +4,16 @@
 import customtkinter as ctk
 from tkinter import messagebox
 
-from theme import (
+from pacioli.ui.theme import (
     font, btn_primary, btn_danger, card, styled_tabs,
     BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, TEXT, TEXT_SEC
 )
-from database import (
+from pacioli.data import (
     get_categories, add_category, delete_category,
     get_subcategories, add_subcategory, delete_subcategory
 )
-from utils import S, invalidate_cat_cache
+from pacioli.data import invalidate_cat_cache
+from pacioli.ui.utils import S
 
 
 def show_categories(app):

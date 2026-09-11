@@ -4,10 +4,11 @@
 import customtkinter as ctk
 from datetime import date
 
-from database import init_db, auto_backup, ensure_recurring
-from theme import apply_theme, font, BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, TEXT
-from utils import S, MONTHS
-from views import show_dashboard, show_transactions, show_budgets, show_reports, show_categories
+from pacioli.data import init_db, auto_backup, ensure_recurring
+from pacioli.ui.theme import apply_theme, font, BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, TEXT
+from pacioli.ui.utils import S, MONTHS
+from pacioli.ui.views import show_dashboard, show_transactions, show_budgets, show_reports, show_categories
+from pacioli.core.logging_config import logger
 
 
 class BudgetApp(ctk.CTk):
@@ -38,15 +39,15 @@ class BudgetApp(ctk.CTk):
         """Backup automático al iniciar."""
         try:
             auto_backup()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error en backup automático: {e}")
 
     def _materialize_recurring(self):
         """Genera las transacciones recurrentes del mes actual."""
         try:
             ensure_recurring(self.current_month, self.current_year)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error al materializar transacciones recurrentes: {e}")
 
     def _bind_shortcuts(self):
         """Atajos de teclado."""
@@ -60,8 +61,12 @@ class BudgetApp(ctk.CTk):
     def _maximize(self):
         try:
             self.attributes('-zoomed', True)
-        except Exception:
-            self.state('zoomed')
+        except Exception as e:
+            logger.debug(f"No se pudo maximizar ventana: {e}")
+            try:
+                self.state('zoomed')
+            except Exception as e2:
+                logger.debug(f"No se pudo maximizar ventana (intento 2): {e2}")
 
     def _on_resize(self, event):
         if event.widget == self and hasattr(self, '_view'):

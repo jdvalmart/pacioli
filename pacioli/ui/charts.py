@@ -8,9 +8,10 @@ from typing import List, Tuple, Dict, Any
 import io
 from PIL import Image
 
-from database import MonthlySummary, get_category_spending, get_budget_vs_actual
-from theme import BG, SURFACE, CARD, TEXT, TEXT_SEC, TEXT_DIM, ACCENT, GREEN, RED
-from utils import fmt_cop
+from pacioli.core.models import MonthlySummary
+from pacioli.data import get_category_spending, get_budget_vs_actual
+from pacioli.ui.theme import BG, SURFACE, CARD, TEXT, TEXT_SEC, TEXT_DIM, ACCENT, GREEN, RED
+from pacioli.core.money import fmt_cop
 
 
 ACCENT_BLUE = ACCENT

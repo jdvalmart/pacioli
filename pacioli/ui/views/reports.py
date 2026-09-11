@@ -3,15 +3,16 @@
 
 import customtkinter as ctk
 
-from theme import (
+from pacioli.ui.theme import (
     font, card, styled_tabs,
     BG, SURFACE, CARD, ACCENT, GREEN, RED, TEXT, TEXT_SEC
 )
-from charts import create_trend_chart, create_pie_chart, create_bar_chart
-from database import (
+from pacioli.ui.charts import create_trend_chart, create_pie_chart, create_bar_chart
+from pacioli.data import (
     get_monthly_summary, get_monthly_summaries, get_category_spending
 )
-from utils import S, fmt_cop
+from pacioli.core.money import fmt_cop
+from pacioli.ui.utils import S
 
 
 def show_reports(app):

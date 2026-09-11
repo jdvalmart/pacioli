@@ -4,17 +4,18 @@
 import customtkinter as ctk
 import threading
 
-from theme import (
+from pacioli.ui.theme import (
     font, btn_primary, card,
     BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, PURPLE, TEXT, TEXT_SEC
 )
-from database import (
+from pacioli.data import (
     get_monthly_summary, get_budget_vs_actual,
     save_chat_message, get_chat_history, get_recent_chat_context,
     save_learning, get_learnings_context
 )
-from ai import ask_budget_question, detect_correction, extract_correction_topic, MODEL
-from utils import S, fmt_cop
+from pacioli.services.ai import ask_budget_question, detect_correction, extract_correction_topic, MODEL
+from pacioli.core.money import fmt_cop
+from pacioli.ui.utils import S
 
 
 def open_chat(app):

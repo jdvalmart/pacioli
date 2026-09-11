@@ -4,15 +4,16 @@
 import customtkinter as ctk
 from tkinter import messagebox
 
-from theme import (
+from pacioli.ui.theme import (
     font, btn_primary, btn_danger, card,
     BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, ORANGE, TEXT, TEXT_SEC
 )
-from charts import create_budget_chart, create_pie_chart
-from database import (
+from pacioli.ui.charts import create_budget_chart, create_pie_chart
+from pacioli.data import (
     get_budget_vs_actual, set_budget, delete_budget, get_categories
 )
-from utils import S, fmt_cop, parse_amount
+from pacioli.core.money import fmt_cop, parse_amount
+from pacioli.ui.utils import S
 
 
 def show_budgets(app):

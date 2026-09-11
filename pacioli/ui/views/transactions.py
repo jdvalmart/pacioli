@@ -6,17 +6,19 @@ from tkinter import messagebox
 from datetime import date
 import threading
 
-from theme import (
+from pacioli.ui.theme import (
     font, btn_primary, btn_danger, card,
     BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, PURPLE, TEXT, TEXT_SEC
 )
-from database import (
+from pacioli.data import (
     get_transactions, add_transaction, update_transaction, delete_transaction,
     get_categories, get_subcategories, get_desc_learnings_context,
-    export_transactions_csv, auto_backup
+    export_transactions_csv, auto_backup, lookup_cat, invalidate_cat_cache
 )
-from ai import generate_description
-from utils import S, fmt_cop, lookup_cat, invalidate_cat_cache, parse_amount
+from pacioli.services.ai import generate_description
+from pacioli.core.money import fmt_cop, parse_amount
+from pacioli.ui.utils import S
+from pacioli.core.logging_config import logger
 
 
 def show_transactions(app):
@@ -317,5 +319,5 @@ def _run_auto_backup():
     """Ejecuta backup automático (llamar al inicio)."""
     try:
         auto_backup()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Error en backup automático: {e}")

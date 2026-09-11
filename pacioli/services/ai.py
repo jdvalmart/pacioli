@@ -3,7 +3,7 @@ import urllib.request
 import urllib.error
 from typing import Optional
 
-from utils import fmt_cop
+from pacioli.core.money import fmt_cop
 
 
 OLLAMA_URL = "http://localhost:11434/api/generate"

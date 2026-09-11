@@ -5,17 +5,19 @@ import customtkinter as ctk
 import threading
 from tkinter import messagebox
 
-from theme import (
+from pacioli.ui.theme import (
     font, btn_primary, card, styled_tabs,
     BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, PURPLE, TEXT, TEXT_SEC
 )
-from charts import create_pie_chart, create_bar_chart
-from database import (
+from pacioli.ui.charts import create_pie_chart, create_bar_chart
+from pacioli.data import (
     get_monthly_summary, get_transactions, get_category_spending,
     get_budget_vs_actual, get_categories
 )
-from ai import analyze_spending
-from utils import S, fmt_cop, lookup_cat
+from pacioli.services.ai import analyze_spending
+from pacioli.core.money import fmt_cop
+from pacioli.data import lookup_cat
+from pacioli.ui.utils import S
 
 
 def show_dashboard(app):
