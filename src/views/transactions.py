@@ -16,7 +16,7 @@ from database import (
     export_transactions_csv, auto_backup
 )
 from ai import generate_description
-from utils import S, fmt_cop, lookup_cat, invalidate_cat_cache
+from utils import S, fmt_cop, lookup_cat, invalidate_cat_cache, parse_amount
 
 
 def show_transactions(app):
@@ -86,7 +86,8 @@ def show_transactions(app):
             shown += 1
             row = ctk.CTkFrame(rows, corner_radius=S(6), fg_color=CARD)
             row.pack(fill="x", pady=S(2))
-            ctk.CTkLabel(row, text=t.date, width=S(110), anchor="w",
+            dlabel = f"🔁 {t.date}" if (t.is_recurring or t.generated_from) else str(t.date)
+            ctk.CTkLabel(row, text=dlabel, width=S(110), anchor="w",
                          font=font(S(13))).pack(side="left", padx=S(8), pady=S(8))
             ctk.CTkLabel(row, text=cat_label, width=S(220), anchor="w", text_color=color,
                          font=font(S(13))).pack(side="left", padx=S(8), pady=S(8))
@@ -199,7 +200,7 @@ def _open_tx(app, cat_type='expense', existing=None):
 
     def _ai_desc():
         try:
-            amt = float(av.get())
+            amt = parse_amount(av.get())
         except ValueError:
             amt = 0
         try:
@@ -249,11 +250,7 @@ def _open_tx(app, cat_type='expense', existing=None):
             except ValueError:
                 raise ValueError(f"Fecha inválida: '{d_str}'. Use formato YYYY-MM-DD")
 
-            amt_str = av.get().strip()
-            try:
-                amt = float(amt_str)
-            except ValueError:
-                raise ValueError(f"Monto inválido: '{amt_str}'. Ingrese un número")
+            amt = parse_amount(av.get())
             if amt <= 0:
                 raise ValueError("El monto debe ser mayor a 0")
 

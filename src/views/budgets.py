@@ -12,7 +12,7 @@ from charts import create_budget_chart, create_pie_chart
 from database import (
     get_budget_vs_actual, set_budget, delete_budget, get_categories
 )
-from utils import S, fmt_cop
+from utils import S, fmt_cop, parse_amount
 
 
 def show_budgets(app):
@@ -136,11 +136,7 @@ def _open_bdlg(app):
 
     def save():
         try:
-            amt_str = av.get().strip()
-            try:
-                amt = float(amt_str)
-            except ValueError:
-                raise ValueError(f"Monto inválido: '{amt_str}'. Ingrese un número")
+            amt = parse_amount(av.get())
             if amt <= 0:
                 raise ValueError("El monto debe ser mayor a 0")
             if not cn:

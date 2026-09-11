@@ -28,12 +28,12 @@ def open_chat(app):
     bva = get_budget_vs_actual(app.current_month, app.current_year)
     ctx_lines = [
         f"Período: {app._mh()}",
-        f"Ingresos: ${s.total_income:,.0f}",
-        f"Gastos: ${s.total_expense:,.0f}",
-        f"Balance: ${s.balance:,.0f}",
+        f"Ingresos: {fmt_cop(s.total_income)}",
+        f"Gastos: {fmt_cop(s.total_expense)}",
+        f"Balance: {fmt_cop(s.balance)}",
     ]
     for d in bva:
-        ctx_lines.append(f"- {d['name']}: ${d['actual']:,.0f} / ${d['budget']:,.0f} ({d['percent']:.0f}%)")
+        ctx_lines.append(f"- {d['name']}: {fmt_cop(d['actual'])} / {fmt_cop(d['budget'])} ({d['percent']:.0f}%)")
     budget_context = "\n".join(ctx_lines)
     learnings_ctx = get_learnings_context()
 

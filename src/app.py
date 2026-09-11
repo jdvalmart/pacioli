@@ -4,7 +4,7 @@
 import customtkinter as ctk
 from datetime import date
 
-from database import init_db, auto_backup
+from database import init_db, auto_backup, ensure_recurring
 from theme import apply_theme, font, BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, TEXT
 from utils import S, MONTHS
 from views import show_dashboard, show_transactions, show_budgets, show_reports, show_categories
@@ -20,6 +20,7 @@ class BudgetApp(ctk.CTk):
 
         self.current_month = date.today().month
         self.current_year = date.today().year
+        self._materialize_recurring()
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -37,6 +38,13 @@ class BudgetApp(ctk.CTk):
         """Backup automático al iniciar."""
         try:
             auto_backup()
+        except Exception:
+            pass
+
+    def _materialize_recurring(self):
+        """Genera las transacciones recurrentes del mes actual."""
+        try:
+            ensure_recurring(self.current_month, self.current_year)
         except Exception:
             pass
 
@@ -122,6 +130,7 @@ class BudgetApp(ctk.CTk):
         parts = value.split()
         self.current_month = list(MONTHS.keys())[list(MONTHS.values()).index(parts[0])]
         self.current_year = int(parts[1])
+        self._materialize_recurring()
         if hasattr(self, '_view'):
             self._view()
 

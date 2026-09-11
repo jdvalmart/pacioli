@@ -10,6 +10,7 @@ from PIL import Image
 
 from database import MonthlySummary, get_category_spending, get_budget_vs_actual
 from theme import BG, SURFACE, CARD, TEXT, TEXT_SEC, TEXT_DIM, ACCENT, GREEN, RED
+from utils import fmt_cop
 
 
 ACCENT_BLUE = ACCENT
@@ -32,11 +33,6 @@ _EMOJI_RE = re.compile(
 
 def _strip_emoji(text):
     return _EMOJI_RE.sub('', text).strip()
-
-
-def _fmt_cop(val):
-    sign = "-" if val < 0 else ""
-    return f"{sign}${abs(val):,.0f}".replace(",", ".")
 
 
 def _setup(fig, ax, title=''):
@@ -81,7 +77,7 @@ def create_pie_chart(data: List[Tuple[str, float, str, str]], title: str = '', s
         return _empty(title, size)
 
     labels = [_strip_emoji(f"{d[3]} {d[0]}") for d in data]
-    values = [d[1] for d in data]
+    values = [float(d[1]) for d in data]
     colors = [d[2] for d in data]
 
     fig, ax = plt.subplots(figsize=(fw, fh), dpi=DPI)
@@ -108,7 +104,7 @@ def create_bar_chart(data: List[Tuple[str, float, str, str]], title: str = '', h
         return _empty(title, size)
 
     names = [_strip_emoji(f"{d[3]} {d[0]}") for d in data]
-    values = [d[1] for d in data]
+    values = [float(d[1]) for d in data]
     colors = [d[2] for d in data]
 
     if horizontal:
@@ -118,14 +114,14 @@ def create_bar_chart(data: List[Tuple[str, float, str, str]], title: str = '', h
         ax.invert_yaxis()
         for bar, val in zip(bars, values):
             ax.text(bar.get_width() + max(values) * 0.02, bar.get_y() + bar.get_height()/2,
-                    _fmt_cop(val), va='center', color=TEXT, fontsize=10, fontfamily='sans-serif')
+                    fmt_cop(val), va='center', color=TEXT, fontsize=10, fontfamily='sans-serif')
     else:
         fig, ax = plt.subplots(figsize=(max(fw, len(names) * 0.5), fh), dpi=DPI)
         _setup(fig, ax, title)
         bars = ax.bar(names, values, color=colors, edgecolor=BG, width=0.6, linewidth=0.5)
         for bar, val in zip(bars, values):
             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values) * 0.02,
-                    _fmt_cop(val), ha='center', color=TEXT, fontsize=10, fontfamily='sans-serif')
+                    fmt_cop(val), ha='center', color=TEXT, fontsize=10, fontfamily='sans-serif')
         ax.set_xticklabels(names, fontsize=10, rotation=30, ha='right', fontfamily='sans-serif')
 
     return _to_image(fig)
@@ -138,9 +134,9 @@ def create_trend_chart(summaries: List[MonthlySummary], title: str = '', size: t
         return _empty(title, size)
 
     months = [f"{s.month:02d}/{str(s.year)[2:]}" for s in summaries]
-    income = [s.total_income for s in summaries]
-    expense = [s.total_expense for s in summaries]
-    balance = [s.balance for s in summaries]
+    income = [float(s.total_income) for s in summaries]
+    expense = [float(s.total_expense) for s in summaries]
+    balance = [float(s.balance) for s in summaries]
 
     active = [(m, inc, exp, bal) for m, inc, exp, bal in zip(months, income, expense, balance) if inc > 0 or exp > 0]
     if not active:
@@ -176,8 +172,8 @@ def create_budget_chart(budget_data: List[Dict[str, Any]], title: str = '', size
         return _empty(title, size)
 
     names = [_strip_emoji(f"{d['icon']} {d['name']}") for d in budget_data]
-    budgets = [d['budget'] for d in budget_data]
-    actuals = [d['actual'] for d in budget_data]
+    budgets = [float(d['budget']) for d in budget_data]
+    actuals = [float(d['actual']) for d in budget_data]
 
     y = np.arange(len(names))
     height = 0.35
@@ -191,7 +187,7 @@ def create_budget_chart(budget_data: List[Dict[str, Any]], title: str = '', size
     for i, (budget, actual) in enumerate(zip(budgets, actuals)):
         color = ACCENT_GREEN if actual <= budget and budget > 0 else ACCENT_RED
         ax.text(max(budget, actual) + max(max(budgets), max(actuals)) * 0.02, i,
-                f'{_fmt_cop(actual)} / {_fmt_cop(budget)}',
+                f'{fmt_cop(actual)} / {fmt_cop(budget)}',
                 va='center', color=color, fontsize=10, fontfamily='sans-serif')
 
     ax.set_yticks(y)

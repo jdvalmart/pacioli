@@ -4,7 +4,7 @@ a = Analysis(
     ['main.py'],
     pathex=['src'],
     binaries=[],
-    datas=[('data', 'data')],
+    datas=[],
     hiddenimports=['PIL._tkinter_finder', 'PIL._imagingtk'],
     hookspath=[],
     hooksconfig={},

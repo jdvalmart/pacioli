@@ -3,6 +3,8 @@ import urllib.request
 import urllib.error
 from typing import Optional
 
+from utils import fmt_cop
+
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "qwen2.5:3b"
@@ -71,7 +73,7 @@ def extract_correction_topic(user_message: str) -> str:
 def generate_description(category: str, subcategory: str, amount: float,
                          desc_learnings_ctx: str = "") -> Optional[str]:
     prompt = (
-        f"Genera una descripción breve y útil para un gasto de ${amount:,.0f} en la categoría '{category}'"
+        f"Genera una descripción breve y útil para un gasto de {fmt_cop(amount)} en la categoría '{category}'"
         + (f", subcategoría '{subcategory}'" if subcategory else "")
         + ". Solo devuelve la descripción, nada más. Máximo 8 palabras."
     )
@@ -84,13 +86,13 @@ def analyze_spending(month_name: str, data: list, total_expense: float, total_in
                      learnings_ctx: str = "") -> Optional[str]:
     lines = []
     for d in data:
-        lines.append(f"- {d['name']}: ${d['actual']:,.0f} / ${d['budget']:,.0f} presupuesto ({d['percent']:.0f}%)")
+        lines.append(f"- {d['name']}: {fmt_cop(d['actual'])} / {fmt_cop(d['budget'])} presupuesto ({d['percent']:.0f}%)")
     budget_text = "\n".join(lines) if lines else "No hay presupuestos definidos."
 
     prompt = (
         f"Analiza los gastos de {month_name}:\n"
-        f"Ingresos: ${total_income:,.0f}\nGastos totales: ${total_expense:,.0f}\n"
-        f"Balance: ${total_income - total_expense:,.0f}\n\n"
+        f"Ingresos: {fmt_cop(total_income)}\nGastos totales: {fmt_cop(total_expense)}\n"
+        f"Balance: {fmt_cop(total_income - total_expense)}\n\n"
         f"Desglose por categoría:\n{budget_text}\n\n"
     )
     if learnings_ctx:

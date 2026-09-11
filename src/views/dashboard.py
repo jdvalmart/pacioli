@@ -103,7 +103,8 @@ def show_dashboard(app):
             rc = CARD_HOVER if i % 2 == 0 else "transparent"
             row = ctk.CTkFrame(rf, fg_color=rc, corner_radius=S(6))
             row.pack(fill="x", pady=S(1), padx=S(14))
-            ctk.CTkLabel(row, text=f"{icon}  {t.date}", font=font(S(13)),
+            dlabel = f"🔁 {t.date}" if (t.is_recurring or t.generated_from) else str(t.date)
+            ctk.CTkLabel(row, text=f"{icon}  {dlabel}", font=font(S(13)),
                          anchor="w").pack(side="left", padx=S(10), pady=S(6))
             ctk.CTkLabel(row, text=cn, font=font(S(13)),
                          text_color=color, anchor="w").pack(side="left", padx=S(10), pady=S(6))
