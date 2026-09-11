@@ -11,7 +11,8 @@ from pacioli.data import (
     save_chat_message, get_chat_history, get_recent_chat_context,
     save_learning, get_learnings_context
 )
-from pacioli.services.ai import ask_budget_question, detect_correction, extract_correction_topic, MODEL
+from pacioli.services.ai import ai_service, detect_correction, extract_correction_topic
+from pacioli.core.config import config_manager
 from pacioli.core.money import fmt_cop
 from pacioli.ui.utils import S
 
@@ -98,19 +99,24 @@ def open_chat(app):
         history_ctx = get_recent_chat_context(app.current_month, app.current_year, turns=8)
 
         def _work():
-            result = ask_budget_question(q, budget_context, history_ctx, learnings_ctx)
-            app.after(0, lambda: _reply(result))
+            # Combine context
+            full_context = f"{budget_context}\n\n{history_ctx}\n\n{learnings_ctx}"
+            response = ai_service.ask_question(q, full_context)
+            app.after(0, lambda: _reply(response))
         threading.Thread(target=_work, daemon=True).start()
 
-    def _reply(result):
+    def _reply(response):
         """Handle AI reply."""
         btn_send.configure(state="normal", text="Enviar")
-        if result:
+        if response.success:
+            result = response.text
             save_chat_message("ai", result, app.current_month, app.current_year)
             _append("ai", result)
         else:
+            model = config_manager.get_ai_config().model
             _append("ai", "⚠️ No pude conectar con la IA. Verifica que Ollama esté corriendo "
-                          f"(ollama serve) y que el modelo '{MODEL}' esté instalado.")
+                          f"(ollama serve) y que el modelo '{model}' esté instalado.\n\n"
+                          f"Error: {response.error}")
 
     btn_send = Button(
         input_frame, text="Enviar", variant="primary", size="md",

@@ -1,24 +1,17 @@
-"""Módulo services: servicios externos e integraciones.
+"""Services module for external integrations."""
 
-Contiene la integración con IA (Ollama) y otros servicios externos.
-"""
-
-from .ai import (
-    MODEL,
-    OLLAMA_URL,
-    ask_budget_question,
-    analyze_spending,
+from pacioli.services.ai import (
+    AIService,
+    AIResponse,
+    ai_service,
     detect_correction,
     extract_correction_topic,
-    generate_description,
 )
 
 __all__ = [
-    'MODEL',
-    'OLLAMA_URL',
-    'ask_budget_question',
-    'analyze_spending',
-    'detect_correction',
-    'extract_correction_topic',
-    'generate_description',
+    "AIService",
+    "AIResponse",
+    "ai_service",
+    "detect_correction",
+    "extract_correction_topic",
 ]

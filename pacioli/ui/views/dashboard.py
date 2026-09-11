@@ -11,7 +11,7 @@ from pacioli.data import (
     get_monthly_summary, get_transactions, get_category_spending,
     get_budget_vs_actual, get_categories, lookup_cat
 )
-from pacioli.services.ai import analyze_spending
+from pacioli.services.ai import ai_service
 from pacioli.core.money import fmt_cop
 from pacioli.ui.utils import S
 
@@ -65,20 +65,30 @@ def show_dashboard(app):
         btn.configure(state="disabled", text="⏳ Analizando...")
         def _work():
             bva = get_budget_vs_actual(app.current_month, app.current_year)
-            result = analyze_spending(app._mh(), bva, s.total_expense, s.total_income)
-            app.after(0, lambda: _show_result(result))
+            # Prepare transactions data for analysis
+            transactions_data = []
+            for item in bva:
+                transactions_data.append({
+                    "date": app._mh(),
+                    "category": item["name"],
+                    "amount": float(item["actual"])
+                })
+            response = ai_service.analyze_spending(transactions_data, app._mh())
+            app.after(0, lambda: _show_result(response))
         threading.Thread(target=_work, daemon=True).start()
 
-    def _show_result(result):
+    def _show_result(response):
         btn.configure(state="normal", text="✨ Análisis IA")
-        if not result:
+        if not response.success:
             AlertModal(
                 app,
                 title="Análisis IA",
-                message="No se pudo conectar con Ollama.\nVerifica que esté corriendo: ollama serve",
+                message=f"No se pudo conectar con Ollama.\n{response.error}",
                 variant="warning"
             )
             return
+
+        result = response.text
 
         # Show result in modal
         modal = Card(app, title=f"🤖 Análisis de {app._mh()}", variant="elevated")

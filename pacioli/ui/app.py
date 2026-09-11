@@ -10,7 +10,7 @@ from pacioli.ui.theme_manager import theme_manager
 from pacioli.ui.components import Button
 from pacioli.ui.icons import IconButton
 from pacioli.ui.utils import S, MONTHS
-from pacioli.ui.views import show_dashboard, show_transactions, show_budgets, show_reports, show_categories
+from pacioli.ui.views import show_dashboard, show_transactions, show_budgets, show_reports, show_categories, open_ai_settings
 from pacioli.core.logging_config import logger
 
 
@@ -170,16 +170,32 @@ class BudgetApp(ctk.CTk):
             button_hover_color=colors.PRIMARY_HOVER
         ).grid(row=8, column=0, pady=S(4), padx=S(16), sticky="n")
 
+        # Bottom buttons frame
+        bottom_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        bottom_frame.grid(row=9, column=0, sticky="s", pady=S(16), padx=S(16))
+        bottom_frame.grid_columnconfigure(0, weight=1)
+        bottom_frame.grid_columnconfigure(1, weight=1)
+
         # Theme toggle button
         theme_icon = "🌙" if theme_manager.is_dark else "☀️"
         self.theme_btn = IconButton(
-            self.sidebar,
+            bottom_frame,
             icon="settings",
             command=self._toggle_theme,
             size="md",
             tooltip="Toggle theme",
         )
-        self.theme_btn.grid(row=9, column=0, pady=S(16), padx=S(16), sticky="s")
+        self.theme_btn.grid(row=0, column=0, padx=(0, S(8)))
+
+        # AI settings button
+        ai_btn = IconButton(
+            bottom_frame,
+            icon="chat",
+            command=lambda: open_ai_settings(self),
+            size="md",
+            tooltip="AI Settings",
+        )
+        ai_btn.grid(row=0, column=1, padx=(S(8), 0))
 
     def _toggle_theme(self):
         """Toggle between dark and light theme."""

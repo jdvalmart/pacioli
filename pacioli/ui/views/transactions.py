@@ -14,7 +14,7 @@ from pacioli.data import (
     get_categories, get_subcategories, get_desc_learnings_context,
     export_transactions_csv, lookup_cat, invalidate_cat_cache
 )
-from pacioli.services.ai import generate_description
+from pacioli.services.ai import ai_service
 from pacioli.core.money import fmt_cop, parse_amount
 from pacioli.ui.utils import S
 from pacioli.core.logging_config import logger
@@ -273,20 +273,25 @@ def _open_tx(app, cat_type='expense', existing=None):
         btn_ai.configure(state="disabled", text="⏳...")
         learnings_ctx = get_desc_learnings_context(cat_name)
         def _run():
-            result = generate_description(cat_name, sub_name, amt, learnings_ctx)
-            app.after(0, lambda: _set_desc(result))
+            # Prepare context for AI
+            context = learnings_ctx if learnings_ctx else ""
+            if sub_name:
+                context = f"{context}\nSubcategory: {sub_name}" if context else f"Subcategory: {sub_name}"
+            response = ai_service.generate_description(cat_name, float(amt), context)
+            app.after(0, lambda: _set_desc(response))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _set_desc(result):
+    def _set_desc(response):
         btn_ai.configure(state="normal", text="✨ IA")
-        if result:
+        if response.success:
+            result = response.text
             descv.set(result)
             _last_ai_desc["value"] = result
         else:
             AlertModal(
                 modal,
                 title="IA",
-                message="No se pudo conectar con Ollama para generar la descripción.",
+                message=f"No se pudo conectar con Ollama.\n{response.error}",
                 variant="warning"
             )
 
