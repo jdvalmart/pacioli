@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Vista de Reportes."""
+"""Reports view."""
 
 import customtkinter as ctk
 
-from pacioli.ui.theme import (
-    font, card, styled_tabs,
-    BG, SURFACE, CARD, ACCENT, GREEN, RED, TEXT, TEXT_SEC
-)
+from pacioli.ui.tokens import theme, Spacing, FontSize, get_font
+from pacioli.ui.components import StatCard
+from pacioli.ui.theme import styled_tabs
 from pacioli.ui.charts import create_trend_chart, create_pie_chart, create_bar_chart
 from pacioli.data import (
     get_monthly_summary, get_monthly_summaries, get_category_spending
@@ -16,7 +15,7 @@ from pacioli.ui.utils import S
 
 
 def show_reports(app):
-    """Renderiza la vista de reportes."""
+    """Render reports view."""
     app._hl(3)
     app._view = lambda: show_reports(app)
     app._rerender_on_resize = True
@@ -33,6 +32,10 @@ def show_reports(app):
 
 
 def _paint_reports(app):
+    """Paint report charts."""
+    colors = theme.colors
+
+    # Annual trend tab
     tt = app._tab_t
     if not tt.winfo_exists():
         return
@@ -47,21 +50,37 @@ def _paint_reports(app):
     lbl.image = ci
     lbl.pack(pady=S(12))
 
+    # Monthly tab
     mt = app._tab_m
     mt.update_idletasks()
     mw = max(mt.winfo_width() // 2 - S(20), S(250))
     mh = max(mt.winfo_height() - S(120), S(180))
 
     s = get_monthly_summary(app.current_month, app.current_year)
+
+    # Stats row
     sr = ctk.CTkFrame(mt, fg_color="transparent")
     sr.pack(fill="x", pady=(S(10), S(6)), padx=S(12))
     sr.grid_columnconfigure(0, weight=1)
     sr.grid_columnconfigure(1, weight=1)
     sr.grid_columnconfigure(2, weight=1)
-    _stat_card(sr, "Ingresos", fmt_cop(s.total_income), GREEN)
-    _stat_card(sr, "Gastos", fmt_cop(s.total_expense), RED)
-    _stat_card(sr, "Balance", fmt_cop(s.balance), ACCENT)
 
+    StatCard(
+        sr, label="Ingresos", value=fmt_cop(s.total_income),
+        trend_color=colors.SUCCESS
+    ).grid(row=0, column=0, sticky="ew", padx=(0, S(6)))
+
+    StatCard(
+        sr, label="Gastos", value=fmt_cop(s.total_expense),
+        trend_color=colors.ERROR
+    ).grid(row=0, column=1, sticky="ew", padx=S(6))
+
+    StatCard(
+        sr, label="Balance", value=fmt_cop(s.balance),
+        trend_color=colors.PRIMARY
+    ).grid(row=0, column=2, sticky="ew", padx=(S(6), 0))
+
+    # Charts row
     cr = ctk.CTkFrame(mt, fg_color="transparent")
     cr.pack(fill="x", padx=S(12), pady=(0, S(10)))
 
@@ -79,13 +98,3 @@ def _paint_reports(app):
     l2 = ctk.CTkLabel(cr, image=c2, text="")
     l2.image = c2
     l2.pack(side="right", fill="x", expand=True, padx=(S(6), 0))
-
-
-def _stat_card(parent, title, value, color):
-    f = card(parent, height=S(70))
-    f.pack_propagate(False)
-    ctk.CTkLabel(f, text=title, font=font(S(12)),
-                 text_color=TEXT_SEC).pack(pady=(S(10), S(2)), padx=S(14), anchor="w")
-    ctk.CTkLabel(f, text=value, font=font(S(20), "bold"),
-                 text_color=color).pack(padx=S(14), anchor="w")
-    return f

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Vista de Chat IA."""
+"""AI Chat view."""
 
 import customtkinter as ctk
 import threading
 
-from pacioli.ui.theme import (
-    font, btn_primary, card,
-    BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, PURPLE, TEXT, TEXT_SEC
-)
+from pacioli.ui.tokens import theme, Spacing, FontSize, get_font
+from pacioli.ui.components import Button, Card
 from pacioli.data import (
     get_monthly_summary, get_budget_vs_actual,
     save_chat_message, get_chat_history, get_recent_chat_context,
@@ -19,11 +17,14 @@ from pacioli.ui.utils import S
 
 
 def open_chat(app):
-    """Abre la ventana de chat IA."""
+    """Open AI chat window."""
+    colors = theme.colors
+
     win = ctk.CTkToplevel(app)
     win.title(f"Chat IA — {app._mh()}")
     win.geometry(f"{S(560)}x{S(520)}")
     win.transient(app)
+    win.configure(fg_color=colors.BG_SECONDARY)
 
     s = get_monthly_summary(app.current_month, app.current_year)
     bva = get_budget_vs_actual(app.current_month, app.current_year)
@@ -38,21 +39,30 @@ def open_chat(app):
     budget_context = "\n".join(ctx_lines)
     learnings_ctx = get_learnings_context()
 
-    display = ctk.CTkTextbox(win, width=S(520), height=S(360),
-                             font=font(S(13)), state="disabled", fg_color=CARD)
-    display.pack(padx=S(16), pady=(S(12), S(8)), fill="both", expand=True)
+    # Chat display
+    display = ctk.CTkTextbox(
+        win, width=S(520), height=S(360),
+        font=get_font(FontSize.BASE), state="disabled",
+        fg_color=colors.BG_TERTIARY, text_color=colors.TEXT_PRIMARY
+    )
+    display.pack(padx=Spacing.LG, pady=(Spacing.LG, S(8)), fill="both", expand=True)
 
+    # Input frame
     input_frame = ctk.CTkFrame(win, fg_color="transparent")
-    input_frame.pack(fill="x", padx=S(16), pady=(0, S(12)))
+    input_frame.pack(fill="x", padx=Spacing.LG, pady=(0, Spacing.LG))
 
     user_input = ctk.StringVar()
-    entry = ctk.CTkEntry(input_frame, textvariable=user_input, width=S(400), height=S(38),
-                         placeholder_text="Pregúntale a Pacioli...",
-                         font=font(S(13)), fg_color=CARD, border_color=BORDER)
+    entry = ctk.CTkEntry(
+        input_frame, textvariable=user_input, width=S(400), height=S(38),
+        placeholder_text="Pregúntale a Pacioli...",
+        font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, border_color=colors.BORDER_DEFAULT
+    )
     entry.pack(side="left", padx=(0, S(8)))
     entry.bind("<Return>", lambda e: _send())
 
     def _append(role, text):
+        """Append message to chat display."""
         display.configure(state="normal")
         tag = "👤 Tú" if role == "user" else "🤖 IA"
         display.insert("end", f"\n{tag}: {text}\n")
@@ -60,6 +70,7 @@ def open_chat(app):
         display.see("end")
 
     def _load_history():
+        """Load chat history."""
         history = get_chat_history(app.current_month, app.current_year, limit=30)
         if history:
             for h in history:
@@ -68,6 +79,7 @@ def open_chat(app):
             _append("ai", f"Hola! Soy Pacioli, tu asistente financiero para {app._mh()}.\nPregúntame lo que quieras sobre tus finanzas.")
 
     def _send():
+        """Send message to AI."""
         nonlocal learnings_ctx
         q = user_input.get().strip()
         if not q:
@@ -91,6 +103,7 @@ def open_chat(app):
         threading.Thread(target=_work, daemon=True).start()
 
     def _reply(result):
+        """Handle AI reply."""
         btn_send.configure(state="normal", text="Enviar")
         if result:
             save_chat_message("ai", result, app.current_month, app.current_year)
@@ -99,9 +112,10 @@ def open_chat(app):
             _append("ai", "⚠️ No pude conectar con la IA. Verifica que Ollama esté corriendo "
                           f"(ollama serve) y que el modelo '{MODEL}' esté instalado.")
 
-    btn_send = ctk.CTkButton(input_frame, text="Enviar", width=S(80), height=S(38),
-                             fg_color=ACCENT, hover_color="#4C9AFF",
-                             font=font(S(13), "bold"), command=_send)
+    btn_send = Button(
+        input_frame, text="Enviar", variant="primary", size="md",
+        width=S(80), height=S(38), command=_send
+    )
     btn_send.pack(side="right")
 
     _load_history()

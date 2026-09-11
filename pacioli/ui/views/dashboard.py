@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
-"""Vista de Dashboard."""
+"""Dashboard view."""
 
 import customtkinter as ctk
 import threading
-from tkinter import messagebox
 
-from pacioli.ui.theme import (
-    font, btn_primary, card, styled_tabs,
-    BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, PURPLE, TEXT, TEXT_SEC
-)
+from pacioli.ui.tokens import theme, Spacing, FontSize, get_font
+from pacioli.ui.components import Button, Card, StatCard, EmptyState, AlertModal
 from pacioli.ui.charts import create_pie_chart, create_bar_chart
 from pacioli.data import (
     get_monthly_summary, get_transactions, get_category_spending,
-    get_budget_vs_actual, get_categories
+    get_budget_vs_actual, get_categories, lookup_cat
 )
 from pacioli.services.ai import analyze_spending
 from pacioli.core.money import fmt_cop
-from pacioli.data import lookup_cat
 from pacioli.ui.utils import S
 
 
 def show_dashboard(app):
-    """Renderiza la vista de dashboard en app.main."""
+    """Render dashboard view in app.main."""
+    colors = theme.colors
+
     app._hl(0)
     app._view = lambda: show_dashboard(app)
     app._rerender_on_resize = True
@@ -30,16 +28,36 @@ def show_dashboard(app):
 
     s = get_monthly_summary(app.current_month, app.current_year)
 
+    # Stats container
     stats = ctk.CTkFrame(app.main, fg_color="transparent")
     stats.grid(row=1, column=0, sticky="ew", padx=S(24), pady=(0, S(12)))
     stats.grid_columnconfigure(0, weight=1)
     stats.grid_columnconfigure(1, weight=1)
     stats.grid_columnconfigure(2, weight=1)
 
-    _stat_card(stats, "💰 Ingresos", fmt_cop(s.total_income), GREEN)
-    _stat_card(stats, "💸 Gastos", fmt_cop(s.total_expense), RED)
-    _stat_card(stats, "🏦 Balance", fmt_cop(s.balance), ACCENT)
+    # Stat cards
+    StatCard(
+        stats,
+        label="💰 Ingresos",
+        value=fmt_cop(s.total_income),
+        trend_color=colors.SUCCESS
+    ).grid(row=0, column=0, sticky="ew", padx=(0, S(6)))
 
+    StatCard(
+        stats,
+        label="💸 Gastos",
+        value=fmt_cop(s.total_expense),
+        trend_color=colors.ERROR
+    ).grid(row=0, column=1, sticky="ew", padx=S(6))
+
+    StatCard(
+        stats,
+        label="🏦 Balance",
+        value=fmt_cop(s.balance),
+        trend_color=colors.PRIMARY
+    ).grid(row=0, column=2, sticky="ew", padx=(S(6), 0))
+
+    # AI buttons bar
     ai_bar = ctk.CTkFrame(app.main, fg_color="transparent")
     ai_bar.grid(row=1, column=0, sticky="e", padx=S(24), pady=(0, S(4)))
 
@@ -54,35 +72,48 @@ def show_dashboard(app):
     def _show_result(result):
         btn.configure(state="normal", text="✨ Análisis IA")
         if not result:
-            messagebox.showwarning(
-                "Análisis IA",
-                "No se pudo conectar con Ollama.\nVerifica que esté corriendo: ollama serve",
-                parent=app
+            AlertModal(
+                app,
+                title="Análisis IA",
+                message="No se pudo conectar con Ollama.\nVerifica que esté corriendo: ollama serve",
+                variant="warning"
             )
             return
-        win = ctk.CTkToplevel(app)
-        win.title(f"Análisis IA — {app._mh()}")
-        win.geometry(f"{S(500)}x{S(360)}")
-        win.transient(app)
-        ctk.CTkLabel(win, text=f"🤖 Análisis de {app._mh()}",
-                     font=font(S(16), "bold")).pack(pady=(S(14), S(8)))
-        tb = ctk.CTkTextbox(win, width=S(460), height=S(260),
-                            font=font(S(13)), fg_color=CARD)
-        tb.pack(padx=S(16), pady=(0, S(12)), fill="both", expand=True)
+
+        # Show result in modal
+        modal = Card(app, title=f"🤖 Análisis de {app._mh()}", variant="elevated")
+        modal.place(relx=0.5, rely=0.5, anchor="center")
+
+        tb = ctk.CTkTextbox(
+            modal.content,
+            width=S(460),
+            height=S(260),
+            font=get_font(FontSize.BASE),
+            fg_color=colors.BG_TERTIARY
+        )
+        tb.pack(padx=Spacing.LG, pady=(0, Spacing.LG), fill="both", expand=True)
         tb.insert("1.0", result)
         tb.configure(state="disabled")
 
-    btn = ctk.CTkButton(ai_bar, text="✨ Análisis IA", height=S(32),
-                        fg_color=PURPLE, hover_color="#A371F7",
-                        font=font(S(13), "bold"), command=_run_analysis)
+    btn = Button(
+        ai_bar,
+        text="✨ Análisis IA",
+        variant="secondary",
+        size="sm",
+        command=_run_analysis
+    )
     btn.pack(side="right", padx=(S(8), 0))
 
-    btn_chat = ctk.CTkButton(ai_bar, text="💬 Chat IA", height=S(32),
-                             fg_color="#6E40C9", hover_color="#8957E5",
-                             font=font(S(13), "bold"),
-                             command=lambda: _open_chat(app))
+    btn_chat = Button(
+        ai_bar,
+        text="💬 Chat IA",
+        variant="secondary",
+        size="sm",
+        command=lambda: _open_chat(app)
+    )
     btn_chat.pack(side="right")
 
+    # Charts container
     app._dash_ch = ctk.CTkFrame(app.main, fg_color="transparent")
     app._dash_ch.grid(row=2, column=0, sticky="nsew", padx=S(24), pady=(0, S(12)))
     app._dash_ch.grid_columnconfigure(0, weight=1)
@@ -90,46 +121,63 @@ def show_dashboard(app):
     app._dash_ch.grid_rowconfigure(0, weight=1)
     app.after(100, lambda: _paint_dash(app))
 
-    rf = card(app.main)
+    # Recent transactions card
+    rf = Card(app.main, title="🕐 Últimas transacciones", variant="elevated")
     rf.grid(row=3, column=0, sticky="ew", padx=S(24), pady=(0, S(12)))
-    ctk.CTkLabel(rf, text="🕐 Últimas transacciones",
-                 font=font(S(14), "bold")).pack(pady=(S(10), S(6)), padx=S(14), anchor="w")
 
     txns = get_transactions(app.current_month, app.current_year)[:6]
     if not txns:
-        ctk.CTkLabel(rf, text="No hay transacciones este mes",
-                     text_color=TEXT_SEC, font=font(S(13))).pack(pady=S(10))
+        EmptyState(
+            rf.content,
+            icon="📭",
+            title="No hay transacciones este mes",
+            message="Comienza agregando tu primera transacción"
+        ).pack(pady=S(10))
     else:
         for i, t in enumerate(txns):
             icon, color, cn, ct_ = lookup_cat(t.category_id)
-            rc = CARD_HOVER if i % 2 == 0 else "transparent"
-            row = ctk.CTkFrame(rf, fg_color=rc, corner_radius=S(6))
-            row.pack(fill="x", pady=S(1), padx=S(14))
+            rc = colors.BG_HOVER if i % 2 == 0 else "transparent"
+            row = ctk.CTkFrame(rf.content, fg_color=rc, corner_radius=Spacing.SM)
+            row.pack(fill="x", pady=Spacing.XS, padx=Spacing.MD)
+
             dlabel = f"🔁 {t.date}" if (t.is_recurring or t.generated_from) else str(t.date)
-            ctk.CTkLabel(row, text=f"{icon}  {dlabel}", font=font(S(13)),
-                         anchor="w").pack(side="left", padx=S(10), pady=S(6))
-            ctk.CTkLabel(row, text=cn, font=font(S(13)),
-                         text_color=color, anchor="w").pack(side="left", padx=S(10), pady=S(6))
-            ctk.CTkLabel(row, text=t.description[:35] if t.description else "—",
-                         font=font(S(12)), text_color=TEXT_SEC,
-                         anchor="w").pack(side="left", padx=S(10), pady=S(6), expand=True, fill="x")
-            ac = GREEN if ct_ == 'income' else RED
+            ctk.CTkLabel(
+                row,
+                text=f"{icon}  {dlabel}",
+                font=get_font(FontSize.BASE),
+                text_color=colors.TEXT_PRIMARY,
+                anchor="w"
+            ).pack(side="left", padx=Spacing.SM, pady=Spacing.SM)
+
+            ctk.CTkLabel(
+                row,
+                text=cn,
+                font=get_font(FontSize.BASE),
+                text_color=color,
+                anchor="w"
+            ).pack(side="left", padx=Spacing.SM, pady=Spacing.SM)
+
+            ctk.CTkLabel(
+                row,
+                text=t.description[:35] if t.description else "—",
+                font=get_font(FontSize.SM),
+                text_color=colors.TEXT_SECONDARY,
+                anchor="w"
+            ).pack(side="left", padx=Spacing.SM, pady=Spacing.SM, expand=True, fill="x")
+
+            ac = colors.SUCCESS if ct_ == 'income' else colors.ERROR
             pf = "+" if ct_ == 'income' else "-"
-            ctk.CTkLabel(row, text=f"{pf}{fmt_cop(t.amount)}", font=font(S(14), "bold"),
-                         text_color=ac, anchor="e").pack(side="right", padx=S(10), pady=S(6))
-
-
-def _stat_card(parent, title, value, color):
-    f = card(parent, height=S(70))
-    f.pack_propagate(False)
-    ctk.CTkLabel(f, text=title, font=font(S(12)),
-                 text_color=TEXT_SEC).pack(pady=(S(10), S(2)), padx=S(14), anchor="w")
-    ctk.CTkLabel(f, text=value, font=font(S(20), "bold"),
-                 text_color=color).pack(padx=S(14), anchor="w")
-    return f
+            ctk.CTkLabel(
+                row,
+                text=f"{pf}{fmt_cop(t.amount)}",
+                font=get_font(FontSize.MD, "bold"),
+                text_color=ac,
+                anchor="e"
+            ).pack(side="right", padx=Spacing.SM, pady=Spacing.SM)
 
 
 def _paint_dash(app):
+    """Paint dashboard charts."""
     f = app._dash_ch
     if not f.winfo_exists():
         return
@@ -160,5 +208,6 @@ def _paint_dash(app):
 
 
 def _open_chat(app):
+    """Open chat view."""
     from .chat import open_chat
     open_chat(app)

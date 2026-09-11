@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Vista de Presupuestos."""
+"""Budgets view."""
 
 import customtkinter as ctk
-from tkinter import messagebox
 
-from pacioli.ui.theme import (
-    font, btn_primary, btn_danger, card,
-    BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, ORANGE, TEXT, TEXT_SEC
-)
+from pacioli.ui.tokens import theme, Spacing, FontSize, get_font
+from pacioli.ui.components import Button, Card, Modal, ConfirmModal, AlertModal, EmptyState, toasts
 from pacioli.ui.charts import create_budget_chart, create_pie_chart
 from pacioli.data import (
     get_budget_vs_actual, set_budget, delete_budget, get_categories
@@ -17,19 +14,26 @@ from pacioli.ui.utils import S
 
 
 def show_budgets(app):
-    """Renderiza la vista de presupuestos."""
+    """Render budgets view."""
+    colors = theme.colors
+
     app._hl(2)
     app._view = lambda: show_budgets(app)
     app._rerender_on_resize = True
     app._clear()
     app._title(f"🎯 Presupuestos — {app._mh()}")
 
+    # Toolbar
     tb = ctk.CTkFrame(app.main, fg_color="transparent")
     tb.grid(row=1, column=0, sticky="ew", padx=S(24), pady=(0, S(8)))
-    btn_primary(tb, "+ Asignar presupuesto", lambda: _open_bdlg(app), S(220), S(36)).pack(side="left")
+    Button(
+        tb, text="+ Asignar presupuesto", variant="primary", size="md",
+        command=lambda: _open_bdlg(app)
+    ).pack(side="left")
 
     bva = get_budget_vs_actual(app.current_month, app.current_year)
 
+    # Charts container
     app._bva_f = ctk.CTkFrame(app.main, fg_color="transparent")
     app._bva_f.grid(row=2, column=0, sticky="nsew", padx=S(24), pady=(0, S(8)))
     app._bva_f.grid_columnconfigure(0, weight=1)
@@ -38,44 +42,68 @@ def show_budgets(app):
     app._bva_d = bva
     app.after(100, lambda: _paint_bva(app))
 
-    if bva:
-        tf = card(app.main)
-        tf.grid(row=3, column=0, sticky="ew", padx=S(24), pady=(0, S(12)))
-        ctk.CTkLabel(tf, text="📋 Detalle por categoría",
-                     font=font(S(14), "bold")).pack(pady=(S(10), S(6)), padx=S(14), anchor="w")
+    if not bva:
+        EmptyState(
+            app.main,
+            icon="🎯",
+            title="No hay presupuestos este mes",
+            message="Comienza asignando presupuestos a tus categorías de gastos",
+            action_text="+ Asignar presupuesto",
+            action_command=lambda: _open_bdlg(app)
+        ).grid(row=3, column=0, sticky="ew", padx=S(24), pady=(0, S(12)))
+        return
 
-        hdr = ctk.CTkFrame(tf, fg_color="transparent")
-        hdr.pack(fill="x", padx=S(14), pady=(0, S(4)))
-        for txt, w in [("Categoría", S(160)), ("Presupuesto", S(120)), ("Real", S(120)),
-                       ("Restante", S(120)), ("%", S(60)), ("", S(40))]:
-            ctk.CTkLabel(hdr, text=txt, font=font(S(12), "bold"),
-                         width=w, anchor="w", text_color=TEXT_SEC).pack(side="left", padx=S(4))
+    # Detail card
+    tf = Card(app.main, title="📋 Detalle por categoría", variant="elevated")
+    tf.grid(row=3, column=0, sticky="ew", padx=S(24), pady=(0, S(12)))
 
-        for i, d in enumerate(bva):
-            rc = CARD_HOVER if i % 2 == 0 else CARD
-            row = ctk.CTkFrame(tf, fg_color=rc, corner_radius=S(6))
-            row.pack(fill="x", pady=S(1), padx=S(14))
-            ctk.CTkLabel(row, text=f"{d['icon']} {d['name']}", anchor="w", width=S(160),
-                         font=font(S(13))).pack(side="left", padx=S(4), pady=S(7))
-            ctk.CTkLabel(row, text=fmt_cop(d['budget']), width=S(120), anchor="w", text_color=ACCENT,
-                         font=font(S(13))).pack(side="left", padx=S(4), pady=S(7))
-            ctk.CTkLabel(row, text=fmt_cop(d['actual']), width=S(120), anchor="w", text_color=ORANGE,
-                         font=font(S(13))).pack(side="left", padx=S(4), pady=S(7))
-            rem = d['remaining']
-            rc2 = GREEN if rem >= 0 else RED
-            ctk.CTkLabel(row, text=fmt_cop(rem), width=S(120), anchor="w", text_color=rc2,
-                         font=font(S(13))).pack(side="left", padx=S(4), pady=S(7))
-            pct = d['percent']
-            pc = GREEN if pct <= 80 else (ORANGE if pct <= 100 else RED)
-            ctk.CTkLabel(row, text=f"{pct:.0f}%", width=S(60), anchor="w", text_color=pc,
-                         font=font(S(13), "bold")).pack(side="left", padx=S(4), pady=S(7))
-            ctk.CTkButton(row, text="🗑️", width=S(28), height=S(28), fg_color=RED,
-                          hover_color="#DA3633", font=font(S(12)),
-                          command=lambda cid=d['category_id']: _del_b(app, cid)).pack(
-                side="right", padx=S(6), pady=S(5))
+    # Header
+    hdr = ctk.CTkFrame(tf.content, fg_color="transparent")
+    hdr.pack(fill="x", pady=(0, S(4)))
+    for txt, w in [("Categoría", S(160)), ("Presupuesto", S(120)), ("Real", S(120)),
+                   ("Restante", S(120)), ("%", S(60)), ("", S(40))]:
+        ctk.CTkLabel(
+            hdr, text=txt, font=get_font(FontSize.SM, "bold"),
+            width=w, anchor="w", text_color=colors.TEXT_SECONDARY
+        ).pack(side="left", padx=S(4))
+
+    # Rows
+    for i, d in enumerate(bva):
+        rc = colors.BG_HOVER if i % 2 == 0 else colors.BG_TERTIARY
+        row = ctk.CTkFrame(tf.content, fg_color=rc, corner_radius=Spacing.SM)
+        row.pack(fill="x", pady=Spacing.XS, padx=Spacing.MD)
+        ctk.CTkLabel(
+            row, text=f"{d['icon']} {d['name']}", anchor="w", width=S(160),
+            font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+        ).pack(side="left", padx=S(4), pady=S(7))
+        ctk.CTkLabel(
+            row, text=fmt_cop(d['budget']), width=S(120), anchor="w", text_color=colors.PRIMARY,
+            font=get_font(FontSize.BASE)
+        ).pack(side="left", padx=S(4), pady=S(7))
+        ctk.CTkLabel(
+            row, text=fmt_cop(d['actual']), width=S(120), anchor="w", text_color=colors.WARNING,
+            font=get_font(FontSize.BASE)
+        ).pack(side="left", padx=S(4), pady=S(7))
+        rem = d['remaining']
+        rc2 = colors.SUCCESS if rem >= 0 else colors.ERROR
+        ctk.CTkLabel(
+            row, text=fmt_cop(rem), width=S(120), anchor="w", text_color=rc2,
+            font=get_font(FontSize.BASE)
+        ).pack(side="left", padx=S(4), pady=S(7))
+        pct = d['percent']
+        pc = colors.SUCCESS if pct <= 80 else (colors.WARNING if pct <= 100 else colors.ERROR)
+        ctk.CTkLabel(
+            row, text=f"{pct:.0f}%", width=S(60), anchor="w", text_color=pc,
+            font=get_font(FontSize.BASE, "bold")
+        ).pack(side="left", padx=S(4), pady=S(7))
+        Button(
+            row, text="🗑️", variant="ghost", size="sm", width=S(28), height=S(28),
+            command=lambda cid=d['category_id']: _del_b(app, cid)
+        ).pack(side="right", padx=S(6), pady=S(5))
 
 
 def _paint_bva(app):
+    """Paint budget charts."""
     f = app._bva_f
     if not f.winfo_exists():
         return
@@ -105,35 +133,39 @@ def _paint_bva(app):
 
 
 def _open_bdlg(app):
-    """Abre diálogo de asignar presupuesto."""
-    dlg = ctk.CTkToplevel(app)
-    dlg.title("Asignar presupuesto")
-    dlg.geometry(f"{S(440)}x{S(300)}")
-    dlg.transient(app)
-    dlg.grab_set()
+    """Open budget assignment dialog."""
+    colors = theme.colors
 
-    ctk.CTkLabel(dlg, text="🎯 Asignar presupuesto",
-                 font=font(S(18), "bold")).pack(pady=(S(16), S(12)))
+    modal = Modal(app, title="🎯 Asignar presupuesto", size="sm")
 
-    f = ctk.CTkFrame(dlg, fg_color="transparent")
-    f.pack(fill="x", padx=S(24), pady=(0, S(16)))
+    f = ctk.CTkFrame(modal.content, fg_color="transparent")
+    f.pack(fill="x", padx=Spacing.LG, pady=(0, Spacing.LG))
 
     exp = get_categories('expense')
     cn = [f"{c.icon} {c.name}" for c in exp]
     ci = [c.id for c in exp]
 
-    lk = dict(font=font(S(13)))
-    ctk.CTkLabel(f, text="Categoría:", **lk).pack(anchor="w")
+    ctk.CTkLabel(
+        f, text="Categoría:",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
     cv = ctk.StringVar(value=cn[0] if cn else "")
-    ctk.CTkOptionMenu(f, variable=cv, values=cn, width=S(370), height=S(36),
-                      font=font(S(13)), dropdown_font=font(S(13)),
-                      fg_color=CARD, button_color=ACCENT).pack(pady=(0, S(12)))
+    ctk.CTkOptionMenu(
+        f, variable=cv, values=cn, width=S(370), height=S(36),
+        font=get_font(FontSize.BASE), dropdown_font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, button_color=colors.PRIMARY
+    ).pack(pady=(0, Spacing.LG))
 
-    ctk.CTkLabel(f, text="Presupuesto mensual:", **lk).pack(anchor="w")
+    ctk.CTkLabel(
+        f, text="Presupuesto mensual:",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
     av = ctk.StringVar()
-    ctk.CTkEntry(f, textvariable=av, width=S(370), height=S(36),
-                 placeholder_text="0", font=font(S(13)),
-                 fg_color=CARD, border_color=BORDER).pack(pady=(0, S(14)))
+    ctk.CTkEntry(
+        f, textvariable=av, width=S(370), height=S(36),
+        placeholder_text="0", font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, border_color=colors.BORDER_DEFAULT
+    ).pack(pady=(0, Spacing.LG))
 
     def save():
         try:
@@ -144,15 +176,27 @@ def _open_bdlg(app):
                 raise ValueError("No hay categorías disponibles")
             cid = ci[cn.index(cv.get())]
             set_budget(cid, app.current_month, app.current_year, amt)
-            dlg.destroy()
+            modal.close()
             show_budgets(app)
+            toasts.success(app, "Presupuesto asignado")
         except Exception as e:
-            messagebox.showerror("Error", str(e), parent=dlg)
+            AlertModal(modal, title="Error", message=str(e), variant="error")
 
-    btn_primary(f, "Guardar", save, S(370), S(42)).pack()
+    modal.add_action("Cancelar", command=modal.close, variant="secondary", position="right")
+    modal.add_action("Guardar", command=save, variant="primary", position="right")
 
 
 def _del_b(app, cid):
-    if messagebox.askyesno("Confirmar", "¿Eliminar este presupuesto?", parent=app):
+    """Delete budget with confirmation."""
+    def on_confirm():
         delete_budget(cid, app.current_month, app.current_year)
         show_budgets(app)
+        toasts.success(app, "Presupuesto eliminado")
+
+    ConfirmModal(
+        app,
+        title="Confirmar",
+        message="¿Eliminar este presupuesto?",
+        on_confirm=on_confirm,
+        danger=True
+    )

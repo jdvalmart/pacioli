@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""App principal - Controlador delgado que orquesta las vistas."""
+"""Main application - Thin controller that orchestrates views."""
 
 import customtkinter as ctk
 from datetime import date
 
 from pacioli.data import init_db, auto_backup, ensure_recurring
-from pacioli.ui.theme import apply_theme, font, BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, TEXT
+from pacioli.ui.tokens import theme, Spacing, FontSize, get_font
+from pacioli.ui.theme_manager import theme_manager
+from pacioli.ui.components import Button
+from pacioli.ui.icons import IconButton
 from pacioli.ui.utils import S, MONTHS
 from pacioli.ui.views import show_dashboard, show_transactions, show_budgets, show_reports, show_categories
 from pacioli.core.logging_config import logger
@@ -17,7 +20,9 @@ class BudgetApp(ctk.CTk):
         self.title("Pacioli")
         self.geometry(f"{S(1280)}x{S(800)}")
         self.minsize(S(900), S(600))
-        ctk.set_appearance_mode("dark")
+
+        # Apply theme
+        theme_manager.set_mode(theme_manager.mode)
 
         self.current_month = date.today().month
         self.current_year = date.today().year
@@ -36,21 +41,21 @@ class BudgetApp(ctk.CTk):
         self.after(1000, self._auto_backup)
 
     def _auto_backup(self):
-        """Backup automático al iniciar."""
+        """Automatic backup on startup."""
         try:
             auto_backup()
         except Exception as e:
-            logger.warning(f"Error en backup automático: {e}")
+            logger.warning(f"Error in automatic backup: {e}")
 
     def _materialize_recurring(self):
-        """Genera las transacciones recurrentes del mes actual."""
+        """Generate recurring transactions for current month."""
         try:
             ensure_recurring(self.current_month, self.current_year)
         except Exception as e:
-            logger.warning(f"Error al materializar transacciones recurrentes: {e}")
+            logger.warning(f"Error materializing recurring transactions: {e}")
 
     def _bind_shortcuts(self):
-        """Atajos de teclado."""
+        """Keyboard shortcuts."""
         self.bind("<Control-n>", lambda e: self.show_transactions())
         self.bind("<Control-t>", lambda e: self.show_transactions())
         self.bind("<Control-b>", lambda e: self.show_budgets())
@@ -62,11 +67,11 @@ class BudgetApp(ctk.CTk):
         try:
             self.attributes('-zoomed', True)
         except Exception as e:
-            logger.debug(f"No se pudo maximizar ventana: {e}")
+            logger.debug(f"Could not maximize window: {e}")
             try:
                 self.state('zoomed')
             except Exception as e2:
-                logger.debug(f"No se pudo maximizar ventana (intento 2): {e2}")
+                logger.debug(f"Could not maximize window (attempt 2): {e2}")
 
     def _on_resize(self, event):
         if event.widget == self and hasattr(self, '_view'):
@@ -86,15 +91,27 @@ class BudgetApp(ctk.CTk):
 
     # ── Sidebar ──────────────────────────────────────────────
     def _build_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, width=S(220), corner_radius=0, fg_color=SURFACE)
+        colors = theme.colors
+
+        self.sidebar = ctk.CTkFrame(
+            self,
+            width=S(220),
+            corner_radius=0,
+            fg_color=colors.BG_SECONDARY
+        )
         self.sidebar.grid(row=0, column=0, sticky="nsw")
         self.sidebar.grid_propagate(False)
-        self.sidebar.grid_rowconfigure(8, weight=1)
+        self.sidebar.grid_rowconfigure(9, weight=1)
 
-        ctk.CTkLabel(self.sidebar, text="💰 Pacioli",
-                     font=font(S(20), "bold")).grid(
-            row=0, column=0, pady=(S(24), S(24)), padx=S(16))
+        # App title
+        ctk.CTkLabel(
+            self.sidebar,
+            text="💰 Pacioli",
+            font=get_font(S(20), "bold"),
+            text_color=colors.TEXT_PRIMARY
+        ).grid(row=0, column=0, pady=(S(24), S(24)), padx=S(16))
 
+        # Navigation buttons
         self._nav = []
         nav_items = [
             ("📊  Dashboard", self.show_dashboard),
@@ -103,33 +120,77 @@ class BudgetApp(ctk.CTk):
             ("📈  Reportes", self.show_reports),
             ("⚙️  Categorías", self.show_categories),
         ]
+
         for i, (text, cmd) in enumerate(nav_items):
-            b = ctk.CTkButton(
-                self.sidebar, text=text, anchor="w", height=S(40),
-                corner_radius=S(8), font=font(S(14)),
-                fg_color="transparent", hover_color=CARD_HOVER,
-                command=cmd
+            btn = Button(
+                self.sidebar,
+                text=text,
+                command=cmd,
+                variant="ghost",
+                size="md",
+                width=S(196),
+                height=S(40),
             )
-            b.grid(row=i + 1, column=0, sticky="ew", padx=S(12), pady=S(2))
-            self._nav.append(b)
+            btn.grid(row=i + 1, column=0, sticky="ew", padx=S(12), pady=S(2))
+            self._nav.append(btn)
 
-        ctk.CTkFrame(self.sidebar, height=1, fg_color=BORDER).grid(
-            row=6, column=0, sticky="ew", padx=S(16), pady=S(16))
+        # Separator
+        ctk.CTkFrame(
+            self.sidebar,
+            height=1,
+            fg_color=colors.BORDER_SUBTLE
+        ).grid(row=6, column=0, sticky="ew", padx=S(16), pady=S(16))
 
-        ctk.CTkLabel(self.sidebar, text="Período:", font=font(S(12))).grid(
-            row=7, column=0, pady=(S(4), S(2)))
+        # Period label
+        ctk.CTkLabel(
+            self.sidebar,
+            text="Período:",
+            font=get_font(FontSize.SM),
+            text_color=colors.TEXT_SECONDARY
+        ).grid(row=7, column=0, pady=(S(4), S(2)))
 
+        # Month selector
         self.month_var = ctk.StringVar(value=f"{MONTHS[self.current_month]} {self.current_year}")
         months = []
         for y in range(date.today().year + 1, 2024, -1):
             for m in range(12, 0, -1):
                 months.append(f"{MONTHS[m]} {y}")
+
         ctk.CTkOptionMenu(
-            self.sidebar, variable=self.month_var, values=months,
-            command=self._on_month_change, width=S(180), height=S(34),
-            font=font(S(12)), dropdown_font=font(S(12)),
-            fg_color=CARD, button_color=ACCENT, button_hover_color="#4C9AFF"
+            self.sidebar,
+            variable=self.month_var,
+            values=months,
+            command=self._on_month_change,
+            width=S(180),
+            height=S(34),
+            font=get_font(FontSize.SM),
+            dropdown_font=get_font(FontSize.SM),
+            fg_color=colors.BG_TERTIARY,
+            button_color=colors.PRIMARY,
+            button_hover_color=colors.PRIMARY_HOVER
         ).grid(row=8, column=0, pady=S(4), padx=S(16), sticky="n")
+
+        # Theme toggle button
+        theme_icon = "🌙" if theme_manager.is_dark else "☀️"
+        self.theme_btn = IconButton(
+            self.sidebar,
+            icon="settings",
+            command=self._toggle_theme,
+            size="md",
+            tooltip="Toggle theme",
+        )
+        self.theme_btn.grid(row=9, column=0, pady=S(16), padx=S(16), sticky="s")
+
+    def _toggle_theme(self):
+        """Toggle between dark and light theme."""
+        theme_manager.toggle()
+        # Update button icon
+        theme_icon = "🌙" if theme_manager.is_dark else "☀️"
+        self.theme_btn.configure(text=theme_icon)
+        # Rebuild UI with new theme
+        self._build_sidebar()
+        if hasattr(self, '_view'):
+            self._view()
 
     def _on_month_change(self, value):
         parts = value.split()
@@ -140,29 +201,41 @@ class BudgetApp(ctk.CTk):
             self._view()
 
     def _hl(self, idx):
-        for i, b in enumerate(self._nav):
-            b.configure(fg_color=ACCENT if i == idx else "transparent")
+        """Highlight active navigation button."""
+        colors = theme.colors
+        for i, btn in enumerate(self._nav):
+            if i == idx:
+                btn.configure(fg_color=colors.PRIMARY)
+            else:
+                btn.configure(fg_color="transparent")
 
     def _clear(self):
+        """Clear main content area."""
         for w in self.main.winfo_children():
             w.destroy()
 
     def _mh(self):
+        """Get current month/year as string."""
         return f"{MONTHS[self.current_month]} {self.current_year}"
 
     def _build_main(self):
-        self.main = ctk.CTkFrame(self, corner_radius=0, fg_color=BG)
+        colors = theme.colors
+        self.main = ctk.CTkFrame(self, corner_radius=0, fg_color=colors.BG_PRIMARY)
         self.main.grid(row=0, column=1, sticky="nsew")
         self.main.grid_columnconfigure(0, weight=1)
         self.main.grid_rowconfigure(2, weight=1)
 
     def _title(self, text):
-        ctk.CTkLabel(self.main, text=text,
-                     font=font(S(22), "bold"),
-                     text_color=TEXT).grid(
-            row=0, column=0, sticky="w", padx=S(24), pady=(S(16), S(12)))
+        """Add title to main content area."""
+        colors = theme.colors
+        ctk.CTkLabel(
+            self.main,
+            text=text,
+            font=get_font(S(22), "bold"),
+            text_color=colors.TEXT_PRIMARY
+        ).grid(row=0, column=0, sticky="w", padx=S(24), pady=(S(16), S(12)))
 
-    # ── Vistas (delegación) ──────────────────────────────────
+    # ── Views (delegation) ──────────────────────────────────
     def show_dashboard(self):
         show_dashboard(self)
 
@@ -181,7 +254,6 @@ class BudgetApp(ctk.CTk):
 
 def main():
     init_db()
-    apply_theme()
     app = BudgetApp()
     app.mainloop()
 

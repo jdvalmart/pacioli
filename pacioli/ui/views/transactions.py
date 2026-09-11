@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Vista de Transacciones."""
+"""Transactions view."""
 
 import customtkinter as ctk
-from tkinter import messagebox
 from datetime import date
 import threading
 
-from pacioli.ui.theme import (
-    font, btn_primary, btn_danger, card,
-    BG, SURFACE, CARD, CARD_HOVER, BORDER, ACCENT, GREEN, RED, PURPLE, TEXT, TEXT_SEC
+from pacioli.ui.tokens import theme, Spacing, FontSize, get_font
+from pacioli.ui.components import (
+    Button, Card, Modal, ConfirmModal, AlertModal, EmptyState, SearchEmptyState, toasts
 )
 from pacioli.data import (
     get_transactions, add_transaction, update_transaction, delete_transaction,
     get_categories, get_subcategories, get_desc_learnings_context,
-    export_transactions_csv, auto_backup, lookup_cat, invalidate_cat_cache
+    export_transactions_csv, lookup_cat, invalidate_cat_cache
 )
 from pacioli.services.ai import generate_description
 from pacioli.core.money import fmt_cop, parse_amount
@@ -22,51 +21,61 @@ from pacioli.core.logging_config import logger
 
 
 def show_transactions(app):
-    """Renderiza la vista de transacciones."""
+    """Render transactions view."""
+    colors = theme.colors
+
     app._hl(1)
     app._view = lambda: show_transactions(app)
     app._rerender_on_resize = False
     app._clear()
     app._title(f"💸 Transacciones — {app._mh()}")
 
+    # Toolbar
     tb = ctk.CTkFrame(app.main, fg_color="transparent")
     tb.grid(row=1, column=0, sticky="ew", padx=S(24), pady=(0, S(8)))
-    ctk.CTkButton(tb, text="+ Nuevo gasto", width=S(160), height=S(36),
-                  fg_color=RED, hover_color="#DA3633",
-                  font=font(S(13), "bold"),
-                  command=lambda: _open_tx(app, 'expense')).pack(side="left", padx=(0, S(8)))
-    ctk.CTkButton(tb, text="+ Nuevo ingreso", width=S(160), height=S(36),
-                  fg_color=GREEN, hover_color="#2EA043",
-                  font=font(S(13), "bold"),
-                  command=lambda: _open_tx(app, 'income')).pack(side="left")
 
-    ctk.CTkButton(tb, text="📥 Exportar CSV", width=S(140), height=S(36),
-                  fg_color=ACCENT, hover_color="#4C9AFF",
-                  font=font(S(13), "bold"),
-                  command=lambda: _export_csv(app)).pack(side="left", padx=(S(8), 0))
+    Button(
+        tb, text="+ Nuevo gasto", variant="danger", size="md",
+        command=lambda: _open_tx(app, 'expense')
+    ).pack(side="left", padx=(0, S(8)))
 
+    Button(
+        tb, text="+ Nuevo ingreso", variant="success", size="md",
+        command=lambda: _open_tx(app, 'income')
+    ).pack(side="left")
+
+    Button(
+        tb, text="📥 Exportar CSV", variant="secondary", size="md",
+        command=lambda: _export_csv(app)
+    ).pack(side="left", padx=(S(8), 0))
+
+    # Search input
     search_var = ctk.StringVar()
-    search_entry = ctk.CTkEntry(tb, textvariable=search_var, width=S(200), height=S(36),
-                                placeholder_text="🔍 Buscar...",
-                                font=font(S(13)), fg_color=CARD, border_color=BORDER)
-    search_entry.pack(side="right")
 
+    # List frame
     lf = ctk.CTkScrollableFrame(app.main, fg_color="transparent")
     lf.grid(row=2, column=0, sticky="nsew", padx=S(24), pady=(0, S(12)))
 
+    # Header
     hdr = ctk.CTkFrame(lf, fg_color="transparent")
     hdr.pack(fill="x", pady=(0, S(4)))
     for txt, w in [("Fecha", S(110)), ("Categoría", S(220)), ("Descripción", 0), ("Monto", S(130)), ("", S(80))]:
-        kw = dict(font=font(S(12), "bold"), anchor="w", text_color=TEXT_SEC)
+        kw = dict(font=get_font(FontSize.SM, "bold"), anchor="w", text_color=colors.TEXT_SECONDARY)
         if w:
             kw["width"] = w
         ctk.CTkLabel(hdr, text=txt, **kw).pack(side="left", padx=S(8))
-    ctk.CTkFrame(lf, height=1, fg_color=BORDER).pack(fill="x", pady=(0, S(4)))
+    ctk.CTkFrame(lf, height=1, fg_color=colors.BORDER_SUBTLE).pack(fill="x", pady=(0, S(4)))
 
     txns = get_transactions(app.current_month, app.current_year)
     if not txns:
-        ctk.CTkLabel(lf, text="No hay transacciones este mes",
-                     text_color=TEXT_SEC, font=font(S(13))).pack(pady=S(30))
+        EmptyState(
+            lf,
+            icon="💸",
+            title="No hay transacciones este mes",
+            message="Comienza agregando tu primera transacción",
+            action_text="+ Nueva transacción",
+            action_command=lambda: _open_tx(app, 'expense')
+        ).pack(pady=S(30))
         return
 
     rows = ctk.CTkFrame(lf, fg_color="transparent")
@@ -86,32 +95,54 @@ def show_transactions(app):
             if q and q not in searchable:
                 continue
             shown += 1
-            row = ctk.CTkFrame(rows, corner_radius=S(6), fg_color=CARD)
-            row.pack(fill="x", pady=S(2))
+            row = ctk.CTkFrame(rows, corner_radius=Spacing.SM, fg_color=colors.BG_TERTIARY)
+            row.pack(fill="x", pady=Spacing.XS)
             dlabel = f"🔁 {t.date}" if (t.is_recurring or t.generated_from) else str(t.date)
-            ctk.CTkLabel(row, text=dlabel, width=S(110), anchor="w",
-                         font=font(S(13))).pack(side="left", padx=S(8), pady=S(8))
-            ctk.CTkLabel(row, text=cat_label, width=S(220), anchor="w", text_color=color,
-                         font=font(S(13))).pack(side="left", padx=S(8), pady=S(8))
-            ctk.CTkLabel(row, text=t.description[:40] if t.description else "—", anchor="w",
-                         text_color=TEXT_SEC, font=font(S(12))).pack(
-                side="left", padx=S(8), pady=S(8), expand=True, fill="x")
-            ac = GREEN if ct_ == 'income' else RED
+            ctk.CTkLabel(
+                row, text=dlabel, width=S(110), anchor="w",
+                font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+            ).pack(side="left", padx=S(8), pady=S(8))
+            ctk.CTkLabel(
+                row, text=cat_label, width=S(220), anchor="w", text_color=color,
+                font=get_font(FontSize.BASE)
+            ).pack(side="left", padx=S(8), pady=S(8))
+            ctk.CTkLabel(
+                row, text=t.description[:40] if t.description else "—", anchor="w",
+                text_color=colors.TEXT_SECONDARY, font=get_font(FontSize.SM)
+            ).pack(side="left", padx=S(8), pady=S(8), expand=True, fill="x")
+            ac = colors.SUCCESS if ct_ == 'income' else colors.ERROR
             pf = "+" if ct_ == 'income' else "-"
-            ctk.CTkLabel(row, text=f"{pf}{fmt_cop(t.amount)}", width=S(130), anchor="e",
-                         text_color=ac, font=font(S(13), "bold")).pack(
-                side="left", padx=S(8), pady=S(8))
+            ctk.CTkLabel(
+                row, text=f"{pf}{fmt_cop(t.amount)}", width=S(130), anchor="e",
+                text_color=ac, font=get_font(FontSize.BASE, "bold")
+            ).pack(side="left", padx=S(8), pady=S(8))
             bf = ctk.CTkFrame(row, fg_color="transparent")
             bf.pack(side="right", padx=S(8), pady=S(5))
-            ctk.CTkButton(bf, text="✏️", width=S(28), height=S(28), fg_color=ACCENT,
-                          hover_color="#4C9AFF", font=font(S(12)),
-                          command=lambda tt=t, ct=ct_: _open_tx(app, ct, tt)).pack(side="left", padx=S(2))
-            ctk.CTkButton(bf, text="🗑️", width=S(28), height=S(28), fg_color=RED,
-                          hover_color="#DA3633", font=font(S(12)),
-                          command=lambda tid=t.id: _del_tx(app, tid)).pack(side="left", padx=S(2))
+            Button(
+                bf, text="✏️", variant="ghost", size="sm", width=S(28), height=S(28),
+                command=lambda tt=t, ct=ct_: _open_tx(app, ct, tt)
+            ).pack(side="left", padx=S(2))
+            Button(
+                bf, text="🗑️", variant="ghost", size="sm", width=S(28), height=S(28),
+                command=lambda tid=t.id: _del_tx(app, tid)
+            ).pack(side="left", padx=S(2))
+
         if shown == 0:
-            ctk.CTkLabel(rows, text=f'No se encontró "{q}"',
-                         text_color=TEXT_SEC, font=font(S(13))).pack(pady=S(20))
+            SearchEmptyState(
+                rows,
+                query=q,
+                on_clear=lambda: search_var.set("")
+            ).pack(pady=S(20))
+
+    # Search input
+    search_entry = ctk.CTkEntry(
+        tb, textvariable=search_var, width=S(200), height=S(36),
+        placeholder_text="🔍 Buscar...",
+        font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY,
+        border_color=colors.BORDER_DEFAULT
+    )
+    search_entry.pack(side="right")
 
     debounce = {"job": None}
 
@@ -125,43 +156,54 @@ def show_transactions(app):
 
 
 def _open_tx(app, cat_type='expense', existing=None):
-    """Abre diálogo de nueva/editar transacción."""
-    dlg = ctk.CTkToplevel(app)
-    dlg.title("Editar" if existing else "Nueva transacción")
-    dlg.geometry(f"{S(460)}x{S(580)}")
-    dlg.transient(app)
-    dlg.grab_set()
+    """Open new/edit transaction dialog."""
+    colors = theme.colors
 
-    ctk.CTkLabel(dlg, text="✏️ Editar" if existing else "➕ Nueva",
-                 font=font(S(18), "bold")).pack(pady=(S(16), S(12)))
+    modal = Modal(app, title="✏️ Editar" if existing else "➕ Nueva transacción", size="md")
 
-    f = ctk.CTkFrame(dlg, fg_color="transparent")
-    f.pack(fill="x", padx=S(24), pady=(0, S(16)))
+    f = ctk.CTkFrame(modal.content, fg_color="transparent")
+    f.pack(fill="x", padx=Spacing.LG, pady=(0, Spacing.LG))
 
-    ekw = dict(width=S(380), height=S(36), font=font(S(13)),
-               fg_color=CARD, border_color=BORDER)
-    lk = dict(font=font(S(13)))
-
-    ctk.CTkLabel(f, text="Fecha (YYYY-MM-DD):", **lk).pack(anchor="w")
+    # Date
+    ctk.CTkLabel(
+        f, text="Fecha (YYYY-MM-DD):",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
     dv = ctk.StringVar(value=existing.date if existing else date.today().isoformat())
-    ctk.CTkEntry(f, textvariable=dv, **ekw).pack(pady=(0, S(8)))
+    ctk.CTkEntry(
+        f, textvariable=dv, width=S(380), height=S(36),
+        font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, border_color=colors.BORDER_DEFAULT
+    ).pack(pady=(0, S(8)))
 
+    # Category
     cats = get_categories(cat_type)
     cnames = [f"{c.icon} {c.name}" for c in cats]
     cids = [c.id for c in cats]
-    ctk.CTkLabel(f, text="Categoría:", **lk).pack(anchor="w")
+    ctk.CTkLabel(
+        f, text="Categoría:",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
     cv = ctk.StringVar(value=cnames[0] if cnames else "")
-    cat_menu = ctk.CTkOptionMenu(f, variable=cv, values=cnames, width=S(380), height=S(36),
-                                 font=font(S(13)), dropdown_font=font(S(13)),
-                                 fg_color=CARD, button_color=ACCENT, button_hover_color="#4C9AFF")
+    cat_menu = ctk.CTkOptionMenu(
+        f, variable=cv, values=cnames, width=S(380), height=S(36),
+        font=get_font(FontSize.BASE), dropdown_font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, button_color=colors.PRIMARY, button_hover_color=colors.PRIMARY_HOVER
+    )
     cat_menu.pack(pady=(0, S(8)))
 
-    ctk.CTkLabel(f, text="Subcategoría (opcional):", **lk).pack(anchor="w")
+    # Subcategory
+    ctk.CTkLabel(
+        f, text="Subcategoría (opcional):",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
     sub_var = ctk.StringVar(value="Ninguna")
-    sub_menu_widget = ctk.CTkOptionMenu(f, variable=sub_var, values=["Ninguna"],
-                                        width=S(380), height=S(36),
-                                        font=font(S(13)), dropdown_font=font(S(13)),
-                                        fg_color=CARD, button_color=ACCENT, button_hover_color="#4C9AFF")
+    sub_menu_widget = ctk.CTkOptionMenu(
+        f, variable=sub_var, values=["Ninguna"],
+        width=S(380), height=S(36),
+        font=get_font(FontSize.BASE), dropdown_font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, button_color=colors.PRIMARY, button_hover_color=colors.PRIMARY_HOVER
+    )
     sub_menu_widget.pack(pady=(0, S(8)))
 
     all_subs = {c.id: get_subcategories(c.id) for c in cats}
@@ -187,16 +229,31 @@ def _open_tx(app, cat_type='expense', existing=None):
 
     cat_menu.configure(command=update_subs)
 
-    ctk.CTkLabel(f, text="Monto:", **lk).pack(anchor="w")
+    # Amount
+    ctk.CTkLabel(
+        f, text="Monto:",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
     av = ctk.StringVar(value=str(existing.amount) if existing else "")
-    ctk.CTkEntry(f, textvariable=av, **ekw).pack(pady=(0, S(8)))
+    ctk.CTkEntry(
+        f, textvariable=av, width=S(380), height=S(36),
+        font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, border_color=colors.BORDER_DEFAULT
+    ).pack(pady=(0, S(8)))
 
-    ctk.CTkLabel(f, text="Descripción:", **lk).pack(anchor="w")
+    # Description
+    ctk.CTkLabel(
+        f, text="Descripción:",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
     descv = ctk.StringVar(value=existing.description if existing else "")
     desc_row = ctk.CTkFrame(f, fg_color="transparent")
     desc_row.pack(fill="x", pady=(0, S(8)))
-    ctk.CTkEntry(desc_row, textvariable=descv, width=S(300), height=S(36),
-                 font=font(S(13)), fg_color=CARD, border_color=BORDER).pack(side="left")
+    ctk.CTkEntry(
+        desc_row, textvariable=descv, width=S(300), height=S(36),
+        font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, border_color=colors.BORDER_DEFAULT
+    ).pack(side="left")
 
     _last_ai_desc = {"value": None, "category": None, "subcategory": None}
 
@@ -226,23 +283,36 @@ def _open_tx(app, cat_type='expense', existing=None):
             descv.set(result)
             _last_ai_desc["value"] = result
         else:
-            messagebox.showwarning(
-                "IA", "No se pudo conectar con Ollama para generar la descripción.",
-                parent=dlg
+            AlertModal(
+                modal,
+                title="IA",
+                message="No se pudo conectar con Ollama para generar la descripción.",
+                variant="warning"
             )
 
-    btn_ai = ctk.CTkButton(desc_row, text="✨ IA", width=S(60), height=S(36),
-                           fg_color=PURPLE, hover_color="#A371F7",
-                           font=font(S(12), "bold"), command=_ai_desc)
+    btn_ai = Button(
+        desc_row, text="✨ IA", variant="secondary", size="sm",
+        width=S(60), height=S(36), command=_ai_desc
+    )
     btn_ai.pack(side="right", padx=(S(6), 0))
 
+    # Recurring
     rv = ctk.BooleanVar(value=bool(existing.is_recurring) if existing else False)
-    ctk.CTkCheckBox(f, text="Recurrente", variable=rv,
-                    font=font(S(13)), fg_color=ACCENT).pack(anchor="w", pady=(0, S(4)))
+    ctk.CTkCheckBox(
+        f, text="Recurrente", variable=rv,
+        font=get_font(FontSize.BASE), fg_color=colors.PRIMARY
+    ).pack(anchor="w", pady=(0, S(4)))
 
     dayv = ctk.StringVar(value=str(existing.recurring_day) if existing and existing.recurring_day else str(date.today().day))
-    ctk.CTkLabel(f, text="Día del mes:", **lk).pack(anchor="w")
-    ctk.CTkEntry(f, textvariable=dayv, **ekw).pack(pady=(0, S(8)))
+    ctk.CTkLabel(
+        f, text="Día del mes:",
+        font=get_font(FontSize.BASE), text_color=colors.TEXT_PRIMARY
+    ).pack(anchor="w")
+    ctk.CTkEntry(
+        f, textvariable=dayv, width=S(380), height=S(36),
+        font=get_font(FontSize.BASE),
+        fg_color=colors.BG_TERTIARY, border_color=colors.BORDER_DEFAULT
+    ).pack(pady=(0, S(8)))
 
     def save():
         try:
@@ -273,7 +343,7 @@ def _open_tx(app, cat_type='expense', existing=None):
             sid = sub_ids_map.get(sub_sel) if sub_sel != "Ninguna" else None
 
             if _last_ai_desc["value"] and desc != _last_ai_desc["value"]:
-                from database import save_desc_learning
+                from pacioli.data.database import save_desc_learning
                 save_desc_learning(
                     _last_ai_desc.get("category", ""),
                     _last_ai_desc.get("subcategory", ""),
@@ -284,22 +354,34 @@ def _open_tx(app, cat_type='expense', existing=None):
                 update_transaction(existing.id, d, amt, cid, desc, rec, rday, sid)
             else:
                 add_transaction(d, amt, cid, desc, rec, rday, sid)
-            dlg.destroy()
+            modal.close()
             show_transactions(app)
+            toasts.success(app, "Transacción guardada")
         except Exception as e:
-            messagebox.showerror("Error", str(e), parent=dlg)
+            AlertModal(modal, title="Error", message=str(e), variant="error")
 
-    btn_primary(f, "Guardar", save, S(380), S(42)).pack(pady=(S(10), 0))
+    modal.add_action("Cancelar", command=modal.close, variant="secondary", position="right")
+    modal.add_action("Guardar", command=save, variant="primary", position="right")
 
 
 def _del_tx(app, tid):
-    if messagebox.askyesno("Confirmar", "¿Eliminar esta transacción?", parent=app):
+    """Delete transaction with confirmation."""
+    def on_confirm():
         delete_transaction(tid)
         show_transactions(app)
+        toasts.success(app, "Transacción eliminada")
+
+    ConfirmModal(
+        app,
+        title="Confirmar",
+        message="¿Eliminar esta transacción?",
+        on_confirm=on_confirm,
+        danger=True
+    )
 
 
 def _export_csv(app):
-    """Exporta transacciones del mes a CSV."""
+    """Export transactions to CSV."""
     from tkinter import filedialog
     filepath = filedialog.asksaveasfilename(
         defaultextension=".csv",
@@ -310,14 +392,6 @@ def _export_csv(app):
     if filepath:
         try:
             export_transactions_csv(app.current_month, app.current_year, filepath)
-            messagebox.showinfo("Exportado", f"Transacciones exportadas a:\n{filepath}", parent=app)
+            toasts.success(app, f"Transacciones exportadas a {filepath}")
         except Exception as e:
-            messagebox.showerror("Error", str(e), parent=app)
-
-
-def _run_auto_backup():
-    """Ejecuta backup automático (llamar al inicio)."""
-    try:
-        auto_backup()
-    except Exception as e:
-        logger.warning(f"Error en backup automático: {e}")
+            AlertModal(app, title="Error", message=str(e), variant="error")
