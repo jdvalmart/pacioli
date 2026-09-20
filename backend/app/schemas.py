@@ -72,6 +72,7 @@ class TransactionIn(BaseModel):
     category_id: int | None = None
     account_id: int | None = None
     to_account_id: int | None = None
+    card_id: int | None = None
     description: str = Field(default="", max_length=500)
     is_recurring: bool = False
     recurring_day: int | None = Field(default=None, ge=1, le=31)
@@ -103,6 +104,8 @@ class TransactionOut(BaseModel):
     to_account_id: int | None
     to_account_name: str | None
     to_account_icon: str | None
+    card_id: int | None
+    card_name: str | None
 
 
 class BudgetIn(BaseModel):
@@ -246,6 +249,31 @@ class AccountOut(BaseModel):
     icon: str
     color: str
     balance: Money
+
+
+class CreditCardIn(BaseModel):
+    """Payload to create or update a credit card."""
+
+    name: str = Field(min_length=1, max_length=100)
+    limit: Money = Field(gt=0)
+    cutoff_day: int = Field(ge=1, le=31)
+    payment_day: int = Field(ge=1, le=31)
+
+
+class CreditCardOut(BaseModel):
+    """Credit card as returned by the API.
+
+    ``spent`` is this month's gasto_tc spending on the card and
+    ``available`` is the remaining credit (limit minus spent).
+    """
+
+    id: int
+    name: str
+    limit: Money
+    cutoff_day: int
+    payment_day: int
+    spent: Money
+    available: Money
 
 
 class CreatedOut(BaseModel):

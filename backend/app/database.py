@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _default_data_dir() -> str:
@@ -168,6 +168,8 @@ class Transaction:
     to_account_id: int | None = None  # Transfer destination
     to_account_name: str | None = None
     to_account_icon: str | None = None
+    card_id: int | None = None  # Credit card for gasto_tc
+    card_name: str | None = None
 
 
 @dataclass
@@ -204,6 +206,23 @@ ACCOUNT_TYPE_DEFAULTS = {
     "ahorros": ("🐷", "#8B5CF6"),
     "banco": ("🏦", "#64748B"),
 }
+
+
+@dataclass
+class CreditCard:
+    """A credit card with a spending limit and billing cycle days.
+
+    ``spent`` and ``available`` are always derived from the card's
+    gasto_tc transactions of the current month.
+    """
+
+    id: int | None
+    name: str
+    limit: Decimal
+    cutoff_day: int
+    payment_day: int
+    spent: Decimal | None = None
+    available: Decimal | None = None
 
 
 @dataclass
@@ -709,6 +728,39 @@ def _migrate_v7_transaction_kinds(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrate_v8_credit_cards(conn: sqlite3.Connection) -> None:
+    """v7 -> v8: credit cards and transaction card linkage.
+
+    Cards carry a spending limit and the billing cycle days (cutoff
+    and payment). Gasto_tc transactions link to a card; the available
+    credit is always derived from the limit minus the month's
+    spending on that card.
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS credit_cards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            limit_cents INTEGER NOT NULL,
+            cutoff_day INTEGER NOT NULL CHECK(cutoff_day BETWEEN 1 AND 31),
+            payment_day INTEGER NOT NULL CHECK(payment_day BETWEEN 1 AND 31),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'card_id'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE transactions ADD COLUMN card_id INTEGER
+            REFERENCES credit_cards(id) ON DELETE SET NULL
+        """)
+
+    cursor.execute("PRAGMA user_version = 8")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -823,6 +875,8 @@ def init_db() -> None:
             _migrate_v6_account_starting_transactions(conn)
         if v < 7:
             _migrate_v7_transaction_kinds(conn)
+        if v < 8:
+            _migrate_v8_credit_cards(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -951,12 +1005,14 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
             SELECT t.*, c.name as category_name, c.type as category_type, c.color, c.icon,
                    s.name as subcategory_name, s.icon as subcategory_icon,
                    a.name as account_name, a.icon as account_icon,
-                   a2.name as to_account_name, a2.icon as to_account_icon
+                   a2.name as to_account_name, a2.icon as to_account_icon,
+                   cc.name as card_name
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN subcategories s ON t.subcategory_id = s.id
             LEFT JOIN accounts a ON t.account_id = a.id
             LEFT JOIN accounts a2 ON t.to_account_id = a2.id
+            LEFT JOIN credit_cards cc ON t.card_id = cc.id
             WHERE t.date >= ? AND t.date < ?
             ORDER BY t.date DESC
         """,
@@ -976,6 +1032,7 @@ def add_transaction(
     account_id: int | None = None,
     kind: str = "gasto",
     to_account_id: int | None = None,
+    card_id: int | None = None,
 ) -> int:
     """Create a transaction and return its id."""
     with get_connection() as conn:
@@ -984,8 +1041,8 @@ def add_transaction(
             """
             INSERT INTO transactions
                 (date, amount_cents, category_id, description, is_recurring,
-                 recurring_day, subcategory_id, account_id, kind, to_account_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 recurring_day, subcategory_id, account_id, kind, to_account_id, card_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 date_val.isoformat(),
@@ -998,6 +1055,7 @@ def add_transaction(
                 account_id,
                 kind,
                 to_account_id,
+                card_id,
             ),
         )
         conn.commit()
@@ -1016,6 +1074,7 @@ def update_transaction(
     account_id: int | None = None,
     kind: str = "gasto",
     to_account_id: int | None = None,
+    card_id: int | None = None,
 ) -> None:
     """Update an existing transaction."""
     with get_connection() as conn:
@@ -1025,7 +1084,7 @@ def update_transaction(
             UPDATE transactions
             SET date = ?, amount_cents = ?, category_id = ?, description = ?,
                 is_recurring = ?, recurring_day = ?, subcategory_id = ?,
-                account_id = ?, kind = ?, to_account_id = ?
+                account_id = ?, kind = ?, to_account_id = ?, card_id = ?
             WHERE id = ?
         """,
             (
@@ -1039,6 +1098,7 @@ def update_transaction(
                 account_id,
                 kind,
                 to_account_id,
+                card_id,
                 trans_id,
             ),
         )
@@ -1073,7 +1133,7 @@ def ensure_recurring(month: int, year: int) -> int:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date, amount_cents, category_id, description,
-                   recurring_day, subcategory_id, account_id, kind, to_account_id
+                   recurring_day, subcategory_id, account_id, kind, to_account_id, card_id
             FROM transactions
             WHERE is_recurring = 1 AND generated_from IS NULL
               AND recurring_day IS NOT NULL
@@ -1094,8 +1154,8 @@ def ensure_recurring(month: int, year: int) -> int:
                 """
                 INSERT INTO transactions
                     (date, amount_cents, category_id, description,
-                     is_recurring, recurring_day, subcategory_id, generated_from, account_id, kind, to_account_id)
-                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?)
+                     is_recurring, recurring_day, subcategory_id, generated_from, account_id, kind, to_account_id, card_id)
+                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     f"{year:04d}-{month:02d}-{day:02d}",
@@ -1107,6 +1167,7 @@ def ensure_recurring(month: int, year: int) -> int:
                     t["account_id"],
                     t["kind"],
                     t["to_account_id"],
+                    t["card_id"],
                 ),
             )
             cursor.execute(
@@ -1292,6 +1353,99 @@ def delete_account(account_id: int) -> None:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+        conn.commit()
+
+
+# ── Credit cards ──────────────────────────────────────────────
+# A card has a spending limit and billing cycle days. Its spent and
+# available amounts are always derived from the current month's
+# gasto_tc transactions linked to it.
+
+
+def _row_to_card(row: sqlite3.Row) -> CreditCard:
+    limit = _to_dec(row["limit_cents"])
+    spent = _to_dec(row["spent_cents"])
+    return CreditCard(
+        id=row["id"],
+        name=row["name"],
+        limit=limit,
+        cutoff_day=row["cutoff_day"],
+        payment_day=row["payment_day"],
+        spent=spent,
+        available=limit - spent,
+    )
+
+
+def get_credit_cards() -> list[CreditCard]:
+    """Return all credit cards with this month's spending and available credit."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        today = date.today()
+        start_date, end_date = _month_window(today.month, today.year)
+        cursor.execute(
+            """
+            SELECT cc.*,
+                   COALESCE((
+                       SELECT SUM(t.amount_cents)
+                       FROM transactions t
+                       WHERE t.card_id = cc.id
+                         AND t.kind = 'gasto_tc'
+                         AND t.date >= ? AND t.date < ?
+                   ), 0) as spent_cents
+            FROM credit_cards cc
+            ORDER BY cc.created_at, cc.id
+        """,
+            (start_date, end_date),
+        )
+        return [_row_to_card(row) for row in cursor.fetchall()]
+
+
+def add_credit_card(
+    name: str,
+    limit: Decimal | float | int,
+    cutoff_day: int,
+    payment_day: int,
+) -> int:
+    """Create a credit card and return its id."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO credit_cards (name, limit_cents, cutoff_day, payment_day)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, _to_cents(limit), cutoff_day, payment_day),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+
+def update_credit_card(
+    card_id: int,
+    name: str,
+    limit: Decimal | float | int,
+    cutoff_day: int,
+    payment_day: int,
+) -> None:
+    """Update a credit card."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE credit_cards
+            SET name = ?, limit_cents = ?, cutoff_day = ?, payment_day = ?
+            WHERE id = ?
+            """,
+            (name, _to_cents(limit), cutoff_day, payment_day, card_id),
+        )
+        conn.commit()
+
+
+def delete_credit_card(card_id: int) -> None:
+    """Delete a credit card, leaving its transactions unlinked."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM credit_cards WHERE id = ?", (card_id,))
         conn.commit()
 
 

@@ -434,3 +434,87 @@ class TestAccounts:
 
         assert client.delete(f"/api/accounts/{account_id}").status_code == 200
         assert client.get("/api/accounts").json() == []
+
+
+class TestCreditCards:
+    """Tests for credit card endpoints."""
+
+    def test_create_and_list_cards(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/credit-cards",
+            json={
+                "name": "Visa Bancolombia",
+                "limit": "5000000.00",
+                "cutoff_day": 15,
+                "payment_day": 30,
+            },
+        )
+        assert response.status_code == 201
+
+        cards = client.get("/api/credit-cards").json()
+        assert len(cards) == 1
+        assert cards[0]["name"] == "Visa Bancolombia"
+        assert cards[0]["limit"] == "5000000.00"
+        assert cards[0]["available"] == "5000000.00"
+        assert cards[0]["spent"] == "0.00"
+
+    def test_available_credit_reflects_tc_spending(self, client: TestClient) -> None:
+        card_id = client.post(
+            "/api/credit-cards",
+            json={"name": "Mastercard", "limit": "1000000.00", "cutoff_day": 10, "payment_day": 25},
+        ).json()["id"]
+        expense_cat = client.post(
+            "/api/categories", json={"name": "Gasto", "type": "expense"}
+        ).json()["id"]
+
+        client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-10",
+                "amount": "250000.00",
+                "kind": "gasto_tc",
+                "category_id": expense_cat,
+                "card_id": card_id,
+            },
+        )
+
+        cards = client.get("/api/credit-cards").json()
+        assert cards[0]["spent"] == "250000.00"
+        assert cards[0]["available"] == "750000.00"
+
+        transactions = client.get("/api/transactions?month=9&year=2026").json()
+        assert transactions[0]["card_name"] == "Mastercard"
+
+    def test_gasto_tc_without_card_rejected(self, client: TestClient) -> None:
+        expense_cat = client.post(
+            "/api/categories", json={"name": "Gasto", "type": "expense"}
+        ).json()["id"]
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-10",
+                "amount": "100.00",
+                "kind": "gasto_tc",
+                "category_id": expense_cat,
+            },
+        )
+        assert response.status_code == 400
+
+    def test_update_and_delete_card(self, client: TestClient) -> None:
+        card_id = client.post(
+            "/api/credit-cards",
+            json={"name": "Visa", "limit": "1000000.00", "cutoff_day": 10, "payment_day": 25},
+        ).json()["id"]
+
+        response = client.put(
+            f"/api/credit-cards/{card_id}",
+            json={"name": "Visa Oro", "limit": "2000000.00", "cutoff_day": 12, "payment_day": 28},
+        )
+        assert response.status_code == 200
+
+        cards = client.get("/api/credit-cards").json()
+        assert cards[0]["name"] == "Visa Oro"
+        assert cards[0]["limit"] == "2000000.00"
+
+        assert client.delete(f"/api/credit-cards/{card_id}").status_code == 200
+        assert client.get("/api/credit-cards").json() == []

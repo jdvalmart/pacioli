@@ -11,7 +11,7 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
 def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
-    """Validate kind-specific rules and return (category_id, account_id, to_account_id)."""
+    """Validate kind-specific rules."""
     kind = payload.kind
 
     if kind == "transferencia":
@@ -35,7 +35,12 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
     if kind in ("gasto", "gasto_tc") and cat_type != "expense":
         raise HTTPException(status_code=400, detail="Expense movements require an expense category")
 
-    if kind != "gasto_tc" and payload.account_id is None:
+    if kind == "gasto_tc":
+        if payload.card_id is None:
+            raise HTTPException(status_code=400, detail="Credit card expenses require a card_id")
+        return
+
+    if payload.account_id is None:
         raise HTTPException(
             status_code=400, detail="This movement requires an account (money goes in or out)"
         )
@@ -70,6 +75,7 @@ def create_transaction(payload: TransactionIn) -> CreatedOut:
             account_id=payload.account_id,
             kind=payload.kind,
             to_account_id=payload.to_account_id,
+            card_id=payload.card_id,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(
@@ -95,6 +101,7 @@ def update_transaction(trans_id: int, payload: TransactionIn) -> MessageOut:
             account_id=payload.account_id,
             kind=payload.kind,
             to_account_id=payload.to_account_id,
+            card_id=payload.card_id,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(

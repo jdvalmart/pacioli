@@ -17,15 +17,18 @@ from app.database import (
     _seed_defaults,
     add_account,
     add_category,
+    add_credit_card,
     add_transaction,
     delete_account,
     delete_category,
+    delete_credit_card,
     ensure_recurring,
     get_accounts,
     get_budget_vs_actual,
     get_budgets,
     get_categories,
     get_connection,
+    get_credit_cards,
     get_monthly_summary,
     get_subcategories,
     get_transactions,
@@ -33,6 +36,7 @@ from app.database import (
     set_budget,
     set_db_path,
     update_account,
+    update_credit_card,
 )
 
 
@@ -281,7 +285,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -361,7 +365,7 @@ class TestMigrationV4:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
                 0
             ]
@@ -577,7 +581,74 @@ class TestMigrationV7:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
             rows = conn.execute("SELECT kind FROM transactions ORDER BY id").fetchall()
             assert [r[0] for r in rows] == ["ingreso", "gasto"]
         set_db_path(None)
+
+
+class TestCreditCards:
+    """Tests for the credit cards feature."""
+
+    def test_available_credit_from_month_spending(self, temp_db: str, sample_category: int) -> None:
+        card_id = add_credit_card("Visa Bancolombia", Decimal("5000000.00"), 15, 30)
+
+        add_transaction(
+            date(2026, 9, 5),
+            Decimal("300000.00"),
+            sample_category,
+            "Mercado TC",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+        # A gasto_tc on another card (or without card) must not affect this one.
+        add_transaction(
+            date(2026, 9, 6),
+            Decimal("999.00"),
+            sample_category,
+            "Other",
+            kind="gasto_tc",
+        )
+
+        cards = get_credit_cards()
+        assert len(cards) == 1
+        assert cards[0].limit == Decimal("5000000.00")
+        assert cards[0].spent == Decimal("300000.00")
+        assert cards[0].available == Decimal("4700000.00")
+
+    def test_spending_isolated_per_month(self, temp_db: str, sample_category: int) -> None:
+        card_id = add_credit_card("Mastercard", Decimal("1000000.00"), 15, 30)
+
+        add_transaction(
+            date(2026, 8, 20),
+            Decimal("400000.00"),
+            sample_category,
+            "Agosto",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+        add_transaction(
+            date(2026, 9, 20),
+            Decimal("100000.00"),
+            sample_category,
+            "Septiembre",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+
+        cards = get_credit_cards()
+        assert cards[0].spent == Decimal("100000.00")
+        assert cards[0].available == Decimal("900000.00")
+
+    def test_update_and_delete_card(self, temp_db: str) -> None:
+        card_id = add_credit_card("Visa", Decimal("1000000.00"), 10, 25)
+        update_credit_card(card_id, "Visa Oro", Decimal("2000000.00"), 12, 28)
+
+        cards = get_credit_cards()
+        assert cards[0].name == "Visa Oro"
+        assert cards[0].limit == Decimal("2000000.00")
+        assert cards[0].cutoff_day == 12
+        assert cards[0].payment_day == 28
+
+        delete_credit_card(card_id)
+        assert get_credit_cards() == []
