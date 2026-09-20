@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
+.venv/
 venv/
+node_modules/
 data/
 backups/
 build/
@@ -9,4 +11,7 @@ dist/
 *.db-wal
 *.db-shm
 *.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .DS_Store
