@@ -69,6 +69,7 @@ function TransactionFormBody({
   const { month } = useMonth()
   const queryClient = useQueryClient()
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
 
   const [date, setDate] = useState(
     transaction?.date ?? `${month.year}-${String(month.month).padStart(2, '0')}-15`,
@@ -77,6 +78,9 @@ function TransactionFormBody({
   const [categoryId, setCategoryId] = useState(transaction ? String(transaction.category_id) : '')
   const [subcategoryId, setSubcategoryId] = useState(
     transaction?.subcategory_id ? String(transaction.subcategory_id) : 'none',
+  )
+  const [accountId, setAccountId] = useState(
+    transaction?.account_id ? String(transaction.account_id) : 'none',
   )
   const [description, setDescription] = useState(transaction?.description ?? '')
   const [isRecurring, setIsRecurring] = useState(transaction?.is_recurring ?? false)
@@ -118,6 +122,7 @@ function TransactionFormBody({
       amount: normalizeAmount(amount),
       category_id: Number(categoryId),
       subcategory_id: subcategoryId === 'none' ? null : Number(subcategoryId),
+      account_id: accountId === 'none' ? null : Number(accountId),
       description,
       is_recurring: isRecurring,
       recurring_day: isRecurring ? Number(recurringDay) : null,
@@ -215,6 +220,26 @@ function TransactionFormBody({
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label>Cuenta (opcional)</Label>
+            <Select value={accountId} onValueChange={(v) => setAccountId(v ?? 'none')}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin cuenta" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin cuenta</SelectItem>
+                {(accounts.data ?? []).map((account) => (
+                  <SelectItem key={account.id} value={String(account.id)}>
+                    {account.icon} {account.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              El movimiento afectará el saldo de esa cuenta.
+            </p>
+          </div>
+
           <div className="flex items-center gap-3">
             <input
               id="tx-recurring"
@@ -309,7 +334,7 @@ export function TransactionsPage() {
         </Button>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-2xl border-2 border-border bg-card shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
         <Table>
           <TableHeader>
             <TableRow>

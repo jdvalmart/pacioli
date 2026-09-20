@@ -38,6 +38,9 @@ export interface Transaction {
   category_type: CategoryType
   color: string
   icon: string
+  account_id: number | null
+  account_name: string | null
+  account_icon: string | null
 }
 
 export interface TransactionInput {
@@ -48,6 +51,19 @@ export interface TransactionInput {
   is_recurring?: boolean
   recurring_day?: number | null
   subcategory_id?: number | null
+  account_id?: number | null
+}
+
+export type AccountType = 'efectivo' | 'digital' | 'ahorros' | 'banco'
+
+export interface Account {
+  id: number
+  name: string
+  type: AccountType
+  icon: string
+  color: string
+  initial_balance: string
+  balance: string
 }
 
 export interface Budget {
@@ -64,6 +80,8 @@ export interface MonthlySummary {
   total_income: string
   total_expense: string
   balance: string
+  carryover: string
+  accumulated_balance: string
   by_category: Record<string, string>
 }
 

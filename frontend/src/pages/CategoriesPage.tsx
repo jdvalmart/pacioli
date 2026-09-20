@@ -208,7 +208,7 @@ function CategoryRow({ category }: { category: Category }) {
   })
 
   return (
-    <div className="rounded-lg border p-3">
+    <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
       <div className="flex items-center gap-2">
         <span
           className="size-3 rounded-full"

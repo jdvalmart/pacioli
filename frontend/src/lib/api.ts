@@ -6,6 +6,8 @@
 
 import type {
   AIConfig,
+  Account,
+  AccountType,
   Budget,
   BudgetVsActual,
   Category,
@@ -95,6 +97,24 @@ export const api = {
       `/budgets?category_id=${categoryId}&month=${month}&year=${year}`,
       { method: 'DELETE' },
     ),
+
+  // Accounts
+  listAccounts: () => request<Account[]>('/accounts'),
+  createAccount: (payload: {
+    name: string
+    type: AccountType
+    initial_balance: string
+  }) => request<{ id: number }>('/accounts', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateAccount: (id: number, payload: { name: string; initial_balance: string }) =>
+    request<{ message: string }>(`/accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteAccount: (id: number) =>
+    request<{ message: string }>(`/accounts/${id}`, { method: 'DELETE' }),
 
   // Reports
   summary: (month: number, year: number) =>

@@ -45,43 +45,59 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border md:flex">
-        <div className="flex items-center gap-2 px-4 py-5">
-          <Landmark className="size-6 text-primary" />
-          <span className="text-lg font-semibold tracking-tight">Pacioli</span>
+      <aside className="hidden w-60 shrink-0 flex-col border-r-2 border-border md:flex">
+        <div className="flex items-center gap-2.5 px-5 py-6">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary shadow-[0_4px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
+            <Landmark className="size-5 text-primary-foreground" />
+          </div>
+          <span className="text-xl font-black tracking-tight">Pacioli</span>
         </div>
-        <nav className="flex flex-1 flex-col gap-1 px-3">
+        <nav className="flex flex-1 flex-col gap-1.5 px-3">
           {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                `flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition-all ${
                   isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    ? 'border-[color-mix(in_oklch,var(--primary),black_18%)] bg-primary text-primary-foreground shadow-[0_4px_0_0_color-mix(in_oklch,var(--primary),black_18%)]'
+                    : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`
               }
             >
-              <Icon className="size-4" />
+              <Icon className="size-4.5" />
               {label}
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-border p-4 text-xs text-muted-foreground">
+        <div className="border-t-2 border-border p-4 text-xs font-semibold text-muted-foreground">
           Tus finanzas, en tus manos.
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => shiftMonth(-1)} aria-label="Mes anterior">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => shiftMonth(-1)}
+              aria-label="Mes anterior"
+            >
               <ChevronLeft />
             </Button>
-            <span className="w-36 text-center text-sm font-semibold sm:w-44">{monthLabel(month)}</span>
-            <Button variant="ghost" size="icon" onClick={() => shiftMonth(1)} aria-label="Mes siguiente">
+            <span className="w-36 text-center text-sm font-extrabold sm:w-44">
+              {monthLabel(month)}
+            </span>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => shiftMonth(1)}
+              aria-label="Mes siguiente"
+            >
               <ChevronRight />
             </Button>
           </div>

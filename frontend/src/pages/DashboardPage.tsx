@@ -4,6 +4,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { api } from '@/lib/api'
 import { fmtCop, fmtCopDecimals } from '@/lib/money'
 import { useMonth } from '@/hooks/useMonth'
+import { AccountsSection } from '@/components/AccountsSection'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,31 +12,36 @@ import { Skeleton } from '@/components/ui/skeleton'
 function SummaryCard({
   title,
   value,
+  detail,
   icon: Icon,
   tone,
 }: {
   title: string
   value: string
+  detail?: string
   icon: typeof Wallet
   tone: 'income' | 'expense' | 'neutral'
 }) {
-  const iconClass =
+  const circleClass =
     tone === 'income'
-      ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400'
+      ? 'bg-emerald-500 shadow-[0_4px_0_0_#059669]'
       : tone === 'expense'
-        ? 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400'
-        : 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400'
+        ? 'bg-rose-500 shadow-[0_4px_0_0_#e11d48]'
+        : 'bg-primary shadow-[0_4px_0_0_color-mix(in_oklch,var(--primary),black_18%)]'
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className={`rounded-lg p-2 ${iconClass}`}>
-          <Icon className="size-4" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-bold">{value}</p>
-      </CardContent>
+    <Card className="flex-row items-center gap-4 p-5">
+      <div
+        className={`flex size-14 shrink-0 items-center justify-center rounded-2xl text-white ${circleClass}`}
+      >
+        <Icon className="size-7" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </p>
+        <p className="truncate text-2xl font-black">{value}</p>
+        {detail && <p className="text-xs font-bold text-muted-foreground">{detail}</p>}
+      </div>
     </Card>
   )
 }
@@ -77,12 +83,19 @@ export function DashboardPage() {
           tone="expense"
         />
         <SummaryCard
-          title="Balance"
-          value={fmtCop(summary.data?.balance ?? '0')}
+          title="Balance acumulado"
+          value={fmtCop(summary.data?.accumulated_balance ?? '0')}
+          detail={`Este mes: ${fmtCop(summary.data?.balance ?? '0')}${
+            Number(summary.data?.carryover ?? 0) !== 0
+              ? ` · Arrastrado: ${fmtCop(summary.data?.carryover ?? '0')}`
+              : ''
+          }`}
           icon={Wallet}
           tone="neutral"
         />
       </div>
+
+      <AccountsSection />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
