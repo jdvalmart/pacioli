@@ -1,13 +1,35 @@
-import { ChevronLeft, ChevronRight, Landmark, LayoutDashboard, PiggyBank, ReceiptText, Tags, ChartColumnBig, MessageSquare } from 'lucide-react'
+import { lazy, Suspense } from 'react'
+import { ChevronLeft, ChevronRight, Landmark, LayoutDashboard, PiggyBank, ReceiptText, Tags, ChartColumnBig, MessageSquare, Loader2 } from 'lucide-react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
-import { BudgetsPage } from '@/pages/BudgetsPage'
-import { CategoriesPage } from '@/pages/CategoriesPage'
-import { ChatPage } from '@/pages/ChatPage'
-import { DashboardPage } from '@/pages/DashboardPage'
-import { ReportsPage } from '@/pages/ReportsPage'
-import { TransactionsPage } from '@/pages/TransactionsPage'
+
+// Pages load on demand so charts (Recharts) and other heavy
+// dependencies only ship when their route is actually visited.
+const BudgetsPage = lazy(() =>
+  import('@/pages/BudgetsPage').then((m) => ({ default: m.BudgetsPage })),
+)
+const CategoriesPage = lazy(() =>
+  import('@/pages/CategoriesPage').then((m) => ({ default: m.CategoriesPage })),
+)
+const ChatPage = lazy(() => import('@/pages/ChatPage').then((m) => ({ default: m.ChatPage })))
+const DashboardPage = lazy(() =>
+  import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+)
+const ReportsPage = lazy(() =>
+  import('@/pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+)
+const TransactionsPage = lazy(() =>
+  import('@/pages/TransactionsPage').then((m) => ({ default: m.TransactionsPage })),
+)
+
+function PageLoader() {
+  return (
+    <div className="flex h-64 items-center justify-center text-muted-foreground">
+      <Loader2 className="size-6 animate-spin" />
+    </div>
+  )
+}
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -78,14 +100,16 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/budgets" element={<BudgetsPage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/chat" element={<ChatPage />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/budgets" element={<BudgetsPage />} />
+              <Route path="/categories" element={<CategoriesPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/chat" element={<ChatPage />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </div>
