@@ -162,7 +162,7 @@ class TestTransactions:
             "/api/transactions",
             json={"date": "2026-01-15", "amount": "10.00", "category_id": cat_id},
         )
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_create_with_negative_amount_fails(self, client: TestClient) -> None:
         cat_id = _create_category(client)
@@ -287,7 +287,7 @@ class TestReports:
         ).json()["id"]
 
         _create_transaction(client, expense_cat, date="2026-01-05", amount="150.00")
-        _create_transaction(client, income_cat, date="2026-01-10", amount="1000.00")
+        _create_transaction(client, income_cat, date="2026-01-10", amount="1000.00", kind="ingreso")
 
         response = client.get("/api/reports/summary?month=1&year=2026")
         assert response.status_code == 200
@@ -387,6 +387,7 @@ class TestAccounts:
             json={
                 "date": "2026-09-01",
                 "amount": "500.00",
+                "kind": "ingreso",
                 "category_id": income_cat,
                 "account_id": account_id,
             },

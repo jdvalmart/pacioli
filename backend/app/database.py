@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def _default_data_dir() -> str:
@@ -139,15 +139,21 @@ class Subcategory:
 
 @dataclass
 class Transaction:
-    """A single transaction (or a recurring template)."""
+    """A single transaction (or a recurring template).
+
+    ``kind`` is ingreso, gasto, transferencia (moves money between
+    two of the user's accounts) or gasto_tc (credit card expense).
+    Transfers have no category and carry a ``to_account_id``.
+    """
 
     id: int | None
     date: date
     amount: Decimal
-    category_id: int
+    category_id: int | None
     description: str
     is_recurring: bool
     recurring_day: int | None  # Day of month for recurring templates
+    kind: str = "gasto"
     subcategory_id: int | None = None
     subcategory_name: str | None = None
     subcategory_icon: str | None = None
@@ -156,9 +162,12 @@ class Transaction:
     category_type: str | None = None
     color: str | None = None
     icon: str | None = None
-    account_id: int | None = None  # Where the money moved
+    account_id: int | None = None  # Where the money moved from/into
     account_name: str | None = None
     account_icon: str | None = None
+    to_account_id: int | None = None  # Transfer destination
+    to_account_name: str | None = None
+    to_account_icon: str | None = None
 
 
 @dataclass
@@ -626,6 +635,80 @@ def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrate_v7_transaction_kinds(conn: sqlite3.Connection) -> None:
+    """v6 -> v7: explicit transaction kinds.
+
+    The movement type stops being derived from the category type and
+    becomes an explicit column: ingreso, gasto, transferencia (money
+    moving between two of the user's accounts) and gasto_tc (credit
+    card expense, tracked as debt later). Transfers gain a destination
+    account (to_account_id) and have no category, so category_id
+    becomes nullable. Existing rows are backfilled from their category
+    type.
+    """
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = OFF")
+
+    # Safe against interrupted previous runs: a crash mid-rebuild can
+    # leave the staging table behind.
+    cursor.execute("DROP TABLE IF EXISTS transactions_new")
+
+    cursor.execute("""
+        CREATE TABLE transactions_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            amount_cents INTEGER NOT NULL,
+            category_id INTEGER REFERENCES categories(id),
+            account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            to_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            kind TEXT NOT NULL DEFAULT 'gasto'
+                CHECK(kind IN ('ingreso', 'gasto', 'transferencia', 'gasto_tc')),
+            description TEXT DEFAULT '',
+            is_recurring INTEGER DEFAULT 0,
+            recurring_day INTEGER,
+            subcategory_id INTEGER REFERENCES subcategories(id),
+            generated_from INTEGER REFERENCES transactions(id) ON DELETE SET NULL
+        )
+    """)
+    # Some desktop-era transaction tables lack generated_from; treat
+    # the column as optional and copy NULL when it does not exist.
+    source_columns = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(transactions)").fetchall()
+    }
+    generated_expr = "t.generated_from" if "generated_from" in source_columns else "NULL"
+
+    cursor.execute(f"""
+        INSERT INTO transactions_new
+            (id, date, amount_cents, category_id, account_id, kind,
+             description, is_recurring, recurring_day, subcategory_id, generated_from)
+        SELECT t.id, t.date, t.amount_cents, t.category_id, t.account_id,
+               CASE WHEN c.type = 'income' THEN 'ingreso' ELSE 'gasto' END,
+               t.description, t.is_recurring, t.recurring_day, t.subcategory_id,
+               {generated_expr}
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+    """)
+    cursor.execute("DROP TABLE transactions")
+    cursor.execute("ALTER TABLE transactions_new RENAME TO transactions")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transactions_generated ON transactions(generated_from)"
+    )
+
+    violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise sqlite3.IntegrityError(
+            f"Migration to v7: {len(violations)} FK violations: {violations[:5]}"
+        )
+
+    cursor.execute("PRAGMA user_version = 7")
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -738,6 +821,8 @@ def init_db() -> None:
             _migrate_v5_accounts(conn)
         if v < 6:
             _migrate_v6_account_starting_transactions(conn)
+        if v < 7:
+            _migrate_v7_transaction_kinds(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -865,11 +950,13 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
             """
             SELECT t.*, c.name as category_name, c.type as category_type, c.color, c.icon,
                    s.name as subcategory_name, s.icon as subcategory_icon,
-                   a.name as account_name, a.icon as account_icon
+                   a.name as account_name, a.icon as account_icon,
+                   a2.name as to_account_name, a2.icon as to_account_icon
             FROM transactions t
-            JOIN categories c ON t.category_id = c.id
+            LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN subcategories s ON t.subcategory_id = s.id
             LEFT JOIN accounts a ON t.account_id = a.id
+            LEFT JOIN accounts a2 ON t.to_account_id = a2.id
             WHERE t.date >= ? AND t.date < ?
             ORDER BY t.date DESC
         """,
@@ -881,20 +968,24 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
 def add_transaction(
     date_val: date,
     amount: Decimal | float | int,
-    category_id: int,
+    category_id: int | None = None,
     description: str = "",
     is_recurring: bool = False,
     recurring_day: int | None = None,
     subcategory_id: int | None = None,
     account_id: int | None = None,
+    kind: str = "gasto",
+    to_account_id: int | None = None,
 ) -> int:
     """Create a transaction and return its id."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO transactions (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions
+                (date, amount_cents, category_id, description, is_recurring,
+                 recurring_day, subcategory_id, account_id, kind, to_account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 date_val.isoformat(),
@@ -905,6 +996,8 @@ def add_transaction(
                 recurring_day,
                 subcategory_id,
                 account_id,
+                kind,
+                to_account_id,
             ),
         )
         conn.commit()
@@ -915,12 +1008,14 @@ def update_transaction(
     trans_id: int,
     date_val: date,
     amount: Decimal | float | int,
-    category_id: int,
+    category_id: int | None,
     description: str,
     is_recurring: bool = False,
     recurring_day: int | None = None,
     subcategory_id: int | None = None,
     account_id: int | None = None,
+    kind: str = "gasto",
+    to_account_id: int | None = None,
 ) -> None:
     """Update an existing transaction."""
     with get_connection() as conn:
@@ -928,7 +1023,9 @@ def update_transaction(
         cursor.execute(
             """
             UPDATE transactions
-            SET date = ?, amount_cents = ?, category_id = ?, description = ?, is_recurring = ?, recurring_day = ?, subcategory_id = ?, account_id = ?
+            SET date = ?, amount_cents = ?, category_id = ?, description = ?,
+                is_recurring = ?, recurring_day = ?, subcategory_id = ?,
+                account_id = ?, kind = ?, to_account_id = ?
             WHERE id = ?
         """,
             (
@@ -940,6 +1037,8 @@ def update_transaction(
                 recurring_day,
                 subcategory_id,
                 account_id,
+                kind,
+                to_account_id,
                 trans_id,
             ),
         )
@@ -974,7 +1073,7 @@ def ensure_recurring(month: int, year: int) -> int:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date, amount_cents, category_id, description,
-                   recurring_day, subcategory_id, account_id
+                   recurring_day, subcategory_id, account_id, kind, to_account_id
             FROM transactions
             WHERE is_recurring = 1 AND generated_from IS NULL
               AND recurring_day IS NOT NULL
@@ -995,8 +1094,8 @@ def ensure_recurring(month: int, year: int) -> int:
                 """
                 INSERT INTO transactions
                     (date, amount_cents, category_id, description,
-                     is_recurring, recurring_day, subcategory_id, generated_from, account_id)
-                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?)
+                     is_recurring, recurring_day, subcategory_id, generated_from, account_id, kind, to_account_id)
+                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?)
             """,
                 (
                     f"{year:04d}-{month:02d}-{day:02d}",
@@ -1006,6 +1105,8 @@ def ensure_recurring(month: int, year: int) -> int:
                     t["subcategory_id"],
                     t["id"],
                     t["account_id"],
+                    t["kind"],
+                    t["to_account_id"],
                 ),
             )
             cursor.execute(
@@ -1102,17 +1203,29 @@ def _row_to_account(row: sqlite3.Row) -> Account:
 
 
 def get_accounts() -> list[Account]:
-    """Return all accounts with their computed balance, oldest first."""
+    """Return all accounts with their computed balance, oldest first.
+
+    Ingresos add to the account, gastos subtract, transfers move
+    money between two accounts and gastos_tc never touch cash.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT a.*,
                    COALESCE((
-                       SELECT SUM(CASE WHEN c.type = 'income' THEN t.amount_cents
-                                       ELSE -t.amount_cents END)
+                       SELECT SUM(
+                           CASE
+                               WHEN t.kind = 'ingreso' THEN t.amount_cents
+                               WHEN t.kind = 'gasto' THEN -t.amount_cents
+                               WHEN t.kind = 'transferencia' THEN
+                                   CASE WHEN t.account_id = a.id THEN -t.amount_cents
+                                        WHEN t.to_account_id = a.id THEN t.amount_cents
+                                        ELSE 0 END
+                               ELSE 0
+                           END
+                       )
                        FROM transactions t
-                       JOIN categories c ON t.category_id = c.id
-                       WHERE t.account_id = a.id
+                       WHERE t.account_id = a.id OR t.to_account_id = a.id
                    ), 0) as balance_cents
             FROM accounts a
             ORDER BY a.created_at, a.id
@@ -1151,8 +1264,8 @@ def add_account(
             cursor.execute(
                 """
                 INSERT INTO transactions
-                    (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id)
-                VALUES (?, ?, ?, ?, 0, NULL, NULL, ?)
+                    (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id, kind)
+                VALUES (?, ?, ?, ?, 0, NULL, NULL, ?, 'ingreso')
                 """,
                 (
                     date.today().isoformat(),
@@ -1186,18 +1299,23 @@ def delete_account(account_id: int) -> None:
 
 
 def get_monthly_summary(month: int, year: int) -> MonthlySummary:
-    """Return income/expense/balance totals for a month."""
+    """Return income/expense/balance totals for a month.
+
+    Transfers never count as income or expense; gasto_tc counts as
+    an expense (credit card debt).
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         start_date, end_date = _month_window(month, year)
 
         cursor.execute(
             """
-            SELECT c.type, c.name, SUM(t.amount_cents) as total_cents
+            SELECT c.name, t.kind, SUM(t.amount_cents) as total_cents
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             WHERE t.date >= ? AND t.date < ?
-            GROUP BY c.type, c.name
+              AND t.kind IN ('ingreso', 'gasto', 'gasto_tc')
+            GROUP BY c.name, t.kind
         """,
             (start_date, end_date),
         )
@@ -1208,7 +1326,7 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
         for row in cursor.fetchall():
             total = _to_dec(row["total_cents"])
             by_category[row["name"]] = total
-            if row["type"] == "income":
+            if row["kind"] == "ingreso":
                 total_income += total
             else:
                 total_expense += total
@@ -1216,11 +1334,13 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
         # Running balance: everything recorded before this month.
         carryover = cursor.execute(
             """
-            SELECT COALESCE(SUM(CASE WHEN c.type = 'income' THEN t.amount_cents
-                                     ELSE -t.amount_cents END), 0) as cents
-            FROM transactions t
-            JOIN categories c ON t.category_id = c.id
-            WHERE t.date < ?
+            SELECT COALESCE(SUM(
+                CASE WHEN kind = 'ingreso' THEN amount_cents
+                     WHEN kind IN ('gasto', 'gasto_tc') THEN -amount_cents
+                     ELSE 0 END
+            ), 0) as cents
+            FROM transactions
+            WHERE date < ?
         """,
             (start_date,),
         ).fetchone()
@@ -1247,20 +1367,26 @@ def get_monthly_summaries(year: int) -> list[MonthlySummary]:
 def get_category_spending(
     month: int, year: int, cat_type: str = "expense"
 ) -> list[tuple[str, Decimal, str, str]]:
-    """Return (name, total, color, icon) spending by category."""
+    """Return (name, total, color, icon) spending by category.
+
+    Expenses include gasto and gasto_tc kinds; income only ingreso.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         start_date, end_date = _month_window(month, year)
+        kind_filter = (
+            "t.kind = 'ingreso'" if cat_type == "income" else "t.kind IN ('gasto', 'gasto_tc')"
+        )
         cursor.execute(
-            """
+            f"""
             SELECT c.name, SUM(t.amount_cents) as total_cents, c.color, c.icon
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
-            WHERE c.type = ? AND t.date >= ? AND t.date < ?
+            WHERE {kind_filter} AND t.date >= ? AND t.date < ?
             GROUP BY c.id
             ORDER BY total_cents DESC
         """,
-            (cat_type, start_date, end_date),
+            (start_date, end_date),
         )
         return [
             (row["name"], _to_dec(row["total_cents"]), row["color"], row["icon"])
@@ -1282,6 +1408,7 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
             FROM categories c
             LEFT JOIN budgets b ON c.id = b.category_id AND b.month = ? AND b.year = ?
             LEFT JOIN transactions t ON c.id = t.category_id AND t.date >= ? AND t.date < ?
+                AND t.kind IN ('gasto', 'gasto_tc')
             WHERE c.type = 'expense'
             GROUP BY c.id
             HAVING budget_cents > 0 OR actual_cents > 0
@@ -1435,6 +1562,14 @@ def get_desc_learnings_context(category: str) -> str:
 # ── CSV export ────────────────────────────────────────────────
 
 
+KIND_LABELS = {
+    "ingreso": "Ingreso",
+    "gasto": "Gasto",
+    "transferencia": "Transferencia",
+    "gasto_tc": "Gasto TC",
+}
+
+
 def transactions_to_csv(month: int, year: int) -> str:
     """Build the CSV content of the transactions of a month."""
     import csv
@@ -1445,19 +1580,30 @@ def transactions_to_csv(month: int, year: int) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
-        ["Fecha", "Categoría", "Subcategoría", "Tipo", "Monto", "Descripción", "Recurrente"]
+        [
+            "Fecha",
+            "Categoría",
+            "Subcategoría",
+            "Tipo",
+            "Cuenta",
+            "Cuenta destino",
+            "Monto",
+            "Descripción",
+            "Recurrente",
+        ]
     )
     for t in txns:
         cat = cat_map.get(t.category_id)
         cat_name = cat.name if cat else "—"
-        cat_type = cat.type if cat else "—"
         sub_name = t.subcategory_name or ""
         writer.writerow(
             [
                 t.date,
                 cat_name,
                 sub_name,
-                cat_type,
+                KIND_LABELS.get(t.kind, t.kind),
+                t.account_name or "",
+                t.to_account_name or "",
                 str(t.amount),
                 t.description or "",
                 "Sí" if (t.is_recurring or t.generated_from) else "No",

@@ -281,7 +281,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -361,7 +361,7 @@ class TestMigrationV4:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
                 0
             ]
@@ -390,7 +390,7 @@ class TestCarryover:
         income_cat = add_category("Ingreso test", "income")
 
         # September: income 1000, expense 300 -> balance 700
-        add_transaction(date(2026, 9, 10), Decimal("1000.00"), income_cat, "Salary")
+        add_transaction(date(2026, 9, 10), Decimal("1000.00"), income_cat, "Salary", kind="ingreso")
         add_transaction(date(2026, 9, 15), Decimal("300.00"), sample_category, "Rent")
 
         # October: expense 500 -> balance -500
@@ -423,7 +423,12 @@ class TestAccounts:
         account_id = add_account("Billetera", "efectivo", Decimal("200.00"))
 
         add_transaction(
-            date(2026, 9, 1), Decimal("1000.00"), income_cat, "Salary", account_id=account_id
+            date(2026, 9, 1),
+            Decimal("1000.00"),
+            income_cat,
+            "Salary",
+            account_id=account_id,
+            kind="ingreso",
         )
         add_transaction(
             date(2026, 9, 2), Decimal("300.00"), sample_category, "Rent", account_id=account_id
@@ -458,3 +463,121 @@ class TestAccounts:
 
         delete_account(account_id)
         assert get_accounts() == []
+
+
+class TestTransfers:
+    """Tests for transfer semantics between accounts."""
+
+    def test_transfer_moves_money_between_accounts(self, temp_db: str) -> None:
+        savings = add_account("Ahorros", "ahorros", Decimal("1000.00"))
+        wallet = add_account("Billetera", "efectivo", Decimal("0.00"))
+
+        add_transaction(
+            date(2026, 9, 10),
+            Decimal("300.00"),
+            account_id=savings,
+            to_account_id=wallet,
+            kind="transferencia",
+            description="Saco para el mercado",
+        )
+
+        accounts = {a.name: a for a in get_accounts()}
+        assert accounts["Ahorros"].balance == Decimal("700.00")
+        assert accounts["Billetera"].balance == Decimal("300.00")
+
+    def test_transfer_does_not_affect_summary(self, temp_db: str) -> None:
+        income_cat = add_category("Ingreso test", "income")
+        savings = add_account("Ahorros", "ahorros", Decimal("0.00"))
+        wallet = add_account("Billetera", "efectivo", Decimal("0.00"))
+
+        add_transaction(
+            date(2026, 9, 1),
+            Decimal("1000.00"),
+            income_cat,
+            "Salary",
+            kind="ingreso",
+            account_id=savings,
+        )
+        add_transaction(
+            date(2026, 9, 10),
+            Decimal("300.00"),
+            account_id=savings,
+            to_account_id=wallet,
+            kind="transferencia",
+        )
+
+        summary = get_monthly_summary(9, 2026)
+        assert summary.total_income == Decimal("1000.00")
+        assert summary.total_expense == Decimal("0.00")
+        assert summary.balance == Decimal("1000.00")
+
+    def test_gasto_tc_does_not_touch_accounts(self, temp_db: str, sample_category: int) -> None:
+        add_account("Ahorros", "ahorros", Decimal("1000.00"))
+
+        add_transaction(
+            date(2026, 9, 10),
+            Decimal("150.00"),
+            sample_category,
+            "Compras TC",
+            kind="gasto_tc",
+        )
+
+        accounts = {a.name: a for a in get_accounts()}
+        assert accounts["Ahorros"].balance == Decimal("1000.00")
+
+        summary = get_monthly_summary(9, 2026)
+        assert summary.total_expense == Decimal("150.00")
+
+
+class TestMigrationV7:
+    """Tests for the transaction kinds migration."""
+
+    def test_backfills_kinds_by_category_type(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "legacy.db"
+        set_db_path(db_path)
+        init_db()
+
+        income_cat = add_category("Ingreso test", "income")
+        add_transaction(date(2026, 9, 1), Decimal("500.00"), income_cat, "Salary")
+        add_transaction(
+            date(2026, 9, 2),
+            Decimal("100.00"),
+            next(c for c in get_categories() if c.type == "expense").id or 0,
+            "Rent",
+        )
+
+        # Simulate a v6 database by hiding the kind column semantics:
+        # rebuild transactions without the kind/to_account columns and
+        # force the migration to run again.
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("""
+            CREATE TABLE transactions_v6 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                amount_cents INTEGER NOT NULL,
+                category_id INTEGER NOT NULL,
+                description TEXT DEFAULT '',
+                is_recurring INTEGER DEFAULT 0,
+                recurring_day INTEGER,
+                subcategory_id INTEGER,
+                account_id INTEGER
+            )
+        """)
+        conn.execute(
+            "INSERT INTO transactions_v6 (id, date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id) "
+            "SELECT id, date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id FROM transactions"
+        )
+        conn.execute("DROP TABLE transactions")
+        conn.execute("ALTER TABLE transactions_v6 RENAME TO transactions")
+        conn.execute("PRAGMA user_version = 6")
+        conn.commit()
+        conn.close()
+
+        init_db()
+
+        with get_connection() as conn:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+            rows = conn.execute("SELECT kind FROM transactions ORDER BY id").fetchall()
+            assert [r[0] for r in rows] == ["ingreso", "gasto"]
+        set_db_path(None)

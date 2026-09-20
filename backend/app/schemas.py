@@ -60,14 +60,18 @@ class SubcategoryOut(BaseModel):
 class TransactionIn(BaseModel):
     """Payload to create or update a transaction.
 
-    Every transaction must be associated with an account: that is
-    where the money comes from (expense) or goes to (income).
+    ``kind`` decides the semantics: ingreso adds to an account,
+    gasto subtracts, transferencia moves between two accounts
+    (category is ignored) and gasto_tc is credit card spending that
+    does not touch cash accounts.
     """
 
     date: date
     amount: Money = Field(gt=0)
-    category_id: int
-    account_id: int
+    kind: Literal["ingreso", "gasto", "transferencia", "gasto_tc"] = "gasto"
+    category_id: int | None = None
+    account_id: int | None = None
+    to_account_id: int | None = None
     description: str = Field(default="", max_length=500)
     is_recurring: bool = False
     recurring_day: int | None = Field(default=None, ge=1, le=31)
@@ -80,7 +84,8 @@ class TransactionOut(BaseModel):
     id: int
     date: date
     amount: Money
-    category_id: int
+    kind: str
+    category_id: int | None
     description: str
     is_recurring: bool
     recurring_day: int | None
@@ -88,13 +93,16 @@ class TransactionOut(BaseModel):
     subcategory_name: str | None
     subcategory_icon: str | None
     generated_from: int | None
-    category_name: str
-    category_type: str
-    color: str
-    icon: str
+    category_name: str | None
+    category_type: str | None
+    color: str | None
+    icon: str | None
     account_id: int | None
     account_name: str | None
     account_icon: str | None
+    to_account_id: int | None
+    to_account_name: str | None
+    to_account_icon: str | None
 
 
 class BudgetIn(BaseModel):
