@@ -974,7 +974,7 @@ def ensure_recurring(month: int, year: int) -> int:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date, amount_cents, category_id, description,
-                   recurring_day, subcategory_id
+                   recurring_day, subcategory_id, account_id
             FROM transactions
             WHERE is_recurring = 1 AND generated_from IS NULL
               AND recurring_day IS NOT NULL
@@ -995,8 +995,8 @@ def ensure_recurring(month: int, year: int) -> int:
                 """
                 INSERT INTO transactions
                     (date, amount_cents, category_id, description,
-                     is_recurring, recurring_day, subcategory_id, generated_from)
-                VALUES (?, ?, ?, ?, 0, NULL, ?, ?)
+                     is_recurring, recurring_day, subcategory_id, generated_from, account_id)
+                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?)
             """,
                 (
                     f"{year:04d}-{month:02d}-{day:02d}",
@@ -1005,6 +1005,7 @@ def ensure_recurring(month: int, year: int) -> int:
                     t["description"],
                     t["subcategory_id"],
                     t["id"],
+                    t["account_id"],
                 ),
             )
             cursor.execute(

@@ -154,6 +154,23 @@ class TestRecurring:
         assert created1 == 1
         assert created2 == 0
 
+    def test_recurring_inherits_account(self, temp_db: str, sample_category: int) -> None:
+        account_id = add_account("Arriendo cuenta", "banco", Decimal("0.00"))
+        add_transaction(
+            date(2026, 1, 15),
+            Decimal("1000.00"),
+            sample_category,
+            "Monthly rent",
+            is_recurring=True,
+            recurring_day=15,
+            account_id=account_id,
+        )
+
+        ensure_recurring(2, 2026)
+        feb_transactions = get_transactions(2, 2026)
+        assert feb_transactions[0].account_id == account_id
+        assert feb_transactions[0].account_name == "Arriendo cuenta"
+
     def test_recurring_day_adjustment(self, temp_db: str, sample_category: int) -> None:
         add_transaction(
             date(2026, 1, 31),

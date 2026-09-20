@@ -11,11 +11,30 @@ def _create_category(client: TestClient, name: str = "Test") -> int:
     return int(response.json()["id"])
 
 
+_account_counter = 0
+
+
+def _create_account(client: TestClient) -> int:
+    global _account_counter
+    _account_counter += 1
+    response = client.post(
+        "/api/accounts",
+        json={
+            "name": f"Billetera {_account_counter}",
+            "type": "efectivo",
+            "starting_amount": "0.00",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return int(response.json()["id"])
+
+
 def _create_transaction(client: TestClient, cat_id: int, **overrides: object) -> dict:
     payload = {
         "date": "2026-01-15",
         "amount": "100.50",
         "category_id": cat_id,
+        "account_id": _create_account(client),
         "description": "Test transaction",
         **overrides,
     }
@@ -131,16 +150,30 @@ class TestTransactions:
                 "date": "2026-01-15",
                 "amount": "10.00",
                 "category_id": 9999,
+                "account_id": _create_account(client),
                 "description": "Bad",
             },
         )
         assert response.status_code == 400
 
+    def test_create_without_account_rejected(self, client: TestClient) -> None:
+        cat_id = _create_category(client)
+        response = client.post(
+            "/api/transactions",
+            json={"date": "2026-01-15", "amount": "10.00", "category_id": cat_id},
+        )
+        assert response.status_code == 422
+
     def test_create_with_negative_amount_fails(self, client: TestClient) -> None:
         cat_id = _create_category(client)
         response = client.post(
             "/api/transactions",
-            json={"date": "2026-01-15", "amount": "-5.00", "category_id": cat_id},
+            json={
+                "date": "2026-01-15",
+                "amount": "-5.00",
+                "category_id": cat_id,
+                "account_id": _create_account(client),
+            },
         )
         assert response.status_code == 422
 
@@ -154,6 +187,7 @@ class TestTransactions:
                 "date": "2026-01-20",
                 "amount": "200.00",
                 "category_id": cat_id,
+                "account_id": _create_account(client),
                 "description": "Updated",
             },
         )

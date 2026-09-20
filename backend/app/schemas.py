@@ -58,16 +58,20 @@ class SubcategoryOut(BaseModel):
 
 
 class TransactionIn(BaseModel):
-    """Payload to create or update a transaction."""
+    """Payload to create or update a transaction.
+
+    Every transaction must be associated with an account: that is
+    where the money comes from (expense) or goes to (income).
+    """
 
     date: date
     amount: Money = Field(gt=0)
     category_id: int
+    account_id: int
     description: str = Field(default="", max_length=500)
     is_recurring: bool = False
     recurring_day: int | None = Field(default=None, ge=1, le=31)
     subcategory_id: int | None = None
-    account_id: int | None = None
 
 
 class TransactionOut(BaseModel):
