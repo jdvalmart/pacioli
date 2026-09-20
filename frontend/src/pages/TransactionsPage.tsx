@@ -126,6 +126,11 @@ function TransactionFormBody({
 
   const selectedCategory = categories.data?.find((c) => String(c.id) === categoryId)
   const filteredSubcategories = subcategories.data ?? []
+  // Guard against a stale selection pointing at a subcategory that no
+  // longer belongs to the selected category (e.g. after switching).
+  const subValue = filteredSubcategories.some((s) => String(s.id) === subcategoryId)
+    ? subcategoryId
+    : 'none'
 
   return (
     <>
@@ -161,7 +166,13 @@ function TransactionFormBody({
 
           <div className="space-y-1.5">
             <Label>Categoría</Label>
-            <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? '')}>
+            <Select
+              value={categoryId}
+              onValueChange={(v) => {
+                setCategoryId(v ?? '')
+                setSubcategoryId('none')
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Selecciona una categoría" />
               </SelectTrigger>
@@ -178,7 +189,7 @@ function TransactionFormBody({
           {selectedCategory && (
             <div className="space-y-1.5">
               <Label>Subcategoría (opcional)</Label>
-              <Select value={subcategoryId} onValueChange={(v) => setSubcategoryId(v ?? 'none')}>
+              <Select value={subValue} onValueChange={(v) => setSubcategoryId(v ?? 'none')}>
                 <SelectTrigger>
                   <SelectValue placeholder="Sin subcategoría" />
                 </SelectTrigger>
