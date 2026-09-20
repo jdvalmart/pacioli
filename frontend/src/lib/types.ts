@@ -47,6 +47,8 @@ export interface Transaction {
   to_account_id: number | null
   to_account_name: string | null
   to_account_icon: string | null
+  card_id: number | null
+  card_name: string | null
 }
 
 export interface TransactionInput {
@@ -56,6 +58,7 @@ export interface TransactionInput {
   category_id: number | null
   account_id: number | null
   to_account_id: number | null
+  card_id?: number | null
   description?: string
   is_recurring?: boolean
   recurring_day?: number | null
@@ -71,6 +74,16 @@ export interface Account {
   icon: string
   color: string
   balance: string
+}
+
+export interface CreditCard {
+  id: number
+  name: string
+  limit: string
+  cutoff_day: number
+  payment_day: number
+  spent: string
+  available: string
 }
 
 export interface Budget {

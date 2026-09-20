@@ -111,6 +111,7 @@ function TransactionFormBody({
   const queryClient = useQueryClient()
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const creditCards = useQuery({ queryKey: ['creditCards'], queryFn: api.listCreditCards })
 
   const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'gasto')
   const [date, setDate] = useState(
@@ -129,6 +130,7 @@ function TransactionFormBody({
   const [toAccountId, setToAccountId] = useState(
     transaction?.to_account_id ? String(transaction.to_account_id) : '',
   )
+  const [cardId, setCardId] = useState(transaction?.card_id ? String(transaction.card_id) : '')
   const [description, setDescription] = useState(transaction?.description ?? '')
   const [isRecurring, setIsRecurring] = useState(transaction?.is_recurring ?? false)
   const [recurringDay, setRecurringDay] = useState(String(transaction?.recurring_day ?? 1))
@@ -181,6 +183,10 @@ function TransactionFormBody({
       toast.error('Selecciona una categoría')
       return
     }
+    if (kind === 'gasto_tc' && !cardId) {
+      toast.error('Selecciona la tarjeta de crédito')
+      return
+    }
     if (needsAccount && !accountId) {
       toast.error('Selecciona una cuenta — todo movimiento sale o entra a una cuenta')
       return
@@ -203,6 +209,7 @@ function TransactionFormBody({
       subcategory_id: kind === 'transferencia' || subcategoryId === 'none' ? null : Number(subcategoryId),
       account_id: kind === 'gasto_tc' ? null : Number(accountId),
       to_account_id: kind === 'transferencia' ? Number(toAccountId) : null,
+      card_id: kind === 'gasto_tc' ? Number(cardId) : null,
       description,
       is_recurring: isRecurring,
       recurring_day: isRecurring ? Number(recurringDay) : null,
@@ -341,9 +348,32 @@ function TransactionFormBody({
             )}
 
             {kind === 'gasto_tc' ? (
-              <div className="rounded-xl border-2 border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
-                💳 Se registrará como deuda de la tarjeta de crédito (próxima funcionalidad).
-                No afecta tus cuentas de efectivo.
+              <div className="space-y-1.5">
+                <Label>Tarjeta de crédito</Label>
+                {(creditCards.data ?? []).length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
+                    💳 Aún no tienes tarjetas. Crea una en el Dashboard (sección Tarjetas
+                    de crédito) para registrar gastos TC.
+                  </div>
+                ) : (
+                  <>
+                    <Select value={cardId} onValueChange={(v) => setCardId(v ?? '')}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona la tarjeta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(creditCards.data ?? []).map((card) => (
+                          <SelectItem key={card.id} value={String(card.id)}>
+                            💳 {card.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Se descuenta del cupo disponible de la tarjeta.
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -418,7 +448,11 @@ function TransactionFormBody({
         <Button
           type="submit"
           className="w-full"
-          disabled={mutation.isPending || (needsAccount && !hasAccounts)}
+          disabled={
+            mutation.isPending ||
+            (needsAccount && !hasAccounts) ||
+            (kind === 'gasto_tc' && (creditCards.data ?? []).length === 0)
+          }
         >
           {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
@@ -566,9 +600,11 @@ export function TransactionsPage() {
                   <div className="mt-0.5 truncate text-xs font-bold text-muted-foreground">
                     {tx.kind === 'transferencia'
                       ? `${tx.account_icon} ${tx.account_name ?? '—'} → ${tx.to_account_icon} ${tx.to_account_name ?? '—'}`
-                      : tx.account_name
-                        ? `${tx.account_icon} ${tx.account_name}`
-                        : 'Tarjeta de crédito'}
+                      : tx.kind === 'gasto_tc'
+                        ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}`
+                        : tx.account_name
+                          ? `${tx.account_icon} ${tx.account_name}`
+                          : '—'}
                     {tx.subcategory_name && ` · ${tx.subcategory_name}`}
                   </div>
                 </TableCell>
