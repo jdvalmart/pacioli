@@ -111,64 +111,29 @@ export function DashboardPage() {
 
       <CreditCardsSection />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Gasto por categoría</CardTitle>
-            <CardDescription>Distribución del gasto del mes</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {spending.isLoading ? (
-              <Skeleton className="h-64 w-full" />
-            ) : chartData.length === 0 ? (
-              <p className="py-20 text-center text-sm text-muted-foreground">
-                No hay gastos este mes todavía.
-              </p>
-            ) : (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={chartData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={55}
-                      outerRadius={90}
-                      paddingAngle={2}
-                    >
-                      {chartData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.color || '#8884d8'} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => fmtCop(Number(value))} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Presupuesto vs real</CardTitle>
-            <CardDescription>Progreso de cada presupuesto del mes</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {budgetVsActual.isLoading ? (
-              <>
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-              </>
-            ) : budgetVsActual.data?.length === 0 ? (
-              <p className="py-16 text-center text-sm text-muted-foreground">
-                Sin presupuestos este mes. Defínelos en la pestaña Presupuestos.
-              </p>
-            ) : (
-              budgetVsActual.data?.map((row) => (
+      <Card>
+        <CardHeader>
+          <CardTitle>Presupuesto vs real</CardTitle>
+          <CardDescription>Progreso de cada presupuesto del mes</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {budgetVsActual.isLoading ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : budgetVsActual.data?.length === 0 ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">
+              Sin presupuestos este mes. Defínelos en la pestaña Presupuestos.
+            </p>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {budgetVsActual.data?.map((row) => (
                 <div key={row.category_id} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">
+                    <span className="font-bold">
                       {row.icon} {row.name}
                     </span>
                     <span className="text-muted-foreground">
@@ -180,16 +145,52 @@ export function DashboardPage() {
                     className={row.percent > 100 ? '[&>div]:bg-red-500' : ''}
                   />
                   {row.percent > 100 && (
-                    <p className="text-xs text-red-500">
+                    <p className="text-xs font-bold text-red-500">
                       Sobrepasado por {fmtCopDecimals(row.remaining.replace('-', ''))}
                     </p>
                   )}
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Gasto por categoría</CardTitle>
+          <CardDescription>Distribución del gasto del mes</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {spending.isLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : chartData.length === 0 ? (
+            <p className="py-20 text-center text-sm text-muted-foreground">
+              No hay gastos este mes todavía.
+            </p>
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={70}
+                    outerRadius={110}
+                    paddingAngle={2}
+                  >
+                    {chartData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color || '#8884d8'} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => fmtCop(Number(value))} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

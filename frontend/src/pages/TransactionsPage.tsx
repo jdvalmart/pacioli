@@ -466,6 +466,7 @@ const KIND_BADGES: Record<TransactionKind, { label: string; className: string }>
   gasto: { label: 'Gasto', className: 'bg-rose-100 text-rose-700' },
   transferencia: { label: 'Transferencia', className: 'bg-blue-100 text-blue-700' },
   gasto_tc: { label: 'Gasto TC', className: 'bg-orange-100 text-orange-700' },
+  pago_tc: { label: 'Pago TC', className: 'bg-violet-100 text-violet-700' },
 }
 
 export function TransactionsPage() {
@@ -602,9 +603,11 @@ export function TransactionsPage() {
                       ? `${tx.account_icon} ${tx.account_name ?? '—'} → ${tx.to_account_icon} ${tx.to_account_name ?? '—'}`
                       : tx.kind === 'gasto_tc'
                         ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}`
-                        : tx.account_name
-                          ? `${tx.account_icon} ${tx.account_name}`
-                          : '—'}
+                        : tx.kind === 'pago_tc'
+                          ? `${tx.account_icon} ${tx.account_name ?? '—'} → 💳 ${tx.card_name ?? 'TC'}`
+                          : tx.account_name
+                            ? `${tx.account_icon} ${tx.account_name}`
+                            : '—'}
                     {tx.subcategory_name && ` · ${tx.subcategory_name}`}
                   </div>
                 </TableCell>

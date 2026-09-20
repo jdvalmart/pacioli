@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { CreditCard as CreditCardIcon, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CreditCard as CreditCardIcon, Pencil, Plus, Trash2, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -34,7 +34,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
-import type { CreditCard } from '@/lib/types'
+import type { Account, CreditCard } from '@/lib/types'
 
 function CardForm({
   open,
@@ -171,12 +171,168 @@ function CardFormBody({
   )
 }
 
+function PayCardForm({
+  open,
+  onOpenChange,
+  card,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  card: CreditCard | null
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        {open && card && <PayCardBody card={card} onOpenChange={onOpenChange} />}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PayCardBody({
+  card,
+  onOpenChange,
+}: {
+  card: CreditCard
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const [accountId, setAccountId] = useState('')
+  const [amount, setAmount] = useState(card.debt)
+
+  const debt = Number(card.debt)
+  const selectedAccount: Account | undefined = (accounts.data ?? []).find(
+    (a) => String(a.id) === accountId,
+  )
+  const balance = selectedAccount ? Number(selectedAccount.balance) : 0
+  const amountNum = Number(normalizeAmount(amount || '0'))
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.createTransaction({
+        date: new Date().toISOString().slice(0, 10),
+        amount: normalizeAmount(amount),
+        kind: 'pago_tc',
+        category_id: null,
+        account_id: Number(accountId),
+        to_account_id: null,
+        card_id: card.id,
+        description: `Pago ${card.name}`,
+        is_recurring: false,
+        recurring_day: null,
+        subcategory_id: null,
+      }),
+    onSuccess: () => {
+      toast.success('Pago registrado')
+      onOpenChange(false)
+      void queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!accountId) {
+      toast.error('Selecciona la cuenta de donde sale el pago')
+      return
+    }
+    mutation.mutate()
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Pagar {card.name}</DialogTitle>
+        <DialogDescription>
+          El pago sale de una cuenta tuya y libera cupo de la tarjeta.
+        </DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="rounded-xl bg-orange-500/10 p-3 text-center">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+            Deuda del ciclo
+          </p>
+          <p className="text-2xl font-black text-orange-600">{fmtCopDecimals(card.debt)}</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Pagar desde</Label>
+          <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecciona la cuenta" />
+            </SelectTrigger>
+            <SelectContent>
+              {(accounts.data ?? []).map((account) => (
+                <SelectItem key={account.id} value={String(account.id)}>
+                  {account.icon} {account.name} ({fmtCopDecimals(account.balance)})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedAccount && balance < amountNum && (
+            <p className="text-xs font-bold text-red-500">
+              Saldo insuficiente: la cuenta tiene {fmtCopDecimals(balance)} y quieres pagar{' '}
+              {fmtCopDecimals(amountNum)}.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="pay-amount">Monto a pagar</Label>
+          <Input
+            id="pay-amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0"
+          />
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAmount(card.debt)}
+            >
+              Deuda completa
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAmount(String(Math.round(debt / 2)))}
+            >
+              Pagar la mitad
+            </Button>
+          </div>
+        </div>
+
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={
+            mutation.isPending ||
+            !accountId ||
+            amountNum <= 0 ||
+            amountNum > debt ||
+            (!!selectedAccount && balance < amountNum)
+          }
+        >
+          {mutation.isPending ? 'Pagando…' : `Pagar ${fmtCopDecimals(amountNum || 0)}`}
+        </Button>
+      </form>
+    </>
+  )
+}
+
 export function CreditCardsSection() {
   const queryClient = useQueryClient()
   const cards = useQuery({ queryKey: ['creditCards'], queryFn: api.listCreditCards })
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<CreditCard | null>(null)
   const [deleting, setDeleting] = useState<CreditCard | null>(null)
+  const [paying, setPaying] = useState<CreditCard | null>(null)
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteCreditCard(id),
@@ -270,6 +426,20 @@ export function CreditCardsSection() {
                   <p className="text-xs font-bold text-muted-foreground">
                     Cupo disponible de {fmtCopDecimals(card.limit)}
                   </p>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs font-bold text-muted-foreground">
+                      {Number(card.debt) > 0
+                        ? `Debes ${fmtCopDecimals(card.debt)} (paga antes del día ${card.payment_day})`
+                        : 'Al día en este ciclo ✓'}
+                    </span>
+                    <Button
+                      size="sm"
+                      disabled={Number(card.debt) <= 0}
+                      onClick={() => setPaying(card)}
+                    >
+                      <Wallet /> Pagar
+                    </Button>
+                  </div>
                 </div>
               </Card>
             )
@@ -278,6 +448,8 @@ export function CreditCardsSection() {
       </div>
 
       <CardForm open={formOpen} onOpenChange={setFormOpen} card={editing} />
+
+      <PayCardForm open={!!paying} onOpenChange={(open) => !open && setPaying(null)} card={paying} />
 
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>

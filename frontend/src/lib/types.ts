@@ -22,7 +22,7 @@ export interface Subcategory {
   icon: string
 }
 
-export type TransactionKind = 'ingreso' | 'gasto' | 'transferencia' | 'gasto_tc'
+export type TransactionKind = 'ingreso' | 'gasto' | 'transferencia' | 'gasto_tc' | 'pago_tc'
 
 export interface Transaction {
   id: number
@@ -83,6 +83,8 @@ export interface CreditCard {
   cutoff_day: number
   payment_day: number
   spent: string
+  paid: string
+  debt: string
   available: string
 }
 
