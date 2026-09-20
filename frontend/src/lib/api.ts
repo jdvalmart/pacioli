@@ -15,6 +15,7 @@ import type {
   ChatMessage,
   ChatReply,
   ConnectionTest,
+  CreditCard,
   MonthlySummary,
   Subcategory,
   Transaction,
@@ -112,6 +113,28 @@ export const api = {
     }),
   deleteAccount: (id: number) =>
     request<{ message: string }>(`/accounts/${id}`, { method: 'DELETE' }),
+
+  // Credit cards
+  listCreditCards: () => request<CreditCard[]>('/credit-cards'),
+  createCreditCard: (payload: {
+    name: string
+    limit: string
+    cutoff_day: number
+    payment_day: number
+  }) => request<{ id: number }>('/credit-cards', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateCreditCard: (
+    id: number,
+    payload: { name: string; limit: string; cutoff_day: number; payment_day: number },
+  ) =>
+    request<{ message: string }>(`/credit-cards/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteCreditCard: (id: number) =>
+    request<{ message: string }>(`/credit-cards/${id}`, { method: 'DELETE' }),
 
   // Reports
   summary: (month: number, year: number) =>
