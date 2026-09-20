@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def _default_data_dir() -> str:
@@ -156,6 +156,9 @@ class Transaction:
     category_type: str | None = None
     color: str | None = None
     icon: str | None = None
+    account_id: int | None = None  # Where the money moved
+    account_name: str | None = None
+    account_icon: str | None = None
 
 
 @dataclass
@@ -170,14 +173,47 @@ class Budget:
 
 
 @dataclass
+class Account:
+    """A place where money lives (wallet, savings, bank...).
+
+    ``initial_balance`` seeds the account; ``balance`` is always
+    computed as initial plus the net of its linked transactions.
+    """
+
+    id: int | None
+    name: str
+    type: str  # 'efectivo' | 'digital' | 'ahorros' | 'banco'
+    icon: str
+    color: str
+    initial_balance: Decimal
+    balance: Decimal | None = None
+
+
+ACCOUNT_TYPE_DEFAULTS = {
+    "efectivo": ("💵", "#10B981"),
+    "digital": ("📱", "#3B82F6"),
+    "ahorros": ("🐷", "#8B5CF6"),
+    "banco": ("🏦", "#64748B"),
+}
+
+
+@dataclass
 class MonthlySummary:
-    """Aggregated totals for a month."""
+    """Aggregated totals for a month.
+
+    ``balance`` is the month-only result; ``carryover`` is the
+    accumulated balance of all previous months (from the first
+    recorded transaction) and ``accumulated_balance`` is the sum of
+    both, i.e. the running balance at the end of the month.
+    """
 
     month: int
     year: int
     total_income: Decimal
     total_expense: Decimal
     balance: Decimal
+    carryover: Decimal
+    accumulated_balance: Decimal
     by_category: dict[str, Decimal]
 
 
@@ -479,6 +515,39 @@ def _migrate_v4_budget_constraint(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrate_v5_accounts(conn: sqlite3.Connection) -> None:
+    """v4 -> v5: accounts table and transaction account linkage.
+
+    Accounts represent where the money lives (physical wallet, digital
+    wallet, savings, bank). Their balance is always derived from the
+    initial balance plus the linked transactions, never edited by hand.
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL CHECK(type IN ('efectivo', 'digital', 'ahorros', 'banco')),
+            icon TEXT NOT NULL DEFAULT '💵',
+            color TEXT NOT NULL DEFAULT '#10B981',
+            initial_balance_cents INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'account_id'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE transactions ADD COLUMN account_id INTEGER
+            REFERENCES accounts(id) ON DELETE SET NULL
+        """)
+
+    cursor.execute("PRAGMA user_version = 5")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -587,6 +656,8 @@ def init_db() -> None:
             _migrate_v3_subcategory_dedup(conn)
         if v < 4:
             _migrate_v4_budget_constraint(conn)
+        if v < 5:
+            _migrate_v5_accounts(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -713,10 +784,12 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
         cursor.execute(
             """
             SELECT t.*, c.name as category_name, c.type as category_type, c.color, c.icon,
-                   s.name as subcategory_name, s.icon as subcategory_icon
+                   s.name as subcategory_name, s.icon as subcategory_icon,
+                   a.name as account_name, a.icon as account_icon
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             LEFT JOIN subcategories s ON t.subcategory_id = s.id
+            LEFT JOIN accounts a ON t.account_id = a.id
             WHERE t.date >= ? AND t.date < ?
             ORDER BY t.date DESC
         """,
@@ -733,14 +806,15 @@ def add_transaction(
     is_recurring: bool = False,
     recurring_day: int | None = None,
     subcategory_id: int | None = None,
+    account_id: int | None = None,
 ) -> int:
     """Create a transaction and return its id."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO transactions (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 date_val.isoformat(),
@@ -750,6 +824,7 @@ def add_transaction(
                 int(is_recurring),
                 recurring_day,
                 subcategory_id,
+                account_id,
             ),
         )
         conn.commit()
@@ -765,6 +840,7 @@ def update_transaction(
     is_recurring: bool = False,
     recurring_day: int | None = None,
     subcategory_id: int | None = None,
+    account_id: int | None = None,
 ) -> None:
     """Update an existing transaction."""
     with get_connection() as conn:
@@ -772,7 +848,7 @@ def update_transaction(
         cursor.execute(
             """
             UPDATE transactions
-            SET date = ?, amount_cents = ?, category_id = ?, description = ?, is_recurring = ?, recurring_day = ?, subcategory_id = ?
+            SET date = ?, amount_cents = ?, category_id = ?, description = ?, is_recurring = ?, recurring_day = ?, subcategory_id = ?, account_id = ?
             WHERE id = ?
         """,
             (
@@ -783,6 +859,7 @@ def update_transaction(
                 int(is_recurring),
                 recurring_day,
                 subcategory_id,
+                account_id,
                 trans_id,
             ),
         )
@@ -909,6 +986,91 @@ def delete_budget(category_id: int, month: int, year: int) -> None:
         conn.commit()
 
 
+# ── Accounts ──────────────────────────────────────────────────
+# An account represents where the money lives. Its balance is always
+# derived: initial balance plus the net (income minus expense) of its
+# linked transactions.
+
+
+def _row_to_account(row: sqlite3.Row) -> Account:
+    return Account(
+        id=row["id"],
+        name=row["name"],
+        type=row["type"],
+        icon=row["icon"],
+        color=row["color"],
+        initial_balance=_to_dec(row["initial_balance_cents"]),
+        balance=_to_dec(row["balance_cents"]),
+    )
+
+
+def get_accounts() -> list[Account]:
+    """Return all accounts with their computed balance, oldest first."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT a.*,
+                   COALESCE(a.initial_balance_cents, 0) +
+                   COALESCE((
+                       SELECT SUM(CASE WHEN c.type = 'income' THEN t.amount_cents
+                                       ELSE -t.amount_cents END)
+                       FROM transactions t
+                       JOIN categories c ON t.category_id = c.id
+                       WHERE t.account_id = a.id
+                   ), 0) as balance_cents
+            FROM accounts a
+            ORDER BY a.created_at, a.id
+        """)
+        return [_row_to_account(row) for row in cursor.fetchall()]
+
+
+def add_account(
+    name: str,
+    acct_type: str,
+    initial_balance: Decimal | float | int,
+    icon: str | None = None,
+    color: str | None = None,
+) -> int:
+    """Create an account and return its id."""
+    default_icon, default_color = ACCOUNT_TYPE_DEFAULTS.get(acct_type, ("💵", "#10B981"))
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO accounts (name, type, icon, color, initial_balance_cents)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                acct_type,
+                icon or default_icon,
+                color or default_color,
+                _to_cents(initial_balance),
+            ),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+
+def update_account(account_id: int, name: str, initial_balance: Decimal | float | int) -> None:
+    """Update an account's name and initial balance."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE accounts SET name = ?, initial_balance_cents = ? WHERE id = ?",
+            (name, _to_cents(initial_balance), account_id),
+        )
+        conn.commit()
+
+
+def delete_account(account_id: int) -> None:
+    """Delete an account, leaving its transactions unlinked."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+        conn.commit()
+
+
 # ── Aggregations ──────────────────────────────────────────────
 
 
@@ -940,12 +1102,28 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
             else:
                 total_expense += total
 
+        # Running balance: everything recorded before this month.
+        carryover = cursor.execute(
+            """
+            SELECT COALESCE(SUM(CASE WHEN c.type = 'income' THEN t.amount_cents
+                                     ELSE -t.amount_cents END), 0) as cents
+            FROM transactions t
+            JOIN categories c ON t.category_id = c.id
+            WHERE t.date < ?
+        """,
+            (start_date,),
+        ).fetchone()
+        carryover_dec = _to_dec(carryover["cents"])
+        balance = total_income - total_expense
+
         return MonthlySummary(
             month=month,
             year=year,
             total_income=total_income,
             total_expense=total_expense,
-            balance=total_income - total_expense,
+            balance=balance,
+            carryover=carryover_dec,
+            accumulated_balance=carryover_dec + balance,
             by_category=by_category,
         )
 

@@ -261,6 +261,8 @@ class TestReports:
         assert summary["total_income"] == "1000.00"
         assert summary["total_expense"] == "150.00"
         assert summary["balance"] == "850.00"
+        assert summary["carryover"] == "0.00"
+        assert summary["accumulated_balance"] == "850.00"
 
     def test_yearly_summaries(self, client: TestClient) -> None:
         response = client.get("/api/reports/monthly?year=2026")
@@ -302,3 +304,86 @@ class TestReports:
         assert "text/csv" in response.headers["content-type"]
         assert "Comida" in response.text
         assert "Fecha" in response.text
+
+
+class TestAccounts:
+    """Tests for account endpoints."""
+
+    def test_create_and_list_accounts(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/accounts",
+            json={"name": "Billetera", "type": "efectivo", "initial_balance": "200.00"},
+        )
+        assert response.status_code == 201
+
+        accounts = client.get("/api/accounts").json()
+        assert len(accounts) == 1
+        assert accounts[0]["name"] == "Billetera"
+        assert accounts[0]["icon"] == "💵"
+        assert accounts[0]["balance"] == "200.00"
+
+    def test_account_balance_reflects_transactions(self, client: TestClient) -> None:
+        account_id = client.post(
+            "/api/accounts",
+            json={"name": "Nequi", "type": "digital", "initial_balance": "100.00"},
+        ).json()["id"]
+        income_cat = client.post(
+            "/api/categories", json={"name": "Ingreso", "type": "income"}
+        ).json()["id"]
+        expense_cat = client.post(
+            "/api/categories", json={"name": "Gasto", "type": "expense"}
+        ).json()["id"]
+
+        client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-01",
+                "amount": "500.00",
+                "category_id": income_cat,
+                "account_id": account_id,
+            },
+        )
+        client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-02",
+                "amount": "150.00",
+                "category_id": expense_cat,
+                "account_id": account_id,
+            },
+        )
+
+        accounts = client.get("/api/accounts").json()
+        assert accounts[0]["balance"] == "450.00"
+
+        transactions = client.get("/api/transactions?month=9&year=2026").json()
+        assert all(t["account_id"] == account_id for t in transactions)
+        assert transactions[0]["account_name"] == "Nequi"
+
+    def test_duplicate_account_name_conflict(self, client: TestClient) -> None:
+        client.post(
+            "/api/accounts", json={"name": "Ahorro", "type": "ahorros", "initial_balance": "0.00"}
+        )
+        response = client.post(
+            "/api/accounts", json={"name": "Ahorro", "type": "ahorros", "initial_balance": "0.00"}
+        )
+        assert response.status_code == 409
+
+    def test_update_and_delete_account(self, client: TestClient) -> None:
+        account_id = client.post(
+            "/api/accounts",
+            json={"name": "Banco", "type": "banco", "initial_balance": "1000.00"},
+        ).json()["id"]
+
+        response = client.put(
+            f"/api/accounts/{account_id}",
+            json={"name": "Banco principal", "initial_balance": "2000.00"},
+        )
+        assert response.status_code == 200
+
+        accounts = client.get("/api/accounts").json()
+        assert accounts[0]["name"] == "Banco principal"
+        assert accounts[0]["initial_balance"] == "2000.00"
+
+        assert client.delete(f"/api/accounts/{account_id}").status_code == 200
+        assert client.get("/api/accounts").json() == []

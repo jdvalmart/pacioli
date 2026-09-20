@@ -31,10 +31,11 @@ def create_transaction(payload: TransactionIn) -> CreatedOut:
             is_recurring=payload.is_recurring,
             recurring_day=payload.recurring_day,
             subcategory_id=payload.subcategory_id,
+            account_id=payload.account_id,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(
-            status_code=400, detail="Category or subcategory does not exist"
+            status_code=400, detail="Category, subcategory or account does not exist"
         ) from None
     return CreatedOut(id=trans_id)
 
@@ -52,10 +53,11 @@ def update_transaction(trans_id: int, payload: TransactionIn) -> MessageOut:
             is_recurring=payload.is_recurring,
             recurring_day=payload.recurring_day,
             subcategory_id=payload.subcategory_id,
+            account_id=payload.account_id,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(
-            status_code=400, detail="Category or subcategory does not exist"
+            status_code=400, detail="Category, subcategory or account does not exist"
         ) from None
     return MessageOut(message="Transaction updated")
 

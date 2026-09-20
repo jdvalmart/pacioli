@@ -67,6 +67,7 @@ class TransactionIn(BaseModel):
     is_recurring: bool = False
     recurring_day: int | None = Field(default=None, ge=1, le=31)
     subcategory_id: int | None = None
+    account_id: int | None = None
 
 
 class TransactionOut(BaseModel):
@@ -87,6 +88,9 @@ class TransactionOut(BaseModel):
     category_type: str
     color: str
     icon: str
+    account_id: int | None
+    account_name: str | None
+    account_icon: str | None
 
 
 class BudgetIn(BaseModel):
@@ -116,6 +120,8 @@ class MonthlySummaryOut(BaseModel):
     total_income: Money
     total_expense: Money
     balance: Money
+    carryover: Money
+    accumulated_balance: Money
     by_category: dict[str, Money]
 
 
@@ -197,6 +203,35 @@ class ConnectionTestOut(BaseModel):
 
     success: bool
     message: str
+
+
+class AccountIn(BaseModel):
+    """Payload to create an account."""
+
+    name: str = Field(min_length=1, max_length=100)
+    type: Literal["efectivo", "digital", "ahorros", "banco"]
+    icon: str | None = None
+    color: str | None = None
+    initial_balance: Money = Decimal("0.00")
+
+
+class AccountUpdate(BaseModel):
+    """Payload to update an account (type is immutable)."""
+
+    name: str = Field(min_length=1, max_length=100)
+    initial_balance: Money = Decimal("0.00")
+
+
+class AccountOut(BaseModel):
+    """Account as returned by the API, with its computed balance."""
+
+    id: int
+    name: str
+    type: str
+    icon: str
+    color: str
+    initial_balance: Money
+    balance: Money
 
 
 class CreatedOut(BaseModel):

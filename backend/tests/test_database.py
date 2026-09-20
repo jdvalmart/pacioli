@@ -15,10 +15,13 @@ from app.database import (
     _migrate_v1_baseline,
     _migrate_v2_cents,
     _seed_defaults,
+    add_account,
     add_category,
     add_transaction,
+    delete_account,
     delete_category,
     ensure_recurring,
+    get_accounts,
     get_budget_vs_actual,
     get_budgets,
     get_categories,
@@ -29,6 +32,7 @@ from app.database import (
     init_db,
     set_budget,
     set_db_path,
+    update_account,
 )
 
 
@@ -260,7 +264,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -340,7 +344,7 @@ class TestMigrationV4:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
                 0
             ]
@@ -358,3 +362,77 @@ class TestMigrationV4:
         assert len(get_budgets(9, 2026)) == 1
         assert get_budgets(9, 2026)[0].amount == Decimal("3000.00")
         set_db_path(None)
+
+
+class TestCarryover:
+    """Tests for the running balance (carryover) in monthly summaries."""
+
+    def test_carryover_accumulates_previous_months(
+        self, temp_db: str, sample_category: int
+    ) -> None:
+        income_cat = add_category("Ingreso test", "income")
+
+        # September: income 1000, expense 300 -> balance 700
+        add_transaction(date(2026, 9, 10), Decimal("1000.00"), income_cat, "Salary")
+        add_transaction(date(2026, 9, 15), Decimal("300.00"), sample_category, "Rent")
+
+        # October: expense 500 -> balance -500
+        add_transaction(date(2026, 10, 5), Decimal("500.00"), sample_category, "Food")
+
+        september = get_monthly_summary(9, 2026)
+        assert september.carryover == Decimal("0.00")
+        assert september.accumulated_balance == Decimal("700.00")
+
+        october = get_monthly_summary(10, 2026)
+        assert october.carryover == Decimal("700.00")
+        assert october.balance == Decimal("-500.00")
+        assert october.accumulated_balance == Decimal("200.00")
+
+    def test_carryover_with_negative_balance(self, temp_db: str, sample_category: int) -> None:
+        add_transaction(date(2026, 9, 1), Decimal("100.00"), sample_category, "Debt")
+
+        october = get_monthly_summary(10, 2026)
+        assert october.carryover == Decimal("-100.00")
+        assert october.accumulated_balance == Decimal("-100.00")
+
+
+class TestAccounts:
+    """Tests for the accounts feature."""
+
+    def test_account_balance_from_initial_and_transactions(
+        self, temp_db: str, sample_category: int
+    ) -> None:
+        income_cat = add_category("Ingreso test", "income")
+        account_id = add_account("Billetera", "efectivo", Decimal("200.00"))
+
+        add_transaction(
+            date(2026, 9, 1), Decimal("1000.00"), income_cat, "Salary", account_id=account_id
+        )
+        add_transaction(
+            date(2026, 9, 2), Decimal("300.00"), sample_category, "Rent", account_id=account_id
+        )
+        # A transaction not linked to the account must not affect it.
+        add_transaction(date(2026, 9, 3), Decimal("999.00"), sample_category, "Other")
+
+        accounts = get_accounts()
+        assert len(accounts) == 1
+        assert accounts[0].initial_balance == Decimal("200.00")
+        assert accounts[0].balance == Decimal("900.00")
+
+    def test_account_type_defaults(self, temp_db: str) -> None:
+        account_id = add_account("Nequi", "digital", Decimal("0.00"))
+        accounts = get_accounts()
+        account = next(a for a in accounts if a.id == account_id)
+        assert account.icon == "📱"
+        assert account.color == "#3B82F6"
+
+    def test_update_and_delete_account(self, temp_db: str) -> None:
+        account_id = add_account("Ahorro", "ahorros", Decimal("50.00"))
+        update_account(account_id, "Ahorro grande", Decimal("100.00"))
+
+        accounts = get_accounts()
+        assert accounts[0].name == "Ahorro grande"
+        assert accounts[0].initial_balance == Decimal("100.00")
+
+        delete_account(account_id)
+        assert get_accounts() == []
