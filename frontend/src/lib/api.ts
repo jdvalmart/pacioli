@@ -100,15 +100,12 @@ export const api = {
 
   // Accounts
   listAccounts: () => request<Account[]>('/accounts'),
-  createAccount: (payload: {
-    name: string
-    type: AccountType
-    initial_balance: string
-  }) => request<{ id: number }>('/accounts', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }),
-  updateAccount: (id: number, payload: { name: string; initial_balance: string }) =>
+  createAccount: (payload: { name: string; type: AccountType; starting_amount: string }) =>
+    request<{ id: number }>('/accounts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAccount: (id: number, payload: { name: string }) =>
     request<{ message: string }>(`/accounts/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),

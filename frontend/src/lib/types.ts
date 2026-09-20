@@ -62,7 +62,6 @@ export interface Account {
   type: AccountType
   icon: string
   color: string
-  initial_balance: string
   balance: string
 }
 

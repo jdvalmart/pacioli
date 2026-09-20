@@ -74,20 +74,17 @@ function AccountFormBody({
   const queryClient = useQueryClient()
   const [name, setName] = useState(account?.name ?? '')
   const [type, setType] = useState<AccountType>(account?.type ?? 'efectivo')
-  const [initialBalance, setInitialBalance] = useState(account?.initial_balance ?? '')
+  const [startingAmount, setStartingAmount] = useState('')
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (account) {
-        await api.updateAccount(account.id, {
-          name,
-          initial_balance: normalizeAmount(initialBalance || '0'),
-        })
+        await api.updateAccount(account.id, { name })
       } else {
         await api.createAccount({
           name,
           type,
-          initial_balance: normalizeAmount(initialBalance || '0'),
+          starting_amount: normalizeAmount(startingAmount || '0'),
         })
       }
     },
@@ -95,6 +92,8 @@ function AccountFormBody({
       toast.success(account ? 'Cuenta actualizada' : 'Cuenta creada')
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      void queryClient.invalidateQueries({ queryKey: ['summary'] })
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -109,7 +108,7 @@ function AccountFormBody({
       <DialogHeader>
         <DialogTitle>{account ? 'Editar cuenta' : 'Nueva cuenta'}</DialogTitle>
         <DialogDescription>
-          El saldo se calcula solo: balance inicial más los movimientos que le asignes.
+          El saldo se calcula solo con los movimientos que le asignes.
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -124,36 +123,39 @@ function AccountFormBody({
           />
         </div>
         {!account && (
-          <div className="space-y-1.5">
-            <Label>Tipo</Label>
-            <Select value={type} onValueChange={(v) => setType((v ?? 'efectivo') as AccountType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ACCOUNT_TYPES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.icon} {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <>
+            <div className="space-y-1.5">
+              <Label>Tipo</Label>
+              <Select
+                value={type}
+                onValueChange={(v) => setType((v ?? 'efectivo') as AccountType)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACCOUNT_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.icon} {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="acc-start">Dinero inicial (opcional)</Label>
+              <Input
+                id="acc-start"
+                placeholder="0"
+                value={startingAmount}
+                onChange={(e) => setStartingAmount(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Se registra como ingreso de este mes en &quot;Otros ingresos&quot;.
+              </p>
+            </div>
+          </>
         )}
-        <div className="space-y-1.5">
-          <Label htmlFor="acc-balance">Balance inicial</Label>
-          <Input
-            id="acc-balance"
-            placeholder="0"
-            value={initialBalance}
-            onChange={(e) => setInitialBalance(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            {account
-              ? 'Solo cambia el punto de partida; los movimientos siguen sumando.'
-              : 'Dinero que ya tenías ahí antes de registrarlo en Pacioli.'}
-          </p>
-        </div>
         <Button type="submit" className="w-full" disabled={mutation.isPending}>
           {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
