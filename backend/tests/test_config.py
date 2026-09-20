@@ -28,7 +28,7 @@ class TestConfigManager:
         assert isinstance(config, AppConfig)
         assert isinstance(config.ai, AIConfig)
         assert config.ai.model == "qwen2.5:3b"
-        assert config.ai.timeout == 30
+        assert config.ai.timeout == 120
         assert config.theme == "dark"
 
     def test_save_and_load_config(self, config_manager: ConfigManager) -> None:
@@ -85,9 +85,10 @@ class TestConfigManager:
         config = AIConfig()
         assert config.model == "qwen2.5:3b"
         assert config.url == "http://localhost:11434/api/generate"
-        assert config.timeout == 30
-        assert config.temperature == 0.7
-        assert config.max_tokens == 400
+        assert config.timeout == 120
+        assert config.temperature == 0.5
+        assert config.max_tokens == 1024
+        assert config.think == "low"
 
     def test_app_config_defaults(self) -> None:
         config = AppConfig()

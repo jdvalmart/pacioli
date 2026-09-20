@@ -147,6 +147,58 @@ class MaterializeResult(BaseModel):
     created: int
 
 
+class ChatMessageIn(BaseModel):
+    """A chat question addressed to the AI assistant."""
+
+    question: str = Field(min_length=1, max_length=2000)
+    month: int = Field(ge=1, le=12)
+    year: int = Field(ge=2000, le=2100)
+
+
+class ChatMessageOut(BaseModel):
+    """A stored chat message."""
+
+    role: str
+    message: str
+    created_at: str
+
+
+class ChatReply(BaseModel):
+    """Answer from the AI assistant, or an error."""
+
+    answer: str
+    error: str | None = None
+
+
+class AIConfigOut(BaseModel):
+    """AI service configuration as returned by the API."""
+
+    model: str
+    url: str
+    timeout: int
+    temperature: float
+    max_tokens: int
+    think: str
+
+
+class AIConfigIn(BaseModel):
+    """Payload to update the AI service configuration."""
+
+    model: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=500)
+    timeout: int = Field(ge=1, le=600)
+    temperature: float = Field(ge=0, le=2)
+    max_tokens: int = Field(ge=16, le=8192)
+    think: Literal["off", "low", "medium", "high"] = "low"
+
+
+class ConnectionTestOut(BaseModel):
+    """Result of a connection test against the AI service."""
+
+    success: bool
+    message: str
+
+
 class CreatedOut(BaseModel):
     """Generic response with the id of a created resource."""
 

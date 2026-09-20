@@ -15,13 +15,20 @@ from app.logging_config import logger
 
 @dataclass
 class AIConfig:
-    """AI service configuration."""
+    """AI service configuration.
+
+    ``think`` controls the reasoning effort of thinking models
+    (Qwen3, DeepSeek-R1); non-thinking models ignore it. ``max_tokens``
+    is the total generation budget: thinking models consume part of it
+    with internal reasoning, so the default is generous.
+    """
 
     model: str = "qwen2.5:3b"
     url: str = "http://localhost:11434/api/generate"
-    timeout: int = 30
-    temperature: float = 0.7
-    max_tokens: int = 400
+    timeout: int = 120
+    temperature: float = 0.5
+    max_tokens: int = 1024
+    think: str = "low"
 
 
 @dataclass
@@ -64,12 +71,14 @@ class ConfigManager:
     def _parse_config(self, data: dict[str, Any]) -> AppConfig:
         """Build an AppConfig from a raw JSON dict, tolerating missing keys."""
         ai_data = data.get("ai", {})
+        defaults = AIConfig()
         ai_config = AIConfig(
-            model=ai_data.get("model", "qwen2.5:3b"),
-            url=ai_data.get("url", "http://localhost:11434/api/generate"),
-            timeout=ai_data.get("timeout", 30),
-            temperature=ai_data.get("temperature", 0.7),
-            max_tokens=ai_data.get("max_tokens", 400),
+            model=ai_data.get("model", defaults.model),
+            url=ai_data.get("url", defaults.url),
+            timeout=ai_data.get("timeout", defaults.timeout),
+            temperature=ai_data.get("temperature", defaults.temperature),
+            max_tokens=ai_data.get("max_tokens", defaults.max_tokens),
+            think=ai_data.get("think", defaults.think),
         )
         return AppConfig(
             ai=ai_config,

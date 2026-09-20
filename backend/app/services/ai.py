@@ -80,6 +80,10 @@ class AIService:
         """Initialize the service with the current configuration."""
         self.config = config_manager.get_ai_config()
 
+    def reload_config(self) -> None:
+        """Refresh the configuration from disk (after user changes)."""
+        self.config = config_manager.get_ai_config()
+
     def _make_request(self, prompt: str, system: str = "") -> AIResponse:
         """Make a request to the Ollama API.
 
@@ -96,6 +100,7 @@ class AIService:
             "prompt": prompt,
             "system": system,
             "stream": False,
+            "think": self.config.think,
             "options": {
                 "temperature": self.config.temperature,
                 "num_predict": self.config.max_tokens,

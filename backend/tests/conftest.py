@@ -1,5 +1,7 @@
 """Shared fixtures for API tests."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -18,3 +20,19 @@ def client(tmp_path):
     with TestClient(app) as c:
         yield c
     set_db_path(None)
+
+
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Isolate the global config manager so tests never touch the real config.
+
+    config_manager is a module-level singleton; this fixture repoints
+    it to a temp directory and resets it to defaults before each test.
+    """
+    from app.config import AppConfig, config_manager
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    config_manager.config_dir = tmp_path / "pacioli"
+    config_manager.config_file = config_manager.config_dir / "config.json"
+    config_manager.config = AppConfig()
+    yield

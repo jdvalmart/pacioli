@@ -924,7 +924,7 @@ def get_chat_history(month: int, year: int, limit: int = 50) -> list[dict[str, A
         cursor = conn.cursor()
         cursor.execute(
             "SELECT role, message, created_at FROM chat_history "
-            "WHERE month = ? AND year = ? ORDER BY created_at DESC LIMIT ?",
+            "WHERE month = ? AND year = ? ORDER BY created_at DESC, id DESC LIMIT ?",
             (month, year, limit),
         )
         return [dict(row) for row in reversed(cursor.fetchall())]

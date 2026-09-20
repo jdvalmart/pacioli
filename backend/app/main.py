@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import auto_backup, init_db
-from app.routers import budgets, categories, reports, transactions
+from app.routers import ai, budgets, categories, chat, reports, transactions
 
 
 @asynccontextmanager
@@ -35,6 +35,8 @@ app.include_router(categories.router)
 app.include_router(transactions.router)
 app.include_router(budgets.router)
 app.include_router(reports.router)
+app.include_router(chat.router)
+app.include_router(ai.router)
 
 
 @app.get("/health")

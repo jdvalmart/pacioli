@@ -1,9 +1,10 @@
-import { ChevronLeft, ChevronRight, Landmark, LayoutDashboard, PiggyBank, ReceiptText, Tags, ChartColumnBig } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Landmark, LayoutDashboard, PiggyBank, ReceiptText, Tags, ChartColumnBig, MessageSquare } from 'lucide-react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import { BudgetsPage } from '@/pages/BudgetsPage'
 import { CategoriesPage } from '@/pages/CategoriesPage'
+import { ChatPage } from '@/pages/ChatPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { TransactionsPage } from '@/pages/TransactionsPage'
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
   { to: '/budgets', label: 'Presupuestos', icon: PiggyBank },
   { to: '/categories', label: 'Categorías', icon: Tags },
   { to: '/reports', label: 'Reportes', icon: ChartColumnBig },
+  { to: '/chat', label: 'Asistente', icon: MessageSquare },
 ]
 
 export default function App() {
@@ -82,6 +84,7 @@ export default function App() {
             <Route path="/budgets" element={<BudgetsPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/chat" element={<ChatPage />} />
           </Routes>
         </main>
       </div>
