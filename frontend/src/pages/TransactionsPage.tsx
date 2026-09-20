@@ -79,9 +79,7 @@ function TransactionFormBody({
   const [subcategoryId, setSubcategoryId] = useState(
     transaction?.subcategory_id ? String(transaction.subcategory_id) : 'none',
   )
-  const [accountId, setAccountId] = useState(
-    transaction?.account_id ? String(transaction.account_id) : 'none',
-  )
+  const [accountId, setAccountId] = useState(transaction ? String(transaction.account_id ?? '') : '')
   const [description, setDescription] = useState(transaction?.description ?? '')
   const [isRecurring, setIsRecurring] = useState(transaction?.is_recurring ?? false)
   const [recurringDay, setRecurringDay] = useState(String(transaction?.recurring_day ?? 1))
@@ -117,12 +115,16 @@ function TransactionFormBody({
       toast.error('Selecciona una categoría')
       return
     }
+    if (!accountId) {
+      toast.error('Selecciona una cuenta — todo movimiento sale o entra a una cuenta')
+      return
+    }
     mutation.mutate({
       date,
       amount: normalizeAmount(amount),
       category_id: Number(categoryId),
       subcategory_id: subcategoryId === 'none' ? null : Number(subcategoryId),
-      account_id: accountId === 'none' ? null : Number(accountId),
+      account_id: Number(accountId),
       description,
       is_recurring: isRecurring,
       recurring_day: isRecurring ? Number(recurringDay) : null,
@@ -221,23 +223,31 @@ function TransactionFormBody({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Cuenta (opcional)</Label>
-            <Select value={accountId} onValueChange={(v) => setAccountId(v ?? 'none')}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sin cuenta" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin cuenta</SelectItem>
-                {(accounts.data ?? []).map((account) => (
-                  <SelectItem key={account.id} value={String(account.id)}>
-                    {account.icon} {account.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              El movimiento afectará el saldo de esa cuenta.
-            </p>
+            <Label>Cuenta</Label>
+            {(accounts.data ?? []).length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
+                Aún no tienes cuentas. Crea una en el Dashboard (billetera, banco,
+                ahorros…) para poder registrar movimientos.
+              </div>
+            ) : (
+              <>
+                <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una cuenta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(accounts.data ?? []).map((account) => (
+                      <SelectItem key={account.id} value={String(account.id)}>
+                        {account.icon} {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  De dónde sale o a dónde entra el dinero.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -266,7 +276,11 @@ function TransactionFormBody({
             </div>
           )}
 
-        <Button type="submit" className="w-full" disabled={mutation.isPending}>
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={mutation.isPending || (accounts.data ?? []).length === 0}
+        >
           {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
       </form>
@@ -380,7 +394,14 @@ export function TransactionsPage() {
                     </span>
                   )}
                 </TableCell>
-                <TableCell className="max-w-64 truncate">{tx.description || '—'}</TableCell>
+                <TableCell className="max-w-64 truncate">
+                  <div className="truncate">{tx.description || '—'}</div>
+                  {tx.account_name && (
+                    <div className="mt-0.5 truncate text-xs font-bold text-muted-foreground">
+                      {tx.account_icon} {tx.account_name}
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell
                   className={`text-right font-medium ${
                     tx.category_type === 'income' ? 'text-emerald-600' : 'text-red-600'

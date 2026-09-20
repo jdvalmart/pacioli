@@ -47,11 +47,11 @@ export interface TransactionInput {
   date: string
   amount: string
   category_id: number
+  account_id: number
   description?: string
   is_recurring?: boolean
   recurring_day?: number | null
   subcategory_id?: number | null
-  account_id?: number | null
 }
 
 export type AccountType = 'efectivo' | 'digital' | 'ahorros' | 'banco'
