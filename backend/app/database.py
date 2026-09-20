@@ -152,6 +152,10 @@ class Transaction:
     subcategory_name: str | None = None
     subcategory_icon: str | None = None
     generated_from: int | None = None  # Recurring template that generated it
+    category_name: str | None = None  # Joined from categories
+    category_type: str | None = None
+    color: str | None = None
+    icon: str | None = None
 
 
 @dataclass
@@ -1026,33 +1030,41 @@ def get_desc_learnings_context(category: str) -> str:
 # ── CSV export ────────────────────────────────────────────────
 
 
-def export_transactions_csv(month: int, year: int, filepath: str) -> None:
-    """Export the transactions of a month to CSV."""
+def transactions_to_csv(month: int, year: int) -> str:
+    """Build the CSV content of the transactions of a month."""
     import csv
+    import io
 
     txns = get_transactions(month, year)
     cat_map = {c.id: c for c in get_categories()}
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        ["Fecha", "Categoría", "Subcategoría", "Tipo", "Monto", "Descripción", "Recurrente"]
+    )
+    for t in txns:
+        cat = cat_map.get(t.category_id)
+        cat_name = cat.name if cat else "—"
+        cat_type = cat.type if cat else "—"
+        sub_name = t.subcategory_name or ""
         writer.writerow(
-            ["Fecha", "Categoría", "Subcategoría", "Tipo", "Monto", "Descripción", "Recurrente"]
+            [
+                t.date,
+                cat_name,
+                sub_name,
+                cat_type,
+                str(t.amount),
+                t.description or "",
+                "Sí" if (t.is_recurring or t.generated_from) else "No",
+            ]
         )
-        for t in txns:
-            cat = cat_map.get(t.category_id)
-            cat_name = cat.name if cat else "—"
-            cat_type = cat.type if cat else "—"
-            sub_name = t.subcategory_name or ""
-            writer.writerow(
-                [
-                    t.date,
-                    cat_name,
-                    sub_name,
-                    cat_type,
-                    str(t.amount),
-                    t.description or "",
-                    "Sí" if (t.is_recurring or t.generated_from) else "No",
-                ]
-            )
+    return buffer.getvalue()
+
+
+def export_transactions_csv(month: int, year: int, filepath: str) -> None:
+    """Write the transactions of a month to a CSV file."""
+    with open(filepath, "w", newline="", encoding="utf-8") as f:
+        f.write(transactions_to_csv(month, year))
 
 
 # ── Automatic backups ─────────────────────────────────────────
