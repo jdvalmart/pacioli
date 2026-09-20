@@ -5,10 +5,12 @@ import tempfile
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from app.database import (
+    LEGACY_DB_PATH,
     add_category,
     add_transaction,
     delete_category,
@@ -176,3 +178,16 @@ class TestCategories:
 
         with pytest.raises(ValueError, match="No se puede eliminar"):
             delete_category(sample_category)
+
+
+class TestPaths:
+    """Tests for path resolution."""
+
+    def test_legacy_db_path_points_to_repo_data_dir(self) -> None:
+        """The legacy database lives at <repo>/data/budget.db.
+
+        Regresion guard: the path is built with relative hops from the
+        app package and must land inside the repository, not its parent.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        assert Path(LEGACY_DB_PATH) == repo_root / "data" / "budget.db"

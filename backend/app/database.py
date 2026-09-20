@@ -38,7 +38,7 @@ def _default_data_dir() -> str:
 
 # Historical location (repo/data/budget.db); imported once if present.
 LEGACY_DB_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "budget.db")
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "budget.db")
 )
 
 DEFAULT_DB_PATH = os.path.join(_default_data_dir(), "pacioli.db")

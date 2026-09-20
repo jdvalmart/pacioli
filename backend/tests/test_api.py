@@ -86,7 +86,9 @@ class TestSubcategories:
     """Tests for subcategory endpoints."""
 
     def test_list_subcategories_of_category(self, client: TestClient) -> None:
-        servicios = next(c for c in client.get("/api/categories").json() if c["name"] == "Servicios")
+        servicios = next(
+            c for c in client.get("/api/categories").json() if c["name"] == "Servicios"
+        )
         response = client.get(f"/api/categories/{servicios['id']}/subcategories")
         assert response.status_code == 200
         names = {s["name"] for s in response.json()}
@@ -232,7 +234,8 @@ class TestBudgets:
     def test_delete_budget(self, client: TestClient) -> None:
         cat_id = _create_category(client)
         client.put(
-            "/api/budgets", json={"category_id": cat_id, "month": 1, "year": 2026, "amount": "500.00"}
+            "/api/budgets",
+            json={"category_id": cat_id, "month": 1, "year": 2026, "amount": "500.00"},
         )
 
         response = client.delete(f"/api/budgets?category_id={cat_id}&month=1&year=2026")
@@ -245,9 +248,9 @@ class TestReports:
 
     def test_monthly_summary(self, client: TestClient) -> None:
         expense_cat = _create_category(client, "Gasto")
-        income_cat = client.post("/api/categories", json={"name": "Ingreso", "type": "income"}).json()[
-            "id"
-        ]
+        income_cat = client.post(
+            "/api/categories", json={"name": "Ingreso", "type": "income"}
+        ).json()["id"]
 
         _create_transaction(client, expense_cat, date="2026-01-05", amount="150.00")
         _create_transaction(client, income_cat, date="2026-01-10", amount="1000.00")
@@ -277,7 +280,8 @@ class TestReports:
     def test_budget_vs_actual(self, client: TestClient) -> None:
         cat_id = _create_category(client)
         client.put(
-            "/api/budgets", json={"category_id": cat_id, "month": 1, "year": 2026, "amount": "1000.00"}
+            "/api/budgets",
+            json={"category_id": cat_id, "month": 1, "year": 2026, "amount": "1000.00"},
         )
         _create_transaction(client, cat_id, amount="250.00")
 
