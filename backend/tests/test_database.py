@@ -285,7 +285,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -365,7 +365,7 @@ class TestMigrationV4:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
                 0
             ]
@@ -581,7 +581,7 @@ class TestMigrationV7:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
             rows = conn.execute("SELECT kind FROM transactions ORDER BY id").fetchall()
             assert [r[0] for r in rows] == ["ingreso", "gasto"]
         set_db_path(None)
@@ -652,3 +652,95 @@ class TestCreditCards:
 
         delete_credit_card(card_id)
         assert get_credit_cards() == []
+
+
+class TestCardPayments:
+    """Tests for credit card payments."""
+
+    def test_payment_reduces_debt_and_restores_credit(
+        self, temp_db: str, sample_category: int
+    ) -> None:
+        card_id = add_credit_card("Visa", Decimal("1000000.00"), 15, 30)
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        income_cat = add_category("Ingreso test", "income")
+        add_transaction(
+            date(2026, 9, 1),
+            Decimal("3000000.00"),
+            income_cat,
+            "Salary",
+            kind="ingreso",
+            account_id=account_id,
+        )
+
+        add_transaction(
+            date(2026, 9, 10),
+            Decimal("400000.00"),
+            sample_category,
+            "TC compras",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+        add_transaction(
+            date(2026, 9, 18),
+            Decimal("400000.00"),
+            account_id=account_id,
+            kind="pago_tc",
+            card_id=card_id,
+        )
+
+        today = date(2026, 9, 20)  # after the cutoff (day 15)
+        cards = get_credit_cards(today=today)
+        assert cards[0].spent == Decimal("400000.00")
+        assert cards[0].paid == Decimal("400000.00")
+        assert cards[0].debt == Decimal("0.00")
+        assert cards[0].available == Decimal("1000000.00")
+
+        accounts = {a.name: a for a in get_accounts()}
+        assert accounts["Banco"].balance == Decimal("2600000.00")
+
+    def test_partial_payment_keeps_debt(self, temp_db: str, sample_category: int) -> None:
+        card_id = add_credit_card("Mastercard", Decimal("1000000.00"), 15, 30)
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        income_cat = add_category("Ingreso test", "income")
+        add_transaction(
+            date(2026, 9, 1),
+            Decimal("3000000.00"),
+            income_cat,
+            "Salary",
+            kind="ingreso",
+            account_id=account_id,
+        )
+
+        add_transaction(
+            date(2026, 9, 10),
+            Decimal("400000.00"),
+            sample_category,
+            "TC compras",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+        add_transaction(
+            date(2026, 9, 18),
+            Decimal("100000.00"),
+            account_id=account_id,
+            kind="pago_tc",
+            card_id=card_id,
+        )
+
+        cards = get_credit_cards(today=date(2026, 9, 20))
+        assert cards[0].debt == Decimal("300000.00")
+        assert cards[0].available == Decimal("700000.00")
+
+    def test_debt_zero_before_cutoff(self, temp_db: str, sample_category: int) -> None:
+        card_id = add_credit_card("Visa", Decimal("1000000.00"), 20, 30)
+        add_transaction(
+            date(2026, 9, 10),
+            Decimal("400000.00"),
+            sample_category,
+            "TC compras",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+
+        cards = get_credit_cards(today=date(2026, 9, 15))  # before the cutoff (day 20)
+        assert cards[0].debt == Decimal("0.00")

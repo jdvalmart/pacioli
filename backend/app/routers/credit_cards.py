@@ -13,7 +13,7 @@ router = APIRouter(prefix="/credit-cards", tags=["credit-cards"])
 
 @router.get("", response_model=list[CreditCardOut])
 def list_cards() -> list[CreditCardOut]:
-    """List all credit cards with spending and available credit."""
+    """List all credit cards with spending, payments, debt and available credit."""
     return [
         CreditCardOut(
             id=c.id or 0,
@@ -22,6 +22,8 @@ def list_cards() -> list[CreditCardOut]:
             cutoff_day=c.cutoff_day,
             payment_day=c.payment_day,
             spent=c.spent or Decimal("0.00"),
+            paid=c.paid or Decimal("0.00"),
+            debt=c.debt or Decimal("0.00"),
             available=c.available or c.limit,
         )
         for c in db.get_credit_cards()

@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _default_data_dir() -> str:
@@ -212,8 +212,9 @@ ACCOUNT_TYPE_DEFAULTS = {
 class CreditCard:
     """A credit card with a spending limit and billing cycle days.
 
-    ``spent`` and ``available`` are always derived from the card's
-    gasto_tc transactions of the current month.
+    ``spent`` and ``paid`` are the current month's totals; ``debt`` is
+    the net of the closed billing cycle (only payable after the cutoff
+    day) and ``available`` is the remaining credit.
     """
 
     id: int | None
@@ -222,6 +223,8 @@ class CreditCard:
     cutoff_day: int
     payment_day: int
     spent: Decimal | None = None
+    paid: Decimal | None = None
+    debt: Decimal | None = None
     available: Decimal | None = None
 
 
@@ -761,6 +764,65 @@ def _migrate_v8_credit_cards(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA user_version = 8")
 
 
+def _migrate_v9_payment_kind(conn: sqlite3.Connection) -> None:
+    """v8 -> v9: allow the pago_tc kind (credit card payments).
+
+    SQLite cannot alter CHECK constraints, so the transactions table
+    is rebuilt with the expanded kind list. Payments pull money from
+    an account and reduce the card's debt.
+    """
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = OFF")
+
+    cursor.execute("DROP TABLE IF EXISTS transactions_new")
+
+    cursor.execute("""
+        CREATE TABLE transactions_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            amount_cents INTEGER NOT NULL,
+            category_id INTEGER REFERENCES categories(id),
+            account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            to_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            kind TEXT NOT NULL DEFAULT 'gasto'
+                CHECK(kind IN ('ingreso', 'gasto', 'transferencia', 'gasto_tc', 'pago_tc')),
+            description TEXT DEFAULT '',
+            is_recurring INTEGER DEFAULT 0,
+            recurring_day INTEGER,
+            subcategory_id INTEGER REFERENCES subcategories(id),
+            generated_from INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+            card_id INTEGER REFERENCES credit_cards(id) ON DELETE SET NULL
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO transactions_new
+            (id, date, amount_cents, category_id, account_id, to_account_id, kind,
+             description, is_recurring, recurring_day, subcategory_id, generated_from, card_id)
+        SELECT id, date, amount_cents, category_id, account_id, to_account_id, kind,
+               description, is_recurring, recurring_day, subcategory_id, generated_from, card_id
+        FROM transactions
+    """)
+    cursor.execute("DROP TABLE transactions")
+    cursor.execute("ALTER TABLE transactions_new RENAME TO transactions")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transactions_generated ON transactions(generated_from)"
+    )
+
+    violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise sqlite3.IntegrityError(
+            f"Migration to v9: {len(violations)} FK violations: {violations[:5]}"
+        )
+
+    cursor.execute("PRAGMA user_version = 9")
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -877,6 +939,8 @@ def init_db() -> None:
             _migrate_v7_transaction_kinds(conn)
         if v < 8:
             _migrate_v8_credit_cards(conn)
+        if v < 9:
+            _migrate_v9_payment_kind(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -1277,7 +1341,7 @@ def get_accounts() -> list[Account]:
                        SELECT SUM(
                            CASE
                                WHEN t.kind = 'ingreso' THEN t.amount_cents
-                               WHEN t.kind = 'gasto' THEN -t.amount_cents
+                               WHEN t.kind IN ('gasto', 'pago_tc') THEN -t.amount_cents
                                WHEN t.kind = 'transferencia' THEN
                                    CASE WHEN t.account_id = a.id THEN -t.amount_cents
                                         WHEN t.to_account_id = a.id THEN t.amount_cents
@@ -1362,9 +1426,62 @@ def delete_account(account_id: int) -> None:
 # gasto_tc transactions linked to it.
 
 
-def _row_to_card(row: sqlite3.Row) -> CreditCard:
+def _closed_cycle_window(cutoff_day: int, today: date) -> tuple[date, date] | None:
+    """Return the (start, end] dates of the closed billing cycle.
+
+    The cycle runs from the previous cutoff (exclusive) to the current
+    cutoff (inclusive). None means the cycle is still open (today is
+    before this month's cutoff day).
+    """
+    current_days = calendar.monthrange(today.year, today.month)[1]
+    cutoff_this = date(today.year, today.month, min(cutoff_day, current_days))
+    if today < cutoff_this:
+        return None
+    if today.month == 1:
+        prev_year, prev_month = today.year - 1, 12
+    else:
+        prev_year, prev_month = today.year, today.month - 1
+    prev_days = calendar.monthrange(prev_year, prev_month)[1]
+    prev_cutoff = date(prev_year, prev_month, min(cutoff_day, prev_days))
+    return (prev_cutoff, cutoff_this)
+
+
+def _card_debt(conn: sqlite3.Connection, card_id: int, cutoff_day: int, today: date) -> Decimal:
+    """Return the net debt of a card in its closed cycle.
+
+    Spending belongs to the cycle that just closed (previous cutoff,
+    current cutoff]; payments made after the current cutoff reduce
+    that cycle's debt.
+    """
+    window = _closed_cycle_window(cutoff_day, today)
+    if window is None:
+        return Decimal("0.00")
+    prev_cutoff, cutoff_this = window
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(
+            CASE WHEN kind = 'gasto_tc' AND date > ? AND date <= ? THEN amount_cents
+                 WHEN kind = 'pago_tc' AND date > ? THEN -amount_cents
+                 ELSE 0 END
+        ), 0) as cents
+        FROM transactions
+        WHERE card_id = ? AND kind IN ('gasto_tc', 'pago_tc')
+    """,
+        (
+            prev_cutoff.isoformat(),
+            cutoff_this.isoformat(),
+            cutoff_this.isoformat(),
+            card_id,
+        ),
+    ).fetchone()
+    return _to_dec(row["cents"])
+
+
+def _row_to_card(row: sqlite3.Row, conn: sqlite3.Connection, today: date) -> CreditCard:
     limit = _to_dec(row["limit_cents"])
     spent = _to_dec(row["spent_cents"])
+    paid = _to_dec(row["paid_cents"])
+    debt = _card_debt(conn, row["id"], row["cutoff_day"], today)
     return CreditCard(
         id=row["id"],
         name=row["name"],
@@ -1372,15 +1489,17 @@ def _row_to_card(row: sqlite3.Row) -> CreditCard:
         cutoff_day=row["cutoff_day"],
         payment_day=row["payment_day"],
         spent=spent,
-        available=limit - spent,
+        paid=paid,
+        debt=debt,
+        available=limit - spent + paid,
     )
 
 
-def get_credit_cards() -> list[CreditCard]:
-    """Return all credit cards with this month's spending and available credit."""
+def get_credit_cards(today: date | None = None) -> list[CreditCard]:
+    """Return all credit cards with spending, payments, debt and available credit."""
+    today = today or date.today()
     with get_connection() as conn:
         cursor = conn.cursor()
-        today = date.today()
         start_date, end_date = _month_window(today.month, today.year)
         cursor.execute(
             """
@@ -1391,13 +1510,20 @@ def get_credit_cards() -> list[CreditCard]:
                        WHERE t.card_id = cc.id
                          AND t.kind = 'gasto_tc'
                          AND t.date >= ? AND t.date < ?
-                   ), 0) as spent_cents
+                   ), 0) as spent_cents,
+                   COALESCE((
+                       SELECT SUM(t.amount_cents)
+                       FROM transactions t
+                       WHERE t.card_id = cc.id
+                         AND t.kind = 'pago_tc'
+                         AND t.date >= ? AND t.date < ?
+                   ), 0) as paid_cents
             FROM credit_cards cc
             ORDER BY cc.created_at, cc.id
         """,
-            (start_date, end_date),
+            (start_date, end_date, start_date, end_date),
         )
-        return [_row_to_card(row) for row in cursor.fetchall()]
+        return [_row_to_card(row, conn, today) for row in cursor.fetchall()]
 
 
 def add_credit_card(
@@ -1721,6 +1847,7 @@ KIND_LABELS = {
     "gasto": "Gasto",
     "transferencia": "Transferencia",
     "gasto_tc": "Gasto TC",
+    "pago_tc": "Pago TC",
 }
 
 

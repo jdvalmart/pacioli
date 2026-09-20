@@ -68,7 +68,7 @@ class TransactionIn(BaseModel):
 
     date: date
     amount: Money = Field(gt=0)
-    kind: Literal["ingreso", "gasto", "transferencia", "gasto_tc"] = "gasto"
+    kind: Literal["ingreso", "gasto", "transferencia", "gasto_tc", "pago_tc"] = "gasto"
     category_id: int | None = None
     account_id: int | None = None
     to_account_id: int | None = None
@@ -263,8 +263,9 @@ class CreditCardIn(BaseModel):
 class CreditCardOut(BaseModel):
     """Credit card as returned by the API.
 
-    ``spent`` is this month's gasto_tc spending on the card and
-    ``available`` is the remaining credit (limit minus spent).
+    ``spent`` and ``paid`` are the current month's totals, ``debt`` is
+    the net of the closed billing cycle and ``available`` is the
+    remaining credit (limit minus net spending).
     """
 
     id: int
@@ -273,6 +274,8 @@ class CreditCardOut(BaseModel):
     cutoff_day: int
     payment_day: int
     spent: Money
+    paid: Money
+    debt: Money
     available: Money
 
 

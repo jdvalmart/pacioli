@@ -1,6 +1,8 @@
 """Transaction endpoints, including recurring materialization."""
 
 import sqlite3
+from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -8,6 +10,11 @@ from app import database as db
 from app.schemas import CreatedOut, MaterializeResult, MessageOut, TransactionIn, TransactionOut
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+def _today() -> date:
+    """Return today's date (isolated for test monkeypatching)."""
+    return date.today()
 
 
 def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
@@ -22,6 +29,40 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
             )
         if payload.account_id == payload.to_account_id:
             raise HTTPException(status_code=400, detail="Transfer accounts must be different")
+        return
+
+    if kind == "pago_tc":
+        if payload.account_id is None or payload.card_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Card payments require account_id (source) and card_id",
+            )
+        cards = {c.id: c for c in db.get_credit_cards(today=_today())}
+        card = cards.get(payload.card_id)
+        if card is None:
+            raise HTTPException(status_code=400, detail="Credit card does not exist")
+        if _today().day < card.cutoff_day:
+            raise HTTPException(
+                status_code=400,
+                detail=f"The card can only be paid after the cutoff (day {card.cutoff_day})",
+            )
+        debt = card.debt or Decimal("0.00")
+        if debt <= 0:
+            raise HTTPException(status_code=400, detail="Nothing to pay on this card")
+        if payload.amount > debt:
+            raise HTTPException(
+                status_code=400,
+                detail=f"The amount exceeds the current debt ({debt})",
+            )
+        accounts = {a.id: a for a in db.get_accounts()}
+        source = accounts.get(payload.account_id)
+        if source is None:
+            raise HTTPException(status_code=400, detail="Source account does not exist")
+        if (source.balance or Decimal("0.00")) < payload.amount:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient balance in the source account",
+            )
         return
 
     if payload.category_id is None:

@@ -518,3 +518,183 @@ class TestCreditCards:
 
         assert client.delete(f"/api/credit-cards/{card_id}").status_code == 200
         assert client.get("/api/credit-cards").json() == []
+
+
+class TestCardPayments:
+    """Tests for the credit card payment flow."""
+
+    def test_pay_card_moves_money_and_clears_debt(self, client: TestClient, monkeypatch) -> None:
+        from datetime import date as _date
+
+        class FakeDate:
+            @staticmethod
+            def today() -> _date:
+                return _date(2026, 9, 20)
+
+        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+
+        card_id = client.post(
+            "/api/credit-cards",
+            json={"name": "Visa", "limit": "1000000.00", "cutoff_day": 15, "payment_day": 30},
+        ).json()["id"]
+        account_id = client.post(
+            "/api/accounts",
+            json={"name": "Banco", "type": "banco", "starting_amount": "3000000.00"},
+        ).json()["id"]
+        expense_cat = client.post(
+            "/api/categories", json={"name": "Gasto", "type": "expense"}
+        ).json()["id"]
+
+        client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-10",
+                "amount": "400000.00",
+                "kind": "gasto_tc",
+                "category_id": expense_cat,
+                "card_id": card_id,
+            },
+        )
+
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-18",
+                "amount": "400000.00",
+                "kind": "pago_tc",
+                "account_id": account_id,
+                "card_id": card_id,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+        cards = client.get("/api/credit-cards").json()
+        assert cards[0]["debt"] == "0.00"
+        assert cards[0]["paid"] == "400000.00"
+
+        accounts = client.get("/api/accounts").json()
+        assert accounts[0]["balance"] == "2600000.00"
+
+    def test_payment_rejected_without_funds(self, client: TestClient, monkeypatch) -> None:
+        from datetime import date as _date
+
+        class FakeDate:
+            @staticmethod
+            def today() -> _date:
+                return _date(2026, 9, 20)
+
+        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+
+        card_id = client.post(
+            "/api/credit-cards",
+            json={"name": "Visa", "limit": "1000000.00", "cutoff_day": 15, "payment_day": 30},
+        ).json()["id"]
+        account_id = client.post(
+            "/api/accounts",
+            json={"name": "Billetera", "type": "efectivo", "starting_amount": "0.00"},
+        ).json()["id"]
+        expense_cat = client.post(
+            "/api/categories", json={"name": "Gasto", "type": "expense"}
+        ).json()["id"]
+
+        client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-10",
+                "amount": "400000.00",
+                "kind": "gasto_tc",
+                "category_id": expense_cat,
+                "card_id": card_id,
+            },
+        )
+
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-18",
+                "amount": "400000.00",
+                "kind": "pago_tc",
+                "account_id": account_id,
+                "card_id": card_id,
+            },
+        )
+        assert response.status_code == 400
+        assert "Insufficient balance" in response.json()["detail"]
+
+    def test_payment_rejected_before_cutoff(self, client: TestClient, monkeypatch) -> None:
+        from datetime import date as _date
+
+        class FakeDate:
+            @staticmethod
+            def today() -> _date:
+                return _date(2026, 9, 10)  # before the cutoff (day 15)
+
+        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+
+        card_id = client.post(
+            "/api/credit-cards",
+            json={"name": "Visa", "limit": "1000000.00", "cutoff_day": 15, "payment_day": 30},
+        ).json()["id"]
+        account_id = client.post(
+            "/api/accounts",
+            json={"name": "Banco", "type": "banco", "starting_amount": "3000000.00"},
+        ).json()["id"]
+
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-10",
+                "amount": "100.00",
+                "kind": "pago_tc",
+                "account_id": account_id,
+                "card_id": card_id,
+            },
+        )
+        assert response.status_code == 400
+        assert "after the cutoff" in response.json()["detail"]
+
+    def test_payment_exceeding_debt_rejected(self, client: TestClient, monkeypatch) -> None:
+        from datetime import date as _date
+
+        class FakeDate:
+            @staticmethod
+            def today() -> _date:
+                return _date(2026, 9, 20)
+
+        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+
+        card_id = client.post(
+            "/api/credit-cards",
+            json={"name": "Visa", "limit": "1000000.00", "cutoff_day": 15, "payment_day": 30},
+        ).json()["id"]
+        account_id = client.post(
+            "/api/accounts",
+            json={"name": "Banco", "type": "banco", "starting_amount": "3000000.00"},
+        ).json()["id"]
+        expense_cat = client.post(
+            "/api/categories", json={"name": "Gasto", "type": "expense"}
+        ).json()["id"]
+
+        client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-10",
+                "amount": "100000.00",
+                "kind": "gasto_tc",
+                "category_id": expense_cat,
+                "card_id": card_id,
+            },
+        )
+
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-18",
+                "amount": "200000.00",
+                "kind": "pago_tc",
+                "account_id": account_id,
+                "card_id": card_id,
+            },
+        )
+        assert response.status_code == 400
+        assert "exceeds the current debt" in response.json()["detail"]
