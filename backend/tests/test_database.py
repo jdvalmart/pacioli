@@ -1,6 +1,7 @@
 """Tests for the SQLite data layer."""
 
 import os
+import sqlite3
 import tempfile
 from collections.abc import Iterator
 from datetime import date
@@ -11,6 +12,9 @@ import pytest
 
 from app.database import (
     LEGACY_DB_PATH,
+    _migrate_v1_baseline,
+    _migrate_v2_cents,
+    _seed_defaults,
     add_category,
     add_transaction,
     delete_category,
@@ -18,7 +22,9 @@ from app.database import (
     get_budget_vs_actual,
     get_budgets,
     get_categories,
+    get_connection,
     get_monthly_summary,
+    get_subcategories,
     get_transactions,
     init_db,
     set_budget,
@@ -171,6 +177,12 @@ class TestCategories:
         assert "Vivienda" in names
         assert "Salario" in names
 
+    def test_default_subcategories_seeded(self, temp_db: str) -> None:
+        categories = get_categories()
+        alimentacion = next(c for c in categories if c.name == "Alimentación")
+        subs = {s.name for s in get_subcategories(alimentacion.id or 0)}
+        assert {"Supermercado", "No perecederos", "Verduras", "Carne", "Aseo"} <= subs
+
     def test_delete_category_with_transactions_raises(
         self, temp_db: str, sample_category: int
     ) -> None:
@@ -191,3 +203,95 @@ class TestPaths:
         """
         repo_root = Path(__file__).resolve().parents[2]
         assert Path(LEGACY_DB_PATH) == repo_root / "data" / "budget.db"
+
+
+class TestMigrationV3:
+    """Tests for the subcategory dedupe migration."""
+
+    def _build_legacy_db(self, db_path: Path) -> None:
+        """Build a desktop-era database with duplicated subcategories."""
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        _migrate_v1_baseline(conn)
+        _migrate_v2_cents(conn)
+        conn.commit()
+
+        # Rebuild subcategories without the UNIQUE constraint, as the
+        # pre-v1 desktop schema had it.
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("""
+            CREATE TABLE subcategories_legacy (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                icon TEXT DEFAULT '📁',
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("INSERT INTO subcategories_legacy SELECT * FROM subcategories")
+        conn.execute("DROP TABLE subcategories")
+        conn.execute("ALTER TABLE subcategories_legacy RENAME TO subcategories")
+        conn.execute("PRAGMA foreign_keys = ON")
+
+        # Two extra seeds reproduce the duplicated rows of legacy DBs.
+        _seed_defaults(conn)
+        _seed_defaults(conn)
+        conn.execute("PRAGMA user_version = 2")
+        conn.commit()
+        conn.close()
+
+    def test_dedupes_and_restores_constraint(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "legacy.db"
+        set_db_path(db_path)
+        self._build_legacy_db(db_path)
+
+        init_db()
+
+        with get_connection() as conn:
+            dupes = conn.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT 1 FROM subcategories
+                    GROUP BY category_id, name HAVING COUNT(*) > 1
+                )
+            """).fetchone()[0]
+            assert dupes == 0
+
+            schema = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name='subcategories'"
+            ).fetchone()[0]
+            assert "UNIQUE(category_id, name)" in schema
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        set_db_path(None)
+
+    def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "legacy.db"
+        set_db_path(db_path)
+        self._build_legacy_db(db_path)
+
+        # Point a transaction at a duplicate id (the highest one).
+        conn = sqlite3.connect(db_path)
+        row = conn.execute("""
+            SELECT category_id, name, MAX(id) as dup, MIN(id) as keep
+            FROM subcategories
+            GROUP BY category_id, name
+            HAVING COUNT(*) > 1
+            LIMIT 1
+        """).fetchone()
+        conn.execute(
+            """
+            INSERT INTO transactions (date, amount_cents, category_id, description, subcategory_id)
+            VALUES ('2026-01-01', 1000, ?, 'test', ?)
+        """,
+            (row[0], row[2]),
+        )
+        conn.commit()
+        conn.close()
+
+        init_db()
+
+        with get_connection() as conn:
+            subcategory_id = conn.execute("""
+                SELECT subcategory_id FROM transactions WHERE description = 'test'
+            """).fetchone()[0]
+            assert subcategory_id == row[3]  # canonical (lowest) id
+        set_db_path(None)

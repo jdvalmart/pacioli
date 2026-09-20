@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _default_data_dir() -> str:
@@ -371,6 +371,68 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrate_v3_subcategory_dedup(conn: sqlite3.Connection) -> None:
+    """v2 -> v3: dedupe subcategories and enforce UNIQUE(category_id, name).
+
+    Desktop-era databases predate the unique constraint (their
+    ``subcategories`` table was created before the v1 baseline, which
+    ``CREATE TABLE IF NOT EXISTS`` never repaired). Every desktop
+    launch re-seeded the defaults, so legacy databases accumulate one
+    duplicate per launch.
+
+    The migration keeps the lowest id of each (category_id, name)
+    pair, repoints transactions from the duplicates to the canonical
+    row, deletes the duplicates and rebuilds the table with the
+    constraint.
+    """
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = OFF")
+
+    duplicates = cursor.execute("""
+        SELECT category_id, name, GROUP_CONCAT(id) as ids
+        FROM subcategories
+        GROUP BY category_id, name
+        HAVING COUNT(*) > 1
+    """).fetchall()
+    for row in duplicates:
+        ids = [int(x) for x in row["ids"].split(",")]
+        keep = min(ids)
+        for dup in ids:
+            if dup == keep:
+                continue
+            cursor.execute(
+                "UPDATE transactions SET subcategory_id = ? WHERE subcategory_id = ?",
+                (keep, dup),
+            )
+            cursor.execute("DELETE FROM subcategories WHERE id = ?", (dup,))
+
+    cursor.execute("""
+        CREATE TABLE subcategories_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            icon TEXT DEFAULT '📁',
+            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+            UNIQUE(category_id, name)
+        )
+    """)
+    cursor.execute(
+        "INSERT INTO subcategories_new (id, category_id, name, icon) "
+        "SELECT id, category_id, name, icon FROM subcategories"
+    )
+    cursor.execute("DROP TABLE subcategories")
+    cursor.execute("ALTER TABLE subcategories_new RENAME TO subcategories")
+
+    violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise sqlite3.IntegrityError(
+            f"Migration to v3: {len(violations)} FK violations: {violations[:5]}"
+        )
+
+    cursor.execute("PRAGMA user_version = 3")
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -415,6 +477,10 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
                 ("Supermercado", "🛒"),
                 ("Restaurantes", "🍽️"),
                 ("Domicilios", "🛵"),
+                ("No perecederos", "🥫"),
+                ("Verduras", "🥦"),
+                ("Carne", "🥩"),
+                ("Aseo", "🧼"),
             ],
         ),
         (
@@ -471,6 +537,8 @@ def init_db() -> None:
             _migrate_v1_baseline(conn)
         if v < 2:
             _migrate_v2_cents(conn)
+        if v < 3:
+            _migrate_v3_subcategory_dedup(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
