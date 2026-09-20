@@ -206,20 +206,23 @@ class ConnectionTestOut(BaseModel):
 
 
 class AccountIn(BaseModel):
-    """Payload to create an account."""
+    """Payload to create an account.
+
+    ``starting_amount`` becomes a linked income transaction so it
+    flows into income reports and the account balance.
+    """
 
     name: str = Field(min_length=1, max_length=100)
     type: Literal["efectivo", "digital", "ahorros", "banco"]
     icon: str | None = None
     color: str | None = None
-    initial_balance: Money = Decimal("0.00")
+    starting_amount: Money = Decimal("0.00")
 
 
 class AccountUpdate(BaseModel):
     """Payload to update an account (type is immutable)."""
 
     name: str = Field(min_length=1, max_length=100)
-    initial_balance: Money = Decimal("0.00")
 
 
 class AccountOut(BaseModel):
@@ -230,7 +233,6 @@ class AccountOut(BaseModel):
     type: str
     icon: str
     color: str
-    initial_balance: Money
     balance: Money
 
 

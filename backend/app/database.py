@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _default_data_dir() -> str:
@@ -176,8 +176,9 @@ class Budget:
 class Account:
     """A place where money lives (wallet, savings, bank...).
 
-    ``initial_balance`` seeds the account; ``balance`` is always
-    computed as initial plus the net of its linked transactions.
+    ``balance`` is always computed from the net (income minus expense)
+    of its linked transactions, including the "Saldo inicial" income
+    transaction created when the account was seeded with money.
     """
 
     id: int | None
@@ -185,7 +186,6 @@ class Account:
     type: str  # 'efectivo' | 'digital' | 'ahorros' | 'banco'
     icon: str
     color: str
-    initial_balance: Decimal
     balance: Decimal | None = None
 
 
@@ -548,6 +548,84 @@ def _migrate_v5_accounts(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA user_version = 5")
 
 
+def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
+    """v5 -> v6: drop the initial_balance column from accounts.
+
+    Starting money is now an ordinary income transaction ("Saldo
+    inicial: <name>") linked to the account, so it flows naturally
+    into income reports and the account balance. Any existing initial
+    balance is materialized as such a transaction before the column
+    is removed.
+    """
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = OFF")
+
+    income_cat = cursor.execute(
+        "SELECT id FROM categories WHERE type = 'income' AND name = 'Otros ingresos'"
+    ).fetchone()
+    if income_cat is None:
+        cursor.execute(
+            "INSERT INTO categories (name, type, color, icon) "
+            "VALUES ('Otros ingresos', 'income', '#065F46', '💵')"
+        )
+        assert cursor.lastrowid is not None
+        income_cat_id = cursor.lastrowid
+    else:
+        income_cat_id = income_cat["id"]
+
+    rows = []
+    has_initial_column = cursor.execute(
+        "SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'initial_balance_cents'"
+    ).fetchone()[0]
+    if has_initial_column:
+        rows = cursor.execute(
+            "SELECT id, name, initial_balance_cents, created_at FROM accounts "
+            "WHERE initial_balance_cents != 0"
+        ).fetchall()
+    for row in rows:
+        created_date = (row["created_at"] or "")[:10] or date.today().isoformat()
+        cursor.execute(
+            """
+            INSERT INTO transactions
+                (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id)
+            VALUES (?, ?, ?, ?, 0, NULL, NULL, ?)
+            """,
+            (
+                created_date,
+                row["initial_balance_cents"],
+                income_cat_id,
+                f"Saldo inicial: {row['name']}",
+                row["id"],
+            ),
+        )
+
+    cursor.execute("""
+        CREATE TABLE accounts_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL CHECK(type IN ('efectivo', 'digital', 'ahorros', 'banco')),
+            icon TEXT NOT NULL DEFAULT '💵',
+            color TEXT NOT NULL DEFAULT '#10B981',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute(
+        "INSERT INTO accounts_new (id, name, type, icon, color, created_at) "
+        "SELECT id, name, type, icon, color, created_at FROM accounts"
+    )
+    cursor.execute("DROP TABLE accounts")
+    cursor.execute("ALTER TABLE accounts_new RENAME TO accounts")
+
+    violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise sqlite3.IntegrityError(
+            f"Migration to v6: {len(violations)} FK violations: {violations[:5]}"
+        )
+
+    cursor.execute("PRAGMA user_version = 6")
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -658,6 +736,8 @@ def init_db() -> None:
             _migrate_v4_budget_constraint(conn)
         if v < 5:
             _migrate_v5_accounts(conn)
+        if v < 6:
+            _migrate_v6_account_starting_transactions(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -988,8 +1068,25 @@ def delete_budget(category_id: int, month: int, year: int) -> None:
 
 # ── Accounts ──────────────────────────────────────────────────
 # An account represents where the money lives. Its balance is always
-# derived: initial balance plus the net (income minus expense) of its
-# linked transactions.
+# derived from the net (income minus expense) of its linked
+# transactions. Money that already existed when the account was
+# created is a regular income transaction ("Saldo inicial: ...").
+
+
+def _ensure_income_category(conn: sqlite3.Connection) -> int:
+    """Return the id of the 'Otros ingresos' income category, creating it if missing."""
+    row = conn.execute(
+        "SELECT id FROM categories WHERE type = 'income' AND name = 'Otros ingresos'"
+    ).fetchone()
+    if row:
+        return int(row["id"])
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO categories (name, type, color, icon) "
+        "VALUES ('Otros ingresos', 'income', '#065F46', '💵')"
+    )
+    assert cursor.lastrowid is not None
+    return cursor.lastrowid
 
 
 def _row_to_account(row: sqlite3.Row) -> Account:
@@ -999,7 +1096,6 @@ def _row_to_account(row: sqlite3.Row) -> Account:
         type=row["type"],
         icon=row["icon"],
         color=row["color"],
-        initial_balance=_to_dec(row["initial_balance_cents"]),
         balance=_to_dec(row["balance_cents"]),
     )
 
@@ -1010,7 +1106,6 @@ def get_accounts() -> list[Account]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT a.*,
-                   COALESCE(a.initial_balance_cents, 0) +
                    COALESCE((
                        SELECT SUM(CASE WHEN c.type = 'income' THEN t.amount_cents
                                        ELSE -t.amount_cents END)
@@ -1027,39 +1122,54 @@ def get_accounts() -> list[Account]:
 def add_account(
     name: str,
     acct_type: str,
-    initial_balance: Decimal | float | int,
+    starting_amount: Decimal | float | int,
     icon: str | None = None,
     color: str | None = None,
 ) -> int:
-    """Create an account and return its id."""
+    """Create an account and return its id.
+
+    If ``starting_amount`` is positive, a linked income transaction
+    ("Saldo inicial: <name>") is created so the money counts as
+    income and as part of the account balance.
+    """
     default_icon, default_color = ACCOUNT_TYPE_DEFAULTS.get(acct_type, ("💵", "#10B981"))
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO accounts (name, type, icon, color, initial_balance_cents)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO accounts (name, type, icon, color)
+            VALUES (?, ?, ?, ?)
             """,
-            (
-                name,
-                acct_type,
-                icon or default_icon,
-                color or default_color,
-                _to_cents(initial_balance),
-            ),
+            (name, acct_type, icon or default_icon, color or default_color),
         )
+        account_id = int(cursor.lastrowid)
+
+        cents = _to_cents(starting_amount)
+        if cents > 0:
+            income_cat_id = _ensure_income_category(conn)
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                    (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id)
+                VALUES (?, ?, ?, ?, 0, NULL, NULL, ?)
+                """,
+                (
+                    date.today().isoformat(),
+                    cents,
+                    income_cat_id,
+                    f"Saldo inicial: {name}",
+                    account_id,
+                ),
+            )
         conn.commit()
-        return int(cursor.lastrowid)
+        return account_id
 
 
-def update_account(account_id: int, name: str, initial_balance: Decimal | float | int) -> None:
-    """Update an account's name and initial balance."""
+def update_account(account_id: int, name: str) -> None:
+    """Update an account's name."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE accounts SET name = ?, initial_balance_cents = ? WHERE id = ?",
-            (name, _to_cents(initial_balance), account_id),
-        )
+        cursor.execute("UPDATE accounts SET name = ? WHERE id = ?", (name, account_id))
         conn.commit()
 
 

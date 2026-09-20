@@ -264,7 +264,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -344,7 +344,7 @@ class TestMigrationV4:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
                 0
             ]
@@ -399,7 +399,7 @@ class TestCarryover:
 class TestAccounts:
     """Tests for the accounts feature."""
 
-    def test_account_balance_from_initial_and_transactions(
+    def test_account_starting_amount_becomes_income_transaction(
         self, temp_db: str, sample_category: int
     ) -> None:
         income_cat = add_category("Ingreso test", "income")
@@ -416,23 +416,28 @@ class TestAccounts:
 
         accounts = get_accounts()
         assert len(accounts) == 1
-        assert accounts[0].initial_balance == Decimal("200.00")
+        # Starting 200 (income) + 1000 income - 300 expense = 900
         assert accounts[0].balance == Decimal("900.00")
 
-    def test_account_type_defaults(self, temp_db: str) -> None:
+        # The starting money is a real transaction in Otros ingresos.
+        summary = get_monthly_summary(9, 2026)
+        assert summary.total_income == Decimal("1200.00")
+
+    def test_account_without_starting_amount(self, temp_db: str) -> None:
         account_id = add_account("Nequi", "digital", Decimal("0.00"))
         accounts = get_accounts()
         account = next(a for a in accounts if a.id == account_id)
         assert account.icon == "📱"
         assert account.color == "#3B82F6"
+        assert account.balance == Decimal("0.00")
 
     def test_update_and_delete_account(self, temp_db: str) -> None:
         account_id = add_account("Ahorro", "ahorros", Decimal("50.00"))
-        update_account(account_id, "Ahorro grande", Decimal("100.00"))
+        update_account(account_id, "Ahorro grande")
 
         accounts = get_accounts()
         assert accounts[0].name == "Ahorro grande"
-        assert accounts[0].initial_balance == Decimal("100.00")
+        assert accounts[0].balance == Decimal("50.00")
 
         delete_account(account_id)
         assert get_accounts() == []

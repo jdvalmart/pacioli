@@ -1,6 +1,7 @@
 """Account endpoints: where the money lives."""
 
 import sqlite3
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 
@@ -20,8 +21,7 @@ def list_accounts() -> list[AccountOut]:
             type=a.type,
             icon=a.icon,
             color=a.color,
-            initial_balance=a.initial_balance,
-            balance=a.balance or a.initial_balance,
+            balance=a.balance or Decimal("0.00"),
         )
         for a in db.get_accounts()
     ]
@@ -29,12 +29,12 @@ def list_accounts() -> list[AccountOut]:
 
 @router.post("", response_model=CreatedOut, status_code=201)
 def create_account(payload: AccountIn) -> CreatedOut:
-    """Create an account."""
+    """Create an account, seeding it with an income transaction if money is provided."""
     try:
         account_id = db.add_account(
             name=payload.name,
             acct_type=payload.type,
-            initial_balance=payload.initial_balance,
+            starting_amount=payload.starting_amount,
             icon=payload.icon,
             color=payload.color,
         )
@@ -47,8 +47,8 @@ def create_account(payload: AccountIn) -> CreatedOut:
 
 @router.put("/{account_id}", response_model=MessageOut)
 def update_account(account_id: int, payload: AccountUpdate) -> MessageOut:
-    """Update an account's name and initial balance."""
-    db.update_account(account_id, payload.name, payload.initial_balance)
+    """Update an account's name."""
+    db.update_account(account_id, payload.name)
     return MessageOut(message="Account updated")
 
 

@@ -312,7 +312,7 @@ class TestAccounts:
     def test_create_and_list_accounts(self, client: TestClient) -> None:
         response = client.post(
             "/api/accounts",
-            json={"name": "Billetera", "type": "efectivo", "initial_balance": "200.00"},
+            json={"name": "Billetera", "type": "efectivo", "starting_amount": "200.00"},
         )
         assert response.status_code == 201
 
@@ -322,10 +322,24 @@ class TestAccounts:
         assert accounts[0]["icon"] == "💵"
         assert accounts[0]["balance"] == "200.00"
 
+    def test_starting_amount_counts_as_income(self, client: TestClient) -> None:
+        client.post(
+            "/api/accounts",
+            json={"name": "Ahorros", "type": "ahorros", "starting_amount": "500.00"},
+        )
+
+        summary = client.get("/api/reports/summary?month=9&year=2026").json()
+        assert summary["total_income"] == "500.00"
+
+        transactions = client.get("/api/transactions?month=9&year=2026").json()
+        assert len(transactions) == 1
+        assert transactions[0]["description"] == "Saldo inicial: Ahorros"
+        assert transactions[0]["category_type"] == "income"
+
     def test_account_balance_reflects_transactions(self, client: TestClient) -> None:
         account_id = client.post(
             "/api/accounts",
-            json={"name": "Nequi", "type": "digital", "initial_balance": "100.00"},
+            json={"name": "Nequi", "type": "digital", "starting_amount": "100.00"},
         ).json()["id"]
         income_cat = client.post(
             "/api/categories", json={"name": "Ingreso", "type": "income"}
@@ -357,33 +371,31 @@ class TestAccounts:
         assert accounts[0]["balance"] == "450.00"
 
         transactions = client.get("/api/transactions?month=9&year=2026").json()
-        assert all(t["account_id"] == account_id for t in transactions)
-        assert transactions[0]["account_name"] == "Nequi"
+        linked = [t for t in transactions if t["account_id"] == account_id]
+        assert len(linked) == 3  # starting amount + the two movements
+        assert all(t["account_name"] == "Nequi" for t in linked)
 
     def test_duplicate_account_name_conflict(self, client: TestClient) -> None:
         client.post(
-            "/api/accounts", json={"name": "Ahorro", "type": "ahorros", "initial_balance": "0.00"}
+            "/api/accounts", json={"name": "Ahorro", "type": "ahorros", "starting_amount": "0.00"}
         )
         response = client.post(
-            "/api/accounts", json={"name": "Ahorro", "type": "ahorros", "initial_balance": "0.00"}
+            "/api/accounts", json={"name": "Ahorro", "type": "ahorros", "starting_amount": "0.00"}
         )
         assert response.status_code == 409
 
     def test_update_and_delete_account(self, client: TestClient) -> None:
         account_id = client.post(
             "/api/accounts",
-            json={"name": "Banco", "type": "banco", "initial_balance": "1000.00"},
+            json={"name": "Banco", "type": "banco", "starting_amount": "1000.00"},
         ).json()["id"]
 
-        response = client.put(
-            f"/api/accounts/{account_id}",
-            json={"name": "Banco principal", "initial_balance": "2000.00"},
-        )
+        response = client.put(f"/api/accounts/{account_id}", json={"name": "Banco principal"})
         assert response.status_code == 200
 
         accounts = client.get("/api/accounts").json()
         assert accounts[0]["name"] == "Banco principal"
-        assert accounts[0]["initial_balance"] == "2000.00"
+        assert accounts[0]["balance"] == "1000.00"
 
         assert client.delete(f"/api/accounts/{account_id}").status_code == 200
         assert client.get("/api/accounts").json() == []
