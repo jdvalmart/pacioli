@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  CreditCard,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
+import { useSearchParams } from 'react-router-dom'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,7 +50,39 @@ import {
 import { useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
-import type { Transaction, TransactionInput } from '@/lib/types'
+import type { Transaction, TransactionInput, TransactionKind } from '@/lib/types'
+
+const KIND_OPTIONS: {
+  value: TransactionKind
+  label: string
+  icon: typeof ArrowDownLeft
+  activeClass: string
+}[] = [
+  {
+    value: 'ingreso',
+    label: 'Ingreso',
+    icon: ArrowDownLeft,
+    activeClass: 'bg-emerald-500 border-emerald-700 text-white shadow-[0_4px_0_0_#047857]',
+  },
+  {
+    value: 'gasto',
+    label: 'Gasto',
+    icon: ArrowUpRight,
+    activeClass: 'bg-rose-500 border-rose-700 text-white shadow-[0_4px_0_0_#be123c]',
+  },
+  {
+    value: 'transferencia',
+    label: 'Transferencia',
+    icon: ArrowLeftRight,
+    activeClass: 'bg-blue-500 border-blue-700 text-white shadow-[0_4px_0_0_#1d4ed8]',
+  },
+  {
+    value: 'gasto_tc',
+    label: 'Gasto TC',
+    icon: CreditCard,
+    activeClass: 'bg-orange-500 border-orange-700 text-white shadow-[0_4px_0_0_#c2410c]',
+  },
+]
 
 interface TransactionFormProps {
   open: boolean
@@ -71,18 +112,30 @@ function TransactionFormBody({
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
 
+  const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'gasto')
   const [date, setDate] = useState(
     transaction?.date ?? `${month.year}-${String(month.month).padStart(2, '0')}-15`,
   )
   const [amount, setAmount] = useState(transaction?.amount ?? '')
-  const [categoryId, setCategoryId] = useState(transaction ? String(transaction.category_id) : '')
+  const [categoryId, setCategoryId] = useState(
+    transaction?.category_id ? String(transaction.category_id) : '',
+  )
   const [subcategoryId, setSubcategoryId] = useState(
     transaction?.subcategory_id ? String(transaction.subcategory_id) : 'none',
   )
-  const [accountId, setAccountId] = useState(transaction ? String(transaction.account_id ?? '') : '')
+  const [accountId, setAccountId] = useState(
+    transaction?.account_id ? String(transaction.account_id) : '',
+  )
+  const [toAccountId, setToAccountId] = useState(
+    transaction?.to_account_id ? String(transaction.to_account_id) : '',
+  )
   const [description, setDescription] = useState(transaction?.description ?? '')
   const [isRecurring, setIsRecurring] = useState(transaction?.is_recurring ?? false)
   const [recurringDay, setRecurringDay] = useState(String(transaction?.recurring_day ?? 1))
+
+  const incomeCategories = (categories.data ?? []).filter((c) => c.type === 'income')
+  const expenseCategories = (categories.data ?? []).filter((c) => c.type === 'expense')
+  const visibleCategories = kind === 'ingreso' ? incomeCategories : expenseCategories
 
   const subcategories = useQuery({
     queryKey: ['subcategories', categoryId],
@@ -105,39 +158,64 @@ function TransactionFormBody({
       void queryClient.invalidateQueries({ queryKey: ['summary'] })
       void queryClient.invalidateQueries({ queryKey: ['categorySpending'] })
       void queryClient.invalidateQueries({ queryKey: ['budgetVsActual'] })
+      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
     },
     onError: (error: Error) => toast.error(error.message),
   })
 
+  const accountList = accounts.data ?? []
+  const hasAccounts = accountList.length > 0
+
+  const needsAccount = kind === 'ingreso' || kind === 'gasto'
+  const needsTwoAccounts = kind === 'transferencia'
+
+  const handleKindChange = (next: TransactionKind) => {
+    setKind(next)
+    setCategoryId('')
+    setSubcategoryId('none')
+  }
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!categoryId) {
+    if (kind !== 'transferencia' && !categoryId) {
       toast.error('Selecciona una categoría')
       return
     }
-    if (!accountId) {
+    if (needsAccount && !accountId) {
       toast.error('Selecciona una cuenta — todo movimiento sale o entra a una cuenta')
       return
+    }
+    if (needsTwoAccounts) {
+      if (!accountId || !toAccountId) {
+        toast.error('Selecciona la cuenta de origen y la de destino')
+        return
+      }
+      if (accountId === toAccountId) {
+        toast.error('La cuenta de origen y destino deben ser diferentes')
+        return
+      }
     }
     mutation.mutate({
       date,
       amount: normalizeAmount(amount),
-      category_id: Number(categoryId),
-      subcategory_id: subcategoryId === 'none' ? null : Number(subcategoryId),
-      account_id: Number(accountId),
+      kind,
+      category_id: kind === 'transferencia' ? null : Number(categoryId),
+      subcategory_id: kind === 'transferencia' || subcategoryId === 'none' ? null : Number(subcategoryId),
+      account_id: kind === 'gasto_tc' ? null : Number(accountId),
+      to_account_id: kind === 'transferencia' ? Number(toAccountId) : null,
       description,
       is_recurring: isRecurring,
       recurring_day: isRecurring ? Number(recurringDay) : null,
     })
   }
 
-  const selectedCategory = categories.data?.find((c) => String(c.id) === categoryId)
   const filteredSubcategories = subcategories.data ?? []
-  // Guard against a stale selection pointing at a subcategory that no
-  // longer belongs to the selected category (e.g. after switching).
   const subValue = filteredSubcategories.some((s) => String(s.id) === subcategoryId)
     ? subcategoryId
     : 'none'
+
+  const accountLabel =
+    kind === 'ingreso' ? 'Cuenta destino' : kind === 'gasto' ? 'Cuenta origen' : 'Cuenta'
 
   return (
     <>
@@ -147,139 +225,200 @@ function TransactionFormBody({
           {transaction ? 'Modifica los datos y guarda.' : 'Registra un movimiento del mes.'}
         </DialogDescription>
       </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="tx-date">Fecha</Label>
-              <Input
-                id="tx-date"
-                type="date"
-                required
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="tx-amount">Monto</Label>
-              <Input
-                id="tx-amount"
-                required
-                placeholder="50.000"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Categoría</Label>
-            <Select
-              value={categoryId}
-              onValueChange={(v) => {
-                setCategoryId(v ?? '')
-                setSubcategoryId('none')
-              }}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-4 gap-2">
+          {KIND_OPTIONS.map(({ value, label, icon: Icon, activeClass }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => handleKindChange(value)}
+              className={`flex flex-col items-center gap-1 rounded-xl border-2 px-2 py-2.5 text-xs font-bold transition-all ${
+                kind === value
+                  ? activeClass
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
+              }`}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona una categoría" />
-              </SelectTrigger>
-              <SelectContent>
-                {(categories.data ?? []).map((cat) => (
-                  <SelectItem key={cat.id} value={String(cat.id)}>
-                    {cat.icon} {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <Icon className="size-4" />
+              {label}
+            </button>
+          ))}
+        </div>
 
-          {selectedCategory && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="tx-date">Fecha</Label>
+            <Input
+              id="tx-date"
+              type="date"
+              required
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="tx-amount">Monto</Label>
+            <Input
+              id="tx-amount"
+              required
+              placeholder="50.000"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {kind === 'transferencia' ? (
+          <>
             <div className="space-y-1.5">
-              <Label>Subcategoría (opcional)</Label>
-              <Select value={subValue} onValueChange={(v) => setSubcategoryId(v ?? 'none')}>
+              <Label>Desde</Label>
+              <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Sin subcategoría" />
+                  <SelectValue placeholder="Cuenta de origen" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Sin subcategoría</SelectItem>
-                  {filteredSubcategories.map((sub) => (
-                    <SelectItem key={sub.id} value={String(sub.id)}>
-                      {sub.icon} {sub.name}
+                  {accountList.map((account) => (
+                    <SelectItem key={account.id} value={String(account.id)}>
+                      {account.icon} {account.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          )}
+            <div className="space-y-1.5">
+              <Label>Hacia</Label>
+              <Select value={toAccountId} onValueChange={(v) => setToAccountId(v ?? '')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Cuenta de destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountList.map((account) => (
+                    <SelectItem key={account.id} value={String(account.id)}>
+                      {account.icon} {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Mover dinero entre tus cuentas no afecta ingresos ni gastos.
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <Label>Categoría</Label>
+              <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? '')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona una categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {visibleCategories.map((cat) => (
+                    <SelectItem key={cat.id} value={String(cat.id)}>
+                      {cat.icon} {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="tx-description">Descripción</Label>
-            <Input
-              id="tx-description"
-              placeholder="Ej. Mercado semanal"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Cuenta</Label>
-            {(accounts.data ?? []).length === 0 ? (
-              <div className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
-                Aún no tienes cuentas. Crea una en el Dashboard (billetera, banco,
-                ahorros…) para poder registrar movimientos.
-              </div>
-            ) : (
-              <>
-                <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
+            {categoryId !== '' && kind !== 'gasto_tc' && (
+              <div className="space-y-1.5">
+                <Label>Subcategoría (opcional)</Label>
+                <Select value={subValue} onValueChange={(v) => setSubcategoryId(v ?? 'none')}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona una cuenta" />
+                    <SelectValue placeholder="Sin subcategoría" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(accounts.data ?? []).map((account) => (
-                      <SelectItem key={account.id} value={String(account.id)}>
-                        {account.icon} {account.name}
+                    <SelectItem value="none">Sin subcategoría</SelectItem>
+                    {filteredSubcategories.map((sub) => (
+                      <SelectItem key={sub.id} value={String(sub.id)}>
+                        {sub.icon} {sub.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  De dónde sale o a dónde entra el dinero.
-                </p>
-              </>
+              </div>
             )}
-          </div>
 
-          <div className="flex items-center gap-3">
-            <input
-              id="tx-recurring"
-              type="checkbox"
-              checked={isRecurring}
-              onChange={(e) => setIsRecurring(e.target.checked)}
+            {kind === 'gasto_tc' ? (
+              <div className="rounded-xl border-2 border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
+                💳 Se registrará como deuda de la tarjeta de crédito (próxima funcionalidad).
+                No afecta tus cuentas de efectivo.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>{accountLabel}</Label>
+                {!hasAccounts ? (
+                  <div className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
+                    Aún no tienes cuentas. Crea una en el Dashboard (billetera, banco,
+                    ahorros…) para poder registrar movimientos.
+                  </div>
+                ) : (
+                  <>
+                    <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona una cuenta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accountList.map((account) => (
+                          <SelectItem key={account.id} value={String(account.id)}>
+                            {account.icon} {account.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {kind === 'ingreso'
+                        ? 'A qué cuenta entra el dinero.'
+                        : 'De qué cuenta sale el dinero.'}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="space-y-1.5">
+          <Label htmlFor="tx-description">Descripción</Label>
+          <Input
+            id="tx-description"
+            placeholder="Ej. Mercado semanal"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <input
+            id="tx-recurring"
+            type="checkbox"
+            checked={isRecurring}
+            onChange={(e) => setIsRecurring(e.target.checked)}
+          />
+          <Label htmlFor="tx-recurring">Es recurrente (arriendo, servicios, ahorro…)</Label>
+        </div>
+        {isRecurring && (
+          <div className="space-y-1.5">
+            <Label htmlFor="tx-day">Día del mes</Label>
+            <Input
+              id="tx-day"
+              type="number"
+              min={1}
+              max={31}
+              value={recurringDay}
+              onChange={(e) => setRecurringDay(e.target.value)}
             />
-            <Label htmlFor="tx-recurring">Es recurrente (arriendo, servicios…)</Label>
+            <p className="text-xs text-muted-foreground">
+              Se creará automáticamente cada mes en este día.
+            </p>
           </div>
-          {isRecurring && (
-            <div className="space-y-1.5">
-              <Label htmlFor="tx-day">Día del mes</Label>
-              <Input
-                id="tx-day"
-                type="number"
-                min={1}
-                max={31}
-                value={recurringDay}
-                onChange={(e) => setRecurringDay(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Se creará automáticamente cada mes en este día.
-              </p>
-            </div>
-          )}
+        )}
 
         <Button
           type="submit"
           className="w-full"
-          disabled={mutation.isPending || (accounts.data ?? []).length === 0}
+          disabled={mutation.isPending || (needsAccount && !hasAccounts)}
         >
           {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
@@ -288,19 +427,35 @@ function TransactionFormBody({
   )
 }
 
+const KIND_BADGES: Record<TransactionKind, { label: string; className: string }> = {
+  ingreso: { label: 'Ingreso', className: 'bg-emerald-100 text-emerald-700' },
+  gasto: { label: 'Gasto', className: 'bg-rose-100 text-rose-700' },
+  transferencia: { label: 'Transferencia', className: 'bg-blue-100 text-blue-700' },
+  gasto_tc: { label: 'Gasto TC', className: 'bg-orange-100 text-orange-700' },
+}
+
 export function TransactionsPage() {
   const { month } = useMonth()
   const queryClient = useQueryClient()
-  const [formOpen, setFormOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // ?new=1 (from the dashboard button) opens the create form directly.
+  const [formOpen, setFormOpen] = useState(() => searchParams.get('new') === '1')
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
+
+  const handleFormOpenChange = (open: boolean) => {
+    setFormOpen(open)
+    if (!open && searchParams.get('new') === '1') {
+      searchParams.delete('new')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }
 
   const transactions = useQuery({
     queryKey: ['transactions', month],
     queryFn: () => api.listTransactions(month.month, month.year),
   })
 
-  // Materialize recurring templates whenever the month changes.
   useEffect(() => {
     let cancelled = false
     api
@@ -323,6 +478,7 @@ export function TransactionsPage() {
       setDeleting(null)
       void queryClient.invalidateQueries({ queryKey: ['transactions', month] })
       void queryClient.invalidateQueries({ queryKey: ['summary', month] })
+      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -336,12 +492,21 @@ export function TransactionsPage() {
     setFormOpen(true)
   }
 
+  const amountClass = (tx: Transaction) =>
+    tx.kind === 'ingreso'
+      ? 'text-emerald-600'
+      : tx.kind === 'transferencia'
+        ? 'text-blue-600'
+        : 'text-red-600'
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Transacciones</h1>
-          <p className="text-sm text-muted-foreground">Todos los movimientos del mes</p>
+          <h1 className="text-xl font-extrabold">Transacciones</h1>
+          <p className="text-sm font-semibold text-muted-foreground">
+            Todos los movimientos del mes
+          </p>
         </div>
         <Button onClick={openCreate}>
           <Plus /> Nueva transacción
@@ -353,8 +518,8 @@ export function TransactionsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Fecha</TableHead>
-              <TableHead>Categoría</TableHead>
-              <TableHead>Descripción</TableHead>
+              <TableHead>Movimiento</TableHead>
+              <TableHead>Detalle</TableHead>
               <TableHead className="text-right">Monto</TableHead>
               <TableHead className="w-24" />
             </TableRow>
@@ -381,33 +546,34 @@ export function TransactionsPage() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <span
-                    className="inline-block size-2.5 rounded-full align-middle"
-                    style={{ backgroundColor: tx.color || '#888' }}
-                  />
-                  <span className="ml-2">
-                    {tx.icon} {tx.category_name}
-                  </span>
-                  {tx.subcategory_name && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      · {tx.subcategory_name}
+                  <Badge className={KIND_BADGES[tx.kind]?.className ?? ''}>
+                    {KIND_BADGES[tx.kind]?.label ?? tx.kind}
+                  </Badge>
+                  {tx.kind !== 'transferencia' && (
+                    <span className="ml-2">
+                      <span
+                        className="inline-block size-2.5 rounded-full align-middle"
+                        style={{ backgroundColor: tx.color || '#888' }}
+                      />
+                      <span className="ml-1.5">
+                        {tx.icon} {tx.category_name}
+                      </span>
                     </span>
                   )}
                 </TableCell>
                 <TableCell className="max-w-64 truncate">
                   <div className="truncate">{tx.description || '—'}</div>
-                  {tx.account_name && (
-                    <div className="mt-0.5 truncate text-xs font-bold text-muted-foreground">
-                      {tx.account_icon} {tx.account_name}
-                    </div>
-                  )}
+                  <div className="mt-0.5 truncate text-xs font-bold text-muted-foreground">
+                    {tx.kind === 'transferencia'
+                      ? `${tx.account_icon} ${tx.account_name ?? '—'} → ${tx.to_account_icon} ${tx.to_account_name ?? '—'}`
+                      : tx.account_name
+                        ? `${tx.account_icon} ${tx.account_name}`
+                        : 'Tarjeta de crédito'}
+                    {tx.subcategory_name && ` · ${tx.subcategory_name}`}
+                  </div>
                 </TableCell>
-                <TableCell
-                  className={`text-right font-medium ${
-                    tx.category_type === 'income' ? 'text-emerald-600' : 'text-red-600'
-                  }`}
-                >
-                  {tx.category_type === 'income' ? '+' : '−'}
+                <TableCell className={`text-right font-bold ${amountClass(tx)}`}>
+                  {tx.kind === 'ingreso' ? '+' : tx.kind === 'transferencia' ? '⇄' : '−'}
                   {fmtCopDecimals(tx.amount)}
                 </TableCell>
                 <TableCell>
@@ -426,7 +592,11 @@ export function TransactionsPage() {
         </Table>
       </div>
 
-      <TransactionForm open={formOpen} onOpenChange={setFormOpen} transaction={editing} />
+      <TransactionForm
+        open={formOpen}
+        onOpenChange={handleFormOpenChange}
+        transaction={editing}
+      />
 
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>

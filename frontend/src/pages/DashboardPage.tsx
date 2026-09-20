@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowDownLeft, ArrowUpRight, Plus, Wallet } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { api } from '@/lib/api'
 import { fmtCop, fmtCopDecimals } from '@/lib/money'
 import { useMonth } from '@/hooks/useMonth'
 import { AccountsSection } from '@/components/AccountsSection'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -69,6 +71,15 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-extrabold">Resumen</h1>
+        <Link to="/transactions?new=1">
+          <Button>
+            <Plus /> Nueva transacción
+          </Button>
+        </Link>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-3">
         <SummaryCard
           title="Ingresos"

@@ -22,11 +22,14 @@ export interface Subcategory {
   icon: string
 }
 
+export type TransactionKind = 'ingreso' | 'gasto' | 'transferencia' | 'gasto_tc'
+
 export interface Transaction {
   id: number
   date: string
   amount: string
-  category_id: number
+  kind: TransactionKind
+  category_id: number | null
   description: string
   is_recurring: boolean
   recurring_day: number | null
@@ -34,20 +37,25 @@ export interface Transaction {
   subcategory_name: string | null
   subcategory_icon: string | null
   generated_from: number | null
-  category_name: string
-  category_type: CategoryType
-  color: string
-  icon: string
+  category_name: string | null
+  category_type: CategoryType | null
+  color: string | null
+  icon: string | null
   account_id: number | null
   account_name: string | null
   account_icon: string | null
+  to_account_id: number | null
+  to_account_name: string | null
+  to_account_icon: string | null
 }
 
 export interface TransactionInput {
   date: string
   amount: string
-  category_id: number
-  account_id: number
+  kind: TransactionKind
+  category_id: number | null
+  account_id: number | null
+  to_account_id: number | null
   description?: string
   is_recurring?: boolean
   recurring_day?: number | null
