@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _default_data_dir() -> str:
@@ -433,6 +433,52 @@ def _migrate_v3_subcategory_dedup(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrate_v4_budget_constraint(conn: sqlite3.Connection) -> None:
+    """v3 -> v4: rebuild budgets with UNIQUE(category_id, month, year).
+
+    Some desktop-era migration paths rebuilt the budgets table without
+    the unique constraint, so upserts fail with an ON CONFLICT
+    mismatch. The migration keeps the most recent row (highest id) of
+    each duplicate group and rebuilds the table with the constraint.
+    """
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = OFF")
+
+    # Last write wins: keep only the highest id per (category, month, year).
+    cursor.execute("""
+        DELETE FROM budgets
+        WHERE id NOT IN (
+            SELECT MAX(id) FROM budgets GROUP BY category_id, month, year
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE budgets_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL REFERENCES categories(id),
+            month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+            year INTEGER NOT NULL,
+            amount_cents INTEGER NOT NULL,
+            UNIQUE(category_id, month, year)
+        )
+    """)
+    cursor.execute(
+        "INSERT INTO budgets_new (id, category_id, month, year, amount_cents) "
+        "SELECT id, category_id, month, year, amount_cents FROM budgets"
+    )
+    cursor.execute("DROP TABLE budgets")
+    cursor.execute("ALTER TABLE budgets_new RENAME TO budgets")
+
+    violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise sqlite3.IntegrityError(
+            f"Migration to v4: {len(violations)} FK violations: {violations[:5]}"
+        )
+
+    cursor.execute("PRAGMA user_version = 4")
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -539,6 +585,8 @@ def init_db() -> None:
             _migrate_v2_cents(conn)
         if v < 3:
             _migrate_v3_subcategory_dedup(conn)
+        if v < 4:
+            _migrate_v4_budget_constraint(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()

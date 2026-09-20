@@ -260,7 +260,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -294,4 +294,67 @@ class TestMigrationV3:
                 SELECT subcategory_id FROM transactions WHERE description = 'test'
             """).fetchone()[0]
             assert subcategory_id == row[3]  # canonical (lowest) id
+        set_db_path(None)
+
+
+class TestMigrationV4:
+    """Tests for the budget constraint migration."""
+
+    def test_restores_budget_constraint_and_keeps_last_write(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "legacy.db"
+        set_db_path(db_path)
+        init_db()
+
+        # Simulate the broken desktop-era budgets table: no UNIQUE
+        # constraint, duplicates for the same (category, month, year).
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("""
+            CREATE TABLE budgets_broken (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                year INTEGER NOT NULL,
+                amount_cents INTEGER NOT NULL,
+                FOREIGN KEY (category_id) REFERENCES categories(id)
+            )
+        """)
+        conn.execute("INSERT INTO budgets_broken SELECT * FROM budgets")
+        conn.execute("DROP TABLE budgets")
+        conn.execute("ALTER TABLE budgets_broken RENAME TO budgets")
+        cat_id = conn.execute(
+            "SELECT id FROM categories WHERE type = 'expense' LIMIT 1"
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO budgets (category_id, month, year, amount_cents) VALUES (?, 9, 2026, 1000)",
+            (cat_id,),
+        )
+        conn.execute(
+            "INSERT INTO budgets (category_id, month, year, amount_cents) VALUES (?, 9, 2026, 2000)",
+            (cat_id,),
+        )
+        conn.execute("PRAGMA user_version = 3")
+        conn.commit()
+        conn.close()
+
+        init_db()
+
+        with get_connection() as conn:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+            schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
+                0
+            ]
+            assert "UNIQUE(category_id, month, year)" in schema
+
+            rows = conn.execute(
+                "SELECT amount_cents FROM budgets WHERE category_id = ? AND month = 9 AND year = 2026",
+                (cat_id,),
+            ).fetchall()
+            assert len(rows) == 1
+            assert rows[0][0] == 2000  # last write wins
+
+        # Upserts must work again after the migration.
+        set_budget(cat_id, 9, 2026, Decimal("3000.00"))
+        assert len(get_budgets(9, 2026)) == 1
+        assert get_budgets(9, 2026)[0].amount == Decimal("3000.00")
         set_db_path(None)
