@@ -785,8 +785,9 @@ class TestSavings:
         assert items[0].balance == Decimal("400000.00")
         assert items[0].target == Decimal("1000000.00")
 
+        # Savings movements are allocations: account balances stay put.
         accounts = {a.name: a for a in get_accounts()}
-        assert accounts["Banco"].balance == Decimal("2600000.00")
+        assert accounts["Banco"].balance == Decimal("3000000.00")
 
     def test_initial_deposit_recorded(self, temp_db: str) -> None:
         account_id = add_account("Banco", "banco", Decimal("1000000.00"))
@@ -801,7 +802,7 @@ class TestSavings:
         assert items[0].balance == Decimal("200000.00")
 
         accounts = {a.name: a for a in get_accounts()}
-        assert accounts["Banco"].balance == Decimal("800000.00")
+        assert accounts["Banco"].balance == Decimal("1000000.00")
 
     def test_programmed_pocket_creates_recurring_template(self, temp_db: str) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))

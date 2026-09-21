@@ -1472,8 +1472,11 @@ def _row_to_account(row: sqlite3.Row) -> Account:
 def get_accounts() -> list[Account]:
     """Return all accounts with their computed balance, oldest first.
 
-    Ingresos add to the account, gastos subtract, transfers move
-    money between two accounts and gastos_tc never touch cash.
+    Ingresos add to the account, gastos subtract and transfers move
+    money between two accounts. Savings movements (ahorro/retiro) are
+    allocations, not withdrawals: the money stays in the account
+    (e.g. a CDT is a product of the same bank), so they do not change
+    the balance. Gastos_tc never touch cash.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -1483,8 +1486,7 @@ def get_accounts() -> list[Account]:
                        SELECT SUM(
                            CASE
                                WHEN t.kind = 'ingreso' THEN t.amount_cents
-                               WHEN t.kind IN ('gasto', 'pago_tc', 'ahorro') THEN -t.amount_cents
-                               WHEN t.kind = 'retiro' THEN t.amount_cents
+                               WHEN t.kind IN ('gasto', 'pago_tc') THEN -t.amount_cents
                                WHEN t.kind = 'transferencia' THEN
                                    CASE WHEN t.account_id = a.id THEN -t.amount_cents
                                         WHEN t.to_account_id = a.id THEN t.amount_cents

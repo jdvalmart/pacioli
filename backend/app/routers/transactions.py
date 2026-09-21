@@ -72,23 +72,11 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
                 detail="Savings movements require account_id and savings_id",
             )
         items = {s.id: s for s in db.get_savings()}
-        item = items.get(payload.savings_id)
-        if item is None:
+        if items.get(payload.savings_id) is None:
             raise HTTPException(status_code=400, detail="Savings item does not exist")
         accounts = {a.id: a for a in db.get_accounts()}
-        source = accounts.get(payload.account_id)
-        if source is None:
+        if accounts.get(payload.account_id) is None:
             raise HTTPException(status_code=400, detail="Account does not exist")
-        if kind == "ahorro":
-            if (source.balance or Decimal("0.00")) < payload.amount:
-                raise HTTPException(
-                    status_code=400, detail="Insufficient balance in the source account"
-                )
-        else:
-            if (item.balance or Decimal("0.00")) < payload.amount:
-                raise HTTPException(
-                    status_code=400, detail="Insufficient balance in the savings item"
-                )
         return
 
     if payload.category_id is None:
