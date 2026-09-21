@@ -32,6 +32,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { fmtCopDecimals } from '@/lib/money'
+import { monthLabel, useMonth } from '@/hooks/useMonth'
 import type { Category, CategoryType } from '@/lib/types'
 
 const COLORS = ['#EF4444', '#F97316', '#EAB308', '#10B981', '#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F43F5E', '#6366F1']
@@ -167,7 +169,7 @@ function CategoryFormBody({
   )
 }
 
-function CategoryRow({ category }: { category: Category }) {
+function CategoryRow({ category, total }: { category: Category; total: number }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -209,17 +211,25 @@ function CategoryRow({ category }: { category: Category }) {
 
   return (
     <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-      <div className="flex items-center gap-2">
-        <span
-          className="size-3 rounded-full"
+      <div className="flex items-center gap-3">
+        <div
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl text-xl text-white shadow-[0_3px_0_0_rgba(0,0,0,0.25)]"
           style={{ backgroundColor: category.color || '#888' }}
-        />
-        <span className="text-lg">{category.icon}</span>
-        <span className="flex-1 font-medium">{category.name}</span>
-        <Button variant="ghost" size="icon" onClick={() => setEditing(true)}>
+        >
+          {category.icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold">{category.name}</p>
+          <p className="text-xs font-bold text-muted-foreground">
+            {total > 0
+              ? `Este mes: ${fmtCopDecimals(total)}`
+              : 'Sin movimientos este mes'}
+          </p>
+        </div>
+        <Button variant="ghost" size="icon-sm" onClick={() => setEditing(true)}>
           <Pencil />
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => setDeleting(true)}>
+        <Button variant="ghost" size="icon-sm" onClick={() => setDeleting(true)}>
           <Trash2 className="text-red-500" />
         </Button>
       </div>
@@ -303,20 +313,41 @@ function CategoryRow({ category }: { category: Category }) {
 }
 
 export function CategoriesPage() {
+  const { month } = useMonth()
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
+  const spendingExpense = useQuery({
+    queryKey: ['categorySpending', month, 'expense'],
+    queryFn: () => api.categorySpending(month.month, month.year, 'expense'),
+  })
+  const spendingIncome = useQuery({
+    queryKey: ['categorySpending', month, 'income'],
+    queryFn: () => api.categorySpending(month.month, month.year, 'income'),
+  })
   const [formOpen, setFormOpen] = useState(false)
   const [formType, setFormType] = useState<CategoryType>('expense')
 
-  const income = categories.data?.filter((c) => c.type === 'income') ?? []
-  const expense = categories.data?.filter((c) => c.type === 'expense') ?? []
+  const totals = new Map<string, number>([
+    ...(spendingExpense.data ?? []).map((row) => [row.name, Number(row.total)] as const),
+    ...(spendingIncome.data ?? []).map((row) => [row.name, Number(row.total)] as const),
+  ])
+
+  const sortByUsage = (a: Category, b: Category) => {
+    const totalA = totals.get(a.name) ?? 0
+    const totalB = totals.get(b.name) ?? 0
+    if (totalA !== totalB) return totalB - totalA
+    return a.name.localeCompare(b.name)
+  }
+
+  const income = (categories.data?.filter((c) => c.type === 'income') ?? []).sort(sortByUsage)
+  const expense = (categories.data?.filter((c) => c.type === 'expense') ?? []).sort(sortByUsage)
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Categorías</h1>
-          <p className="text-sm text-muted-foreground">
-            Organiza tus movimientos con categorías y subcategorías
+          <h1 className="text-xl font-extrabold">Categorías</h1>
+          <p className="text-sm font-semibold text-muted-foreground">
+            Organiza tus movimientos de {monthLabel(month)} con categorías y subcategorías
           </p>
         </div>
         <Button
@@ -336,7 +367,7 @@ export function CategoriesPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {income.map((cat) => (
-              <CategoryRow key={cat.id} category={cat} />
+              <CategoryRow key={cat.id} category={cat} total={totals.get(cat.name) ?? 0} />
             ))}
             <Button
               variant="outline"
@@ -357,7 +388,7 @@ export function CategoriesPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {expense.map((cat) => (
-              <CategoryRow key={cat.id} category={cat} />
+              <CategoryRow key={cat.id} category={cat} total={totals.get(cat.name) ?? 0} />
             ))}
             <Button
               variant="outline"
