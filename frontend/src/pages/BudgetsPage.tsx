@@ -1,19 +1,157 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Save, Trash2 } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
 import { fmtCop, fmtCopDecimals, normalizeAmount } from '@/lib/money'
 
-export function BudgetsPage() {
+function BudgetSetupDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const { month } = useMonth()
   const queryClient = useQueryClient()
+  const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
+  const budgets = useQuery({
+    queryKey: ['budgets', month],
+    queryFn: () => api.listBudgets(month.month, month.year),
+  })
+
+  const [total, setTotal] = useState('')
+  const [amounts, setAmounts] = useState<Record<string, string>>({})
+
+  const expenseCategories = categories.data?.filter((c) => c.type === 'expense') ?? []
+
+  // Initialize the form from the current budgets when it opens.
+  const [initialized, setInitialized] = useState(false)
+  if (open && !initialized && budgets.data) {
+    const map: Record<string, string> = {}
+    for (const b of budgets.data) {
+      map[String(b.category_id)] = b.amount
+    }
+    setAmounts(map)
+    setTotal(String(budgets.data.reduce((sum, b) => sum + Number(b.amount), 0)))
+    setInitialized(true)
+  }
+  if (!open && initialized) {
+    setInitialized(false)
+  }
+
+  const assigned = expenseCategories.reduce(
+    (sum, cat) => sum + Number(normalizeAmount(amounts[String(cat.id)] || '0')),
+    0,
+  )
+  const totalNum = Number(normalizeAmount(total || '0'))
+  const pending = totalNum - assigned
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.replaceBudgets({
+        month: month.month,
+        year: month.year,
+        budgets: expenseCategories
+          .filter((cat) => Number(normalizeAmount(amounts[String(cat.id)] || '0')) > 0)
+          .map((cat) => ({
+            category_id: cat.id,
+            amount: normalizeAmount(amounts[String(cat.id)]),
+          })),
+      }),
+    onSuccess: () => {
+      toast.success('Presupuesto establecido')
+      onOpenChange(false)
+      void queryClient.invalidateQueries({ queryKey: ['budgets', month] })
+      void queryClient.invalidateQueries({ queryKey: ['budgetVsActual', month] })
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        {open && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Establecer presupuesto</DialogTitle>
+              <DialogDescription>
+                Define tu presupuesto total y repártelo por categorías para{' '}
+                {monthLabel(month)}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="budget-total">Mi presupuesto total</Label>
+                <Input
+                  id="budget-total"
+                  placeholder="3.000.000"
+                  className="text-lg font-black"
+                  value={total}
+                  onChange={(e) => setTotal(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-sm font-bold">
+                <span>Asignado: {fmtCopDecimals(assigned)}</span>
+                <span className={pending < 0 ? 'text-rose-600' : 'text-muted-foreground'}>
+                  {pending >= 0
+                    ? `Por asignar: ${fmtCopDecimals(pending)}`
+                    : `Te pasaste por ${fmtCopDecimals(Math.abs(pending))}`}
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {expenseCategories.map((cat) => (
+                  <div key={cat.id} className="space-y-1.5">
+                    <Label htmlFor={`budget-${cat.id}`} className="flex items-center gap-1.5">
+                      <span>{cat.icon}</span> {cat.name}
+                    </Label>
+                    <Input
+                      id={`budget-${cat.id}`}
+                      placeholder="0"
+                      value={amounts[String(cat.id)] ?? ''}
+                      onChange={(e) =>
+                        setAmounts((prev) => ({ ...prev, [String(cat.id)]: e.target.value }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                type="button"
+                className="w-full"
+                disabled={mutation.isPending || assigned <= 0}
+                onClick={() => mutation.mutate()}
+              >
+                {mutation.isPending ? 'Guardando…' : 'Guardar presupuesto'}
+              </Button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function BudgetsPage() {
+  const { month } = useMonth()
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
   const budgets = useQuery({
     queryKey: ['budgets', month],
@@ -28,7 +166,7 @@ export function BudgetsPage() {
     queryFn: () => api.summary(month.month, month.year),
   })
 
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [setupOpen, setSetupOpen] = useState(false)
 
   const expenseCategories = categories.data?.filter((c) => c.type === 'expense') ?? []
   const budgetByCategory = new Map((budgets.data ?? []).map((b) => [b.category_id, b.amount]))
@@ -42,43 +180,18 @@ export function BudgetsPage() {
   const income = Number(summary.data?.total_income ?? 0)
   const unassigned = income - totalBudget
 
-  const saveMutation = useMutation({
-    mutationFn: ({ categoryId, amount }: { categoryId: number; amount: string }) =>
-      api.upsertBudget({ category_id: categoryId, month: month.month, year: month.year, amount }),
-    onSuccess: () => {
-      toast.success('Presupuesto guardado')
-      void queryClient.invalidateQueries({ queryKey: ['budgets', month] })
-      void queryClient.invalidateQueries({ queryKey: ['budgetVsActual', month] })
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (categoryId: number) => api.deleteBudget(categoryId, month.month, month.year),
-    onSuccess: () => {
-      toast.success('Presupuesto eliminado')
-      void queryClient.invalidateQueries({ queryKey: ['budgets', month] })
-      void queryClient.invalidateQueries({ queryKey: ['budgetVsActual', month] })
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
-
-  const handleSave = (categoryId: number) => {
-    const draft = drafts[String(categoryId)]
-    if (!draft || draft.trim() === '') {
-      toast.error('Ingresa un monto')
-      return
-    }
-    saveMutation.mutate({ categoryId, amount: normalizeAmount(draft) })
-  }
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-extrabold">Presupuestos</h1>
-        <p className="text-sm font-semibold text-muted-foreground">
-          Establece cuánto puedes gastar por categoría en {monthLabel(month)}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-extrabold">Presupuestos</h1>
+          <p className="text-sm font-semibold text-muted-foreground">
+            Establece cuánto puedes gastar por categoría en {monthLabel(month)}
+          </p>
+        </div>
+        <Button onClick={() => setSetupOpen(true)}>
+          <SlidersHorizontal /> Establecer presupuesto
+        </Button>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -132,7 +245,6 @@ export function BudgetsPage() {
           expenseCategories.map((category) => {
             const current = budgetByCategory.get(category.id) ?? ''
             const actual = actualByCategory.get(category.id) ?? '0'
-            const draft = drafts[String(category.id)] ?? current
             const hasBudget = current !== '' && Number(current) > 0
             const percent = hasBudget ? (Number(actual) / Number(current)) * 100 : 0
             const over = percent > 100
@@ -152,18 +264,9 @@ export function BudgetsPage() {
                     <p className="text-xs font-bold text-muted-foreground">
                       {hasBudget
                         ? `Gastado ${fmtCop(actual)} de ${fmtCop(current)}`
-                        : `Gastado ${fmtCop(actual)}`}
+                        : 'Sin presupuesto asignado'}
                     </p>
                   </div>
-                  {hasBudget && (
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => deleteMutation.mutate(category.id)}
-                    >
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
-                  )}
                 </div>
 
                 {hasBudget && (
@@ -183,29 +286,13 @@ export function BudgetsPage() {
                     </p>
                   </div>
                 )}
-
-                <div className="mt-3 flex gap-2">
-                  <Input
-                    placeholder="Ej. 800.000"
-                    value={draft}
-                    onChange={(e) =>
-                      setDrafts((prev) => ({ ...prev, [String(category.id)]: e.target.value }))
-                    }
-                  />
-                  <Button
-                    size="icon"
-                    aria-label={`Guardar presupuesto de ${category.name}`}
-                    onClick={() => handleSave(category.id)}
-                    disabled={saveMutation.isPending}
-                  >
-                    <Save />
-                  </Button>
-                </div>
               </Card>
             )
           })
         )}
       </div>
+
+      <BudgetSetupDialog open={setupOpen} onOpenChange={setSetupOpen} />
     </div>
   )
 }

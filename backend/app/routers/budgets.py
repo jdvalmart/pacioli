@@ -5,7 +5,7 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Query
 
 from app import database as db
-from app.schemas import BudgetIn, BudgetOut, MessageOut
+from app.schemas import BudgetBulkIn, BudgetIn, BudgetOut, MessageOut
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 
@@ -27,6 +27,20 @@ def upsert_budget(payload: BudgetIn) -> MessageOut:
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="Category does not exist") from None
     return MessageOut(message="Budget saved")
+
+
+@router.put("/bulk", response_model=MessageOut)
+def bulk_set_budgets(payload: BudgetBulkIn) -> MessageOut:
+    """Replace the full budget state of a month."""
+    try:
+        db.set_budgets_bulk(
+            payload.month,
+            payload.year,
+            [(item.category_id, item.amount) for item in payload.budgets],
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Category does not exist") from None
+    return MessageOut(message="Budgets saved")
 
 
 @router.delete("", response_model=MessageOut)

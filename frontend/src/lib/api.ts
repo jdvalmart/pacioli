@@ -95,6 +95,12 @@ export const api = {
     request<Budget[]>(`/budgets${query(month, year)}`),
   upsertBudget: (payload: { category_id: number; month: number; year: number; amount: string }) =>
     request<{ message: string }>('/budgets', { method: 'PUT', body: JSON.stringify(payload) }),
+  replaceBudgets: (payload: {
+    month: number
+    year: number
+    budgets: { category_id: number; amount: string }[]
+  }) =>
+    request<{ message: string }>('/budgets/bulk', { method: 'PUT', body: JSON.stringify(payload) }),
   deleteBudget: (categoryId: number, month: number, year: number) =>
     request<{ message: string }>(
       `/budgets?category_id=${categoryId}&month=${month}&year=${year}`,

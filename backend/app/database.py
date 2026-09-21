@@ -1406,6 +1406,24 @@ def set_budget(category_id: int, month: int, year: int, amount: Decimal | float 
         conn.commit()
 
 
+def set_budgets_bulk(month: int, year: int, items: list[tuple[int, Decimal | float | int]]) -> None:
+    """Replace the full budget state of a month.
+
+    Every existing budget of the month is removed and the provided
+    (category_id, amount) pairs are inserted. Used by the budget
+    setup form.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM budgets WHERE month = ? AND year = ?", (month, year))
+        for category_id, amount in items:
+            cursor.execute(
+                "INSERT INTO budgets (category_id, month, year, amount_cents) VALUES (?, ?, ?, ?)",
+                (category_id, month, year, _to_cents(amount)),
+            )
+        conn.commit()
+
+
 def delete_budget(category_id: int, month: int, year: int) -> None:
     """Delete the budget of a category for a month."""
     with get_connection() as conn:

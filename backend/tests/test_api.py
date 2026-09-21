@@ -799,3 +799,56 @@ class TestSavings:
 
         assert client.delete(f"/api/savings/{item_id}").status_code == 200
         assert client.get("/api/savings").json() == []
+
+
+class TestBudgetBulk:
+    """Tests for the bulk budget setup endpoint."""
+
+    def test_bulk_replaces_month_state(self, client: TestClient) -> None:
+        cat_a = client.post("/api/categories", json={"name": "Cat A", "type": "expense"}).json()[
+            "id"
+        ]
+        cat_b = client.post("/api/categories", json={"name": "Cat B", "type": "expense"}).json()[
+            "id"
+        ]
+
+        response = client.put(
+            "/api/budgets/bulk",
+            json={
+                "month": 9,
+                "year": 2026,
+                "budgets": [
+                    {"category_id": cat_a, "amount": "1000000.00"},
+                    {"category_id": cat_b, "amount": "500000.00"},
+                ],
+            },
+        )
+        assert response.status_code == 200
+
+        budgets = client.get("/api/budgets?month=9&year=2026").json()
+        assert len(budgets) == 2
+
+        # Second call keeps only cat_a: cat_b is removed.
+        client.put(
+            "/api/budgets/bulk",
+            json={
+                "month": 9,
+                "year": 2026,
+                "budgets": [{"category_id": cat_a, "amount": "800000.00"}],
+            },
+        )
+        budgets = client.get("/api/budgets?month=9&year=2026").json()
+        assert len(budgets) == 1
+        assert budgets[0]["category_id"] == cat_a
+        assert budgets[0]["amount"] == "800000.00"
+
+    def test_bulk_with_unknown_category_fails(self, client: TestClient) -> None:
+        response = client.put(
+            "/api/budgets/bulk",
+            json={
+                "month": 9,
+                "year": 2026,
+                "budgets": [{"category_id": 9999, "amount": "100.00"}],
+            },
+        )
+        assert response.status_code == 400

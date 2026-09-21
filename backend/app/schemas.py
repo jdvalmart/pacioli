@@ -176,6 +176,21 @@ class BudgetIn(BaseModel):
     amount: Money = Field(gt=0)
 
 
+class BudgetBulkItem(BaseModel):
+    """One category's budget inside a bulk setup payload."""
+
+    category_id: int
+    amount: Money = Field(gt=0)
+
+
+class BudgetBulkIn(BaseModel):
+    """The full budget state of a month: replaces every existing budget."""
+
+    month: int = Field(ge=1, le=12)
+    year: int = Field(ge=2000, le=2100)
+    budgets: list[BudgetBulkItem] = []
+
+
 class BudgetOut(BaseModel):
     """Budget as returned by the API."""
 
