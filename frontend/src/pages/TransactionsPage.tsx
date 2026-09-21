@@ -5,7 +5,9 @@ import {
   ArrowLeftRight,
   ArrowUpRight,
   CreditCard,
+  HandCoins,
   Pencil,
+  PiggyBank,
   Plus,
   Trash2,
 } from 'lucide-react'
@@ -82,6 +84,18 @@ const KIND_OPTIONS: {
     icon: CreditCard,
     activeClass: 'bg-orange-500 border-orange-700 text-white shadow-[0_4px_0_0_#c2410c]',
   },
+  {
+    value: 'ahorro',
+    label: 'Ahorro',
+    icon: PiggyBank,
+    activeClass: 'bg-amber-500 border-amber-700 text-white shadow-[0_4px_0_0_#b45309]',
+  },
+  {
+    value: 'retiro',
+    label: 'Retiro',
+    icon: HandCoins,
+    activeClass: 'bg-teal-500 border-teal-700 text-white shadow-[0_4px_0_0_#0f766e]',
+  },
 ]
 
 interface TransactionFormProps {
@@ -112,6 +126,7 @@ function TransactionFormBody({
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
   const creditCards = useQuery({ queryKey: ['creditCards'], queryFn: api.listCreditCards })
+  const savings = useQuery({ queryKey: ['savings'], queryFn: api.listSavings })
 
   const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'gasto')
   const [date, setDate] = useState(
@@ -131,6 +146,9 @@ function TransactionFormBody({
     transaction?.to_account_id ? String(transaction.to_account_id) : '',
   )
   const [cardId, setCardId] = useState(transaction?.card_id ? String(transaction.card_id) : '')
+  const [savingsId, setSavingsId] = useState(
+    transaction?.savings_id ? String(transaction.savings_id) : '',
+  )
   const [description, setDescription] = useState(transaction?.description ?? '')
   const [isRecurring, setIsRecurring] = useState(transaction?.is_recurring ?? false)
   const [recurringDay, setRecurringDay] = useState(String(transaction?.recurring_day ?? 1))
@@ -168,23 +186,29 @@ function TransactionFormBody({
   const accountList = accounts.data ?? []
   const hasAccounts = accountList.length > 0
 
-  const needsAccount = kind === 'ingreso' || kind === 'gasto'
+  const isSavingsKind = kind === 'ahorro' || kind === 'retiro'
+  const needsAccount = kind === 'ingreso' || kind === 'gasto' || isSavingsKind
   const needsTwoAccounts = kind === 'transferencia'
 
   const handleKindChange = (next: TransactionKind) => {
     setKind(next)
     setCategoryId('')
     setSubcategoryId('none')
+    setSavingsId('')
   }
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (kind !== 'transferencia' && !categoryId) {
+    if (kind !== 'transferencia' && !isSavingsKind && !categoryId) {
       toast.error('Selecciona una categoría')
       return
     }
     if (kind === 'gasto_tc' && !cardId) {
       toast.error('Selecciona la tarjeta de crédito')
+      return
+    }
+    if (isSavingsKind && !savingsId) {
+      toast.error('Selecciona el bolsillo o inversión')
       return
     }
     if (needsAccount && !accountId) {
@@ -205,11 +229,12 @@ function TransactionFormBody({
       date,
       amount: normalizeAmount(amount),
       kind,
-      category_id: kind === 'transferencia' ? null : Number(categoryId),
+      category_id: kind === 'transferencia' || isSavingsKind ? null : Number(categoryId),
       subcategory_id: kind === 'transferencia' || subcategoryId === 'none' ? null : Number(subcategoryId),
       account_id: kind === 'gasto_tc' ? null : Number(accountId),
       to_account_id: kind === 'transferencia' ? Number(toAccountId) : null,
       card_id: kind === 'gasto_tc' ? Number(cardId) : null,
+      savings_id: isSavingsKind ? Number(savingsId) : null,
       description,
       is_recurring: isRecurring,
       recurring_day: isRecurring ? Number(recurringDay) : null,
@@ -233,7 +258,7 @@ function TransactionFormBody({
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {KIND_OPTIONS.map(({ value, label, icon: Icon, activeClass }) => (
             <button
               key={value}
@@ -307,6 +332,58 @@ function TransactionFormBody({
               </Select>
               <p className="text-xs text-muted-foreground">
                 Mover dinero entre tus cuentas no afecta ingresos ni gastos.
+              </p>
+            </div>
+          </>
+        ) : isSavingsKind ? (
+          <>
+            <div className="space-y-1.5">
+              <Label>{kind === 'ahorro' ? 'Bolsillo destino' : 'Bolsillo origen'}</Label>
+              {(savings.data ?? []).length === 0 ? (
+                <div className="rounded-xl border-2 border-dashed border-amber-400/60 bg-amber-500/10 p-3 text-sm font-semibold text-muted-foreground">
+                  👝 Aún no tienes bolsillos ni inversiones. Crea uno en la sección Ahorro e
+                  inversión del Dashboard.
+                </div>
+              ) : (
+                <Select value={savingsId} onValueChange={(v) => setSavingsId(v ?? '')}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona el bolsillo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(savings.data ?? []).map((item) => (
+                      <SelectItem key={item.id} value={String(item.id)}>
+                        {item.kind === 'cdt' ? '🏦' : item.kind === 'acciones' ? '📈' : item.kind === 'bolsillo_programado' ? '📆' : '👝'}{' '}
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>{kind === 'ahorro' ? 'Cuenta origen' : 'Cuenta destino'}</Label>
+              {!hasAccounts ? (
+                <div className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
+                  Aún no tienes cuentas. Crea una en el Dashboard.
+                </div>
+              ) : (
+                <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una cuenta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accountList.map((account) => (
+                      <SelectItem key={account.id} value={String(account.id)}>
+                        {account.icon} {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {kind === 'ahorro'
+                  ? 'El dinero sale de la cuenta y entra al bolsillo. No cuenta como gasto.'
+                  : 'El dinero sale del bolsillo y vuelve a la cuenta.'}
               </p>
             </div>
           </>
@@ -451,6 +528,7 @@ function TransactionFormBody({
           disabled={
             mutation.isPending ||
             (needsAccount && !hasAccounts) ||
+            (isSavingsKind && (savings.data ?? []).length === 0) ||
             (kind === 'gasto_tc' && (creditCards.data ?? []).length === 0)
           }
         >
@@ -467,6 +545,8 @@ const KIND_BADGES: Record<TransactionKind, { label: string; className: string }>
   transferencia: { label: 'Transferencia', className: 'bg-blue-100 text-blue-700' },
   gasto_tc: { label: 'Gasto TC', className: 'bg-orange-100 text-orange-700' },
   pago_tc: { label: 'Pago TC', className: 'bg-violet-100 text-violet-700' },
+  ahorro: { label: 'Ahorro', className: 'bg-amber-100 text-amber-700' },
+  retiro: { label: 'Retiro', className: 'bg-teal-100 text-teal-700' },
 }
 
 export function TransactionsPage() {
@@ -605,9 +685,11 @@ export function TransactionsPage() {
                         ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}`
                         : tx.kind === 'pago_tc'
                           ? `${tx.account_icon} ${tx.account_name ?? '—'} → 💳 ${tx.card_name ?? 'TC'}`
-                          : tx.account_name
-                            ? `${tx.account_icon} ${tx.account_name}`
-                            : '—'}
+                          : tx.kind === 'ahorro' || tx.kind === 'retiro'
+                            ? `${tx.account_icon} ${tx.account_name ?? '—'} ⇄ 👝 ${tx.savings_name ?? 'Ahorro'}`
+                            : tx.account_name
+                              ? `${tx.account_icon} ${tx.account_name}`
+                              : '—'}
                     {tx.subcategory_name && ` · ${tx.subcategory_name}`}
                   </div>
                 </TableCell>

@@ -17,6 +17,8 @@ import type {
   ConnectionTest,
   CreditCard,
   MonthlySummary,
+  SavingsItem,
+  SavingsKind,
   Subcategory,
   Transaction,
   TransactionInput,
@@ -135,6 +137,45 @@ export const api = {
     }),
   deleteCreditCard: (id: number) =>
     request<{ message: string }>(`/credit-cards/${id}`, { method: 'DELETE' }),
+
+  // Savings
+  listSavings: () => request<SavingsItem[]>('/savings'),
+  createSavings: (payload: {
+    name: string
+    kind: SavingsKind
+    target?: string | null
+    rate_bp?: number | null
+    term_days?: number | null
+    current_value?: string | null
+    scheduled_day?: number | null
+    scheduled_amount?: string | null
+    source_account_id?: number | null
+    initial_amount?: string | null
+    initial_account_id?: number | null
+  }) => request<{ id: number }>('/savings', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateSavings: (
+    id: number,
+    payload: {
+      name: string
+      kind: SavingsKind
+      target?: string | null
+      rate_bp?: number | null
+      term_days?: number | null
+      current_value?: string | null
+      scheduled_day?: number | null
+      scheduled_amount?: string | null
+      source_account_id?: number | null
+    },
+  ) =>
+    request<{ message: string }>(`/savings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteSavings: (id: number) =>
+    request<{ message: string }>(`/savings/${id}`, { method: 'DELETE' }),
 
   // Reports
   summary: (month: number, year: number) =>

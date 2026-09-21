@@ -22,7 +22,14 @@ export interface Subcategory {
   icon: string
 }
 
-export type TransactionKind = 'ingreso' | 'gasto' | 'transferencia' | 'gasto_tc' | 'pago_tc'
+export type TransactionKind =
+  | 'ingreso'
+  | 'gasto'
+  | 'transferencia'
+  | 'gasto_tc'
+  | 'pago_tc'
+  | 'ahorro'
+  | 'retiro'
 
 export interface Transaction {
   id: number
@@ -49,6 +56,8 @@ export interface Transaction {
   to_account_icon: string | null
   card_id: number | null
   card_name: string | null
+  savings_id: number | null
+  savings_name: string | null
 }
 
 export interface TransactionInput {
@@ -59,6 +68,7 @@ export interface TransactionInput {
   account_id: number | null
   to_account_id: number | null
   card_id?: number | null
+  savings_id?: number | null
   description?: string
   is_recurring?: boolean
   recurring_day?: number | null
@@ -86,6 +96,23 @@ export interface CreditCard {
   paid: string
   debt: string
   available: string
+}
+
+export type SavingsKind = 'bolsillo' | 'bolsillo_programado' | 'cdt' | 'acciones'
+
+export interface SavingsItem {
+  id: number
+  name: string
+  kind: SavingsKind
+  target: string | null
+  rate_bp: number | null
+  term_days: number | null
+  current_value: string | null
+  scheduled_day: number | null
+  scheduled_amount: string | null
+  source_account_id: number | null
+  balance: string
+  invested: string
 }
 
 export interface Budget {

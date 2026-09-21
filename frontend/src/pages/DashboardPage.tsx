@@ -7,6 +7,7 @@ import { fmtCop, fmtCopDecimals } from '@/lib/money'
 import { useMonth } from '@/hooks/useMonth'
 import { AccountsSection } from '@/components/AccountsSection'
 import { CreditCardsSection } from '@/components/CreditCardsSection'
+import { SavingsSection } from '@/components/SavingsSection'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -155,6 +156,8 @@ export function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      <SavingsSection />
 
       <Card>
         <CardHeader>
