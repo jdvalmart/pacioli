@@ -44,19 +44,37 @@ function BudgetSetupDialog({
   })
 
   const [total, setTotal] = useState('')
+  const [diezmo, setDiezmo] = useState('')
+  const [ahorro, setAhorro] = useState('')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
 
-  const expenseCategories = categories.data?.filter((c) => c.type === 'expense') ?? []
+  const expenseCategories = (() => {
+    const all = categories.data?.filter((c) => c.type === 'expense') ?? []
+    const order = ['Vivienda', 'Alimentación', 'Servicios', 'Transporte', 'Diezmo', 'Ahorro']
+    const ordered = order
+      .map((name) => all.find((c) => c.name === name))
+      .filter(Boolean) as typeof all
+    const rest = all.filter((c) => !order.includes(c.name))
+    return [...ordered, ...rest]
+  })()
 
   // Initialize the form from the current budgets when it opens.
   const [initialized, setInitialized] = useState(false)
   if (open && !initialized && budgets.data) {
     const map: Record<string, string> = {}
     for (const b of budgets.data) {
-      map[String(b.category_id)] = b.amount
+      if (b.category_id === 14) setDiezmo(b.amount)
+      else if (b.category_id === 15) setAhorro(b.amount)
+      else map[String(b.category_id)] = b.amount
     }
     setAmounts(map)
-    setTotal(String(budgets.data.reduce((sum, b) => sum + Number(b.amount), 0)))
+    const catTotal = expenseCategories.reduce(
+      (sum, c) => sum + Number(map[String(c.id)] ?? 0),
+      0,
+    )
+    const diezmoAmt = Number(budgets.data.find((b) => b.category_id === 14)?.amount ?? 0)
+    const ahorroAmt = Number(budgets.data.find((b) => b.category_id === 15)?.amount ?? 0)
+    setTotal(String(catTotal + diezmoAmt + ahorroAmt))
     setInitialized(true)
   }
   if (!open && initialized) {
@@ -67,33 +85,50 @@ function BudgetSetupDialog({
     (sum, cat) => sum + Number(normalizeAmount(amounts[String(cat.id)] || '0')),
     0,
   )
+  const diezmoAmt = Number(normalizeAmount(diezmo || '0'))
+  const ahorroAmt = Number(normalizeAmount(ahorro || '0'))
   const totalNum = Number(normalizeAmount(total || '0'))
-  const pending = totalNum - assigned
+  const remaining = totalNum - diezmoAmt - ahorroAmt
+  const pending = remaining - assigned
 
   const hasPreviousBudgets = (previousBudgets.data ?? []).length > 0
 
   const copyPrevious = () => {
     const map: Record<string, string> = {}
     for (const b of previousBudgets.data ?? []) {
-      map[String(b.category_id)] = b.amount
+      if (b.category_id === 14) setDiezmo(b.amount)
+      else if (b.category_id === 15) setAhorro(b.amount)
+      else map[String(b.category_id)] = b.amount
     }
     setAmounts(map)
-    setTotal(String((previousBudgets.data ?? []).reduce((sum, b) => sum + Number(b.amount), 0)))
+    const catTotal = expenseCategories.reduce(
+      (sum, c) => sum + Number(map[String(c.id)] ?? 0),
+      0,
+    )
+    const prevDiezmo = Number((previousBudgets.data ?? []).find((b) => b.category_id === 14)?.amount ?? 0)
+    const prevAhorro = Number((previousBudgets.data ?? []).find((b) => b.category_id === 15)?.amount ?? 0)
+    setTotal(String(catTotal + prevDiezmo + prevAhorro))
     toast.success('Presupuesto del mes anterior copiado')
   }
 
   const mutation = useMutation({
-    mutationFn: () =>
-      api.replaceBudgets({
-        month: month.month,
-        year: month.year,
-        budgets: expenseCategories
+    mutationFn: () => {
+      const allBudgets = [
+        ...expenseCategories
           .filter((cat) => Number(normalizeAmount(amounts[String(cat.id)] || '0')) > 0)
           .map((cat) => ({
             category_id: cat.id,
             amount: normalizeAmount(amounts[String(cat.id)]),
           })),
-      }),
+      ]
+      if (diezmoAmt > 0) allBudgets.push({ category_id: 14, amount: normalizeAmount(diezmo) })
+      if (ahorroAmt > 0) allBudgets.push({ category_id: 15, amount: normalizeAmount(ahorro) })
+      return api.replaceBudgets({
+        month: month.month,
+        year: month.year,
+        budgets: allBudgets,
+      })
+    },
     onSuccess: () => {
       toast.success('Presupuesto establecido')
       onOpenChange(false)
@@ -128,14 +163,18 @@ function BudgetSetupDialog({
                 />
               </div>
 
-              <div className="flex items-center justify-between rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-sm font-bold">
-                <span>Asignado: {fmtCopDecimals(assigned)}</span>
-                <span className={pending < 0 ? 'text-rose-600' : 'text-muted-foreground'}>
-                  {pending >= 0
-                    ? `Por asignar: ${fmtCopDecimals(pending)}`
-                    : `Te pasaste por ${fmtCopDecimals(Math.abs(pending))}`}
-                </span>
-              </div>
+              {totalNum > 0 && (
+                <div className="flex items-center justify-between rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-sm font-bold">
+                  <span>
+                    Resto: {fmtCopDecimals(remaining)}
+                  </span>
+                  <span className={pending < 0 ? 'text-rose-600' : 'text-muted-foreground'}>
+                    {pending >= 0
+                      ? `Por asignar: ${fmtCopDecimals(pending)}`
+                      : `Te pasaste por ${fmtCopDecimals(Math.abs(pending))}`}
+                  </span>
+                </div>
+              )}
 
               {hasPreviousBudgets && (
                 <Button type="button" variant="outline" className="w-full" onClick={copyPrevious}>
@@ -144,27 +183,56 @@ function BudgetSetupDialog({
               )}
 
               <div className="space-y-3">
-                {expenseCategories.map((cat) => (
-                  <div key={cat.id} className="space-y-1.5">
-                    <Label htmlFor={`budget-${cat.id}`} className="flex items-center gap-1.5">
-                      <span>{cat.icon}</span> {cat.name}
-                    </Label>
-                    <Input
-                      id={`budget-${cat.id}`}
-                      placeholder="0"
-                      value={amounts[String(cat.id)] ?? ''}
-                      onChange={(e) =>
-                        setAmounts((prev) => ({ ...prev, [String(cat.id)]: e.target.value }))
-                      }
-                    />
-                  </div>
-                ))}
+                {expenseCategories.map((cat) => {
+                  if (cat.name === 'Diezmo' || cat.name === 'Ahorro') return null
+                  return (
+                    <div key={cat.id} className="space-y-1.5">
+                      <Label htmlFor={`budget-${cat.id}`} className="flex items-center gap-1.5">
+                        <span>{cat.icon}</span> {cat.name}
+                      </Label>
+                      <Input
+                        id={`budget-${cat.id}`}
+                        placeholder="0"
+                        value={amounts[String(cat.id)] ?? ''}
+                        onChange={(e) =>
+                          setAmounts((prev) => ({ ...prev, [String(cat.id)]: e.target.value }))
+                        }
+                      />
+                      {cat.name === 'Transporte' && (
+                        <>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="budget-diezmo" className="flex items-center gap-1.5">
+                              🙏 Diezmo
+                            </Label>
+                            <Input
+                              id="budget-diezmo"
+                              placeholder="0"
+                              value={diezmo}
+                              onChange={(e) => setDiezmo(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="budget-ahorro" className="flex items-center gap-1.5">
+                              🏧 Ahorro
+                            </Label>
+                            <Input
+                              id="budget-ahorro"
+                              placeholder="0"
+                              value={ahorro}
+                              onChange={(e) => setAhorro(e.target.value)}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
 
               <Button
                 type="button"
                 className="w-full"
-                disabled={mutation.isPending || assigned <= 0}
+                disabled={mutation.isPending || totalNum <= 0}
                 onClick={() => mutation.mutate()}
               >
                 {mutation.isPending ? 'Guardando…' : 'Guardar presupuesto'}
