@@ -354,12 +354,14 @@ export function CreditCardsSection() {
           </p>
         </div>
         <Button
+          size="icon"
+          aria-label="Nueva tarjeta"
           onClick={() => {
             setEditing(null)
             setFormOpen(true)
           }}
         >
-          <Plus /> Nueva tarjeta
+          <Plus />
         </Button>
       </div>
 

@@ -194,12 +194,14 @@ export function AccountsSection() {
           </p>
         </div>
         <Button
+          size="icon"
+          aria-label="Nueva cuenta"
           onClick={() => {
             setEditing(null)
             setFormOpen(true)
           }}
         >
-          <Plus /> Nueva cuenta
+          <Plus />
         </Button>
       </div>
 

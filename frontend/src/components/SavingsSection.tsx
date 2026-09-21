@@ -341,12 +341,14 @@ export function SavingsSection() {
           </p>
         </div>
         <Button
+          size="icon"
+          aria-label="Nuevo ahorro o inversión"
           onClick={() => {
             setEditing(null)
             setFormOpen(true)
           }}
         >
-          <Plus /> Nuevo
+          <Plus />
         </Button>
       </div>
 
