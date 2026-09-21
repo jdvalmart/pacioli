@@ -24,6 +24,7 @@ from app.routers import (
     chat,
     credit_cards,
     reports,
+    savings,
     transactions,
 )
 
@@ -57,6 +58,7 @@ app.include_router(chat.router, prefix=api_prefix)
 app.include_router(ai.router, prefix=api_prefix)
 app.include_router(accounts.router, prefix=api_prefix)
 app.include_router(credit_cards.router, prefix=api_prefix)
+app.include_router(savings.router, prefix=api_prefix)
 
 
 @app.get("/health")

@@ -65,6 +65,32 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
             )
         return
 
+    if kind in ("ahorro", "retiro"):
+        if payload.account_id is None or payload.savings_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Savings movements require account_id and savings_id",
+            )
+        items = {s.id: s for s in db.get_savings()}
+        item = items.get(payload.savings_id)
+        if item is None:
+            raise HTTPException(status_code=400, detail="Savings item does not exist")
+        accounts = {a.id: a for a in db.get_accounts()}
+        source = accounts.get(payload.account_id)
+        if source is None:
+            raise HTTPException(status_code=400, detail="Account does not exist")
+        if kind == "ahorro":
+            if (source.balance or Decimal("0.00")) < payload.amount:
+                raise HTTPException(
+                    status_code=400, detail="Insufficient balance in the source account"
+                )
+        else:
+            if (item.balance or Decimal("0.00")) < payload.amount:
+                raise HTTPException(
+                    status_code=400, detail="Insufficient balance in the savings item"
+                )
+        return
+
     if payload.category_id is None:
         raise HTTPException(status_code=400, detail="A category is required for this movement type")
 
@@ -117,6 +143,7 @@ def create_transaction(payload: TransactionIn) -> CreatedOut:
             kind=payload.kind,
             to_account_id=payload.to_account_id,
             card_id=payload.card_id,
+            savings_id=payload.savings_id,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(
@@ -143,6 +170,7 @@ def update_transaction(trans_id: int, payload: TransactionIn) -> MessageOut:
             kind=payload.kind,
             to_account_id=payload.to_account_id,
             card_id=payload.card_id,
+            savings_id=payload.savings_id,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(

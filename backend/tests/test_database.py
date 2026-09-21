@@ -18,10 +18,12 @@ from app.database import (
     add_account,
     add_category,
     add_credit_card,
+    add_savings,
     add_transaction,
     delete_account,
     delete_category,
     delete_credit_card,
+    delete_savings,
     ensure_recurring,
     get_accounts,
     get_budget_vs_actual,
@@ -30,6 +32,7 @@ from app.database import (
     get_connection,
     get_credit_cards,
     get_monthly_summary,
+    get_savings,
     get_subcategories,
     get_transactions,
     init_db,
@@ -285,7 +288,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -365,7 +368,7 @@ class TestMigrationV4:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
                 0
             ]
@@ -581,7 +584,7 @@ class TestMigrationV7:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
             rows = conn.execute("SELECT kind FROM transactions ORDER BY id").fetchall()
             assert [r[0] for r in rows] == ["ingreso", "gasto"]
         set_db_path(None)
@@ -744,3 +747,122 @@ class TestCardPayments:
 
         cards = get_credit_cards(today=date(2026, 9, 15))  # before the cutoff (day 20)
         assert cards[0].debt == Decimal("0.00")
+
+
+class TestSavings:
+    """Tests for the savings and investments feature."""
+
+    def test_bolsillo_balance_from_movements(self, temp_db: str) -> None:
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        income_cat = add_category("Ingreso test", "income")
+        add_transaction(
+            date(2026, 9, 1),
+            Decimal("3000000.00"),
+            income_cat,
+            "Salary",
+            kind="ingreso",
+            account_id=account_id,
+        )
+
+        item_id = add_savings("Emergencias", "bolsillo", target=Decimal("1000000.00"))
+        add_transaction(
+            date(2026, 9, 5),
+            Decimal("500000.00"),
+            account_id=account_id,
+            kind="ahorro",
+            savings_id=item_id,
+        )
+        add_transaction(
+            date(2026, 9, 10),
+            Decimal("100000.00"),
+            account_id=account_id,
+            kind="retiro",
+            savings_id=item_id,
+        )
+
+        items = get_savings()
+        assert len(items) == 1
+        assert items[0].balance == Decimal("400000.00")
+        assert items[0].target == Decimal("1000000.00")
+
+        accounts = {a.name: a for a in get_accounts()}
+        assert accounts["Banco"].balance == Decimal("2600000.00")
+
+    def test_initial_deposit_recorded(self, temp_db: str) -> None:
+        account_id = add_account("Banco", "banco", Decimal("1000000.00"))
+        add_savings(
+            "Viaje",
+            "bolsillo",
+            initial_amount=Decimal("200000.00"),
+            initial_account_id=account_id,
+        )
+
+        items = get_savings()
+        assert items[0].balance == Decimal("200000.00")
+
+        accounts = {a.name: a for a in get_accounts()}
+        assert accounts["Banco"].balance == Decimal("800000.00")
+
+    def test_programmed_pocket_creates_recurring_template(self, temp_db: str) -> None:
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        item_id = add_savings(
+            "Ahorro navidad",
+            "bolsillo_programado",
+            scheduled_day=15,
+            scheduled_amount=Decimal("200000.00"),
+            source_account_id=account_id,
+        )
+
+        with get_connection() as conn:
+            template = conn.execute(
+                "SELECT recurring_day, amount_cents, account_id, savings_id, kind FROM transactions "
+                "WHERE is_recurring = 1 AND generated_from IS NULL"
+            ).fetchone()
+            assert template is not None
+            assert template["recurring_day"] == 15
+            assert template["amount_cents"] == 20000000
+            assert template["savings_id"] == item_id
+            assert template["kind"] == "ahorro"
+
+    def test_acciones_gain_from_current_value(self, temp_db: str) -> None:
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        income_cat = add_category("Ingreso test", "income")
+        add_transaction(
+            date(2026, 9, 1),
+            Decimal("2000000.00"),
+            income_cat,
+            "Salary",
+            kind="ingreso",
+            account_id=account_id,
+        )
+        add_savings(
+            "Ecopetrol",
+            "acciones",
+            initial_amount=Decimal("1000000.00"),
+            initial_account_id=account_id,
+            current_value=Decimal("1300000.00"),
+        )
+
+        items = get_savings()
+        assert items[0].kind == "acciones"
+        assert items[0].invested == Decimal("1000000.00")
+        assert items[0].current_value == Decimal("1300000.00")
+
+    def test_delete_removes_template(self, temp_db: str) -> None:
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        item_id = add_savings(
+            "Meta",
+            "bolsillo_programado",
+            scheduled_day=10,
+            scheduled_amount=Decimal("50000.00"),
+            source_account_id=account_id,
+        )
+
+        delete_savings(item_id)
+
+        assert get_savings() == []
+        with get_connection() as conn:
+            templates = conn.execute(
+                "SELECT COUNT(*) FROM transactions WHERE is_recurring = 1 AND generated_from IS NULL"
+            ).fetchone()[0]
+            assert templates == 0

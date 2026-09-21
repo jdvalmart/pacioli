@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def _default_data_dir() -> str:
@@ -170,6 +170,8 @@ class Transaction:
     to_account_icon: str | None = None
     card_id: int | None = None  # Credit card for gasto_tc
     card_name: str | None = None
+    savings_id: int | None = None  # Savings/investment item for ahorro/retiro
+    savings_name: str | None = None
 
 
 @dataclass
@@ -226,6 +228,39 @@ class CreditCard:
     paid: Decimal | None = None
     debt: Decimal | None = None
     available: Decimal | None = None
+
+
+@dataclass
+class SavingsItem:
+    """A savings or investment bucket.
+
+    Bolsillos hold money moved from accounts; a bolsillo_programado
+    additionally schedules a recurring deposit; CDTs carry an
+    interest rate and term; acciones track invested capital against a
+    manually updated market value. ``balance`` is the net of ahorro
+    minus retiro movements.
+    """
+
+    id: int | None
+    name: str
+    kind: str  # 'bolsillo' | 'bolsillo_programado' | 'cdt' | 'acciones'
+    target: Decimal | None = None
+    rate_bp: int | None = None
+    term_days: int | None = None
+    current_value: Decimal | None = None
+    scheduled_day: int | None = None
+    scheduled_amount: Decimal | None = None
+    source_account_id: int | None = None
+    balance: Decimal | None = None
+    invested: Decimal | None = None
+
+
+SAVINGS_KIND_ICONS = {
+    "bolsillo": "👝",
+    "bolsillo_programado": "📆",
+    "cdt": "🏦",
+    "acciones": "📈",
+}
 
 
 @dataclass
@@ -823,6 +858,86 @@ def _migrate_v9_payment_kind(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrate_v10_savings(conn: sqlite3.Connection) -> None:
+    """v9 -> v10: savings and investment items.
+
+    Adds the savings table (bolsillo, bolsillo_programado, cdt and
+    acciones) and links transactions to them through savings_id. New
+    movement kinds: ahorro (account -> savings) and retiro (savings
+    -> account), which never count as income or expense.
+    """
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = OFF")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS savings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            kind TEXT NOT NULL CHECK(kind IN ('bolsillo', 'bolsillo_programado', 'cdt', 'acciones')),
+            target_cents INTEGER,
+            rate_bp INTEGER,
+            term_days INTEGER,
+            current_value_cents INTEGER,
+            scheduled_day INTEGER,
+            scheduled_amount_cents INTEGER,
+            source_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("DROP TABLE IF EXISTS transactions_new")
+
+    cursor.execute("""
+        CREATE TABLE transactions_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            amount_cents INTEGER NOT NULL,
+            category_id INTEGER REFERENCES categories(id),
+            account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            to_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            kind TEXT NOT NULL DEFAULT 'gasto'
+                CHECK(kind IN ('ingreso', 'gasto', 'transferencia', 'gasto_tc', 'pago_tc',
+                               'ahorro', 'retiro')),
+            description TEXT DEFAULT '',
+            is_recurring INTEGER DEFAULT 0,
+            recurring_day INTEGER,
+            subcategory_id INTEGER REFERENCES subcategories(id),
+            generated_from INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+            card_id INTEGER REFERENCES credit_cards(id) ON DELETE SET NULL,
+            savings_id INTEGER REFERENCES savings(id) ON DELETE SET NULL
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO transactions_new
+            (id, date, amount_cents, category_id, account_id, to_account_id, kind,
+             description, is_recurring, recurring_day, subcategory_id, generated_from,
+             card_id, savings_id)
+        SELECT id, date, amount_cents, category_id, account_id, to_account_id, kind,
+               description, is_recurring, recurring_day, subcategory_id, generated_from,
+               card_id, NULL
+        FROM transactions
+    """)
+    cursor.execute("DROP TABLE transactions")
+    cursor.execute("ALTER TABLE transactions_new RENAME TO transactions")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transactions_generated ON transactions(generated_from)"
+    )
+
+    violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise sqlite3.IntegrityError(
+            f"Migration to v10: {len(violations)} FK violations: {violations[:5]}"
+        )
+
+    cursor.execute("PRAGMA user_version = 10")
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -941,6 +1056,8 @@ def init_db() -> None:
             _migrate_v8_credit_cards(conn)
         if v < 9:
             _migrate_v9_payment_kind(conn)
+        if v < 10:
+            _migrate_v10_savings(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -1070,13 +1187,15 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
                    s.name as subcategory_name, s.icon as subcategory_icon,
                    a.name as account_name, a.icon as account_icon,
                    a2.name as to_account_name, a2.icon as to_account_icon,
-                   cc.name as card_name
+                   cc.name as card_name,
+                   sv.name as savings_name
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN subcategories s ON t.subcategory_id = s.id
             LEFT JOIN accounts a ON t.account_id = a.id
             LEFT JOIN accounts a2 ON t.to_account_id = a2.id
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
+            LEFT JOIN savings sv ON t.savings_id = sv.id
             WHERE t.date >= ? AND t.date < ?
             ORDER BY t.date DESC
         """,
@@ -1097,6 +1216,7 @@ def add_transaction(
     kind: str = "gasto",
     to_account_id: int | None = None,
     card_id: int | None = None,
+    savings_id: int | None = None,
 ) -> int:
     """Create a transaction and return its id."""
     with get_connection() as conn:
@@ -1105,8 +1225,8 @@ def add_transaction(
             """
             INSERT INTO transactions
                 (date, amount_cents, category_id, description, is_recurring,
-                 recurring_day, subcategory_id, account_id, kind, to_account_id, card_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 date_val.isoformat(),
@@ -1120,6 +1240,7 @@ def add_transaction(
                 kind,
                 to_account_id,
                 card_id,
+                savings_id,
             ),
         )
         conn.commit()
@@ -1139,6 +1260,7 @@ def update_transaction(
     kind: str = "gasto",
     to_account_id: int | None = None,
     card_id: int | None = None,
+    savings_id: int | None = None,
 ) -> None:
     """Update an existing transaction."""
     with get_connection() as conn:
@@ -1148,7 +1270,7 @@ def update_transaction(
             UPDATE transactions
             SET date = ?, amount_cents = ?, category_id = ?, description = ?,
                 is_recurring = ?, recurring_day = ?, subcategory_id = ?,
-                account_id = ?, kind = ?, to_account_id = ?, card_id = ?
+                account_id = ?, kind = ?, to_account_id = ?, card_id = ?, savings_id = ?
             WHERE id = ?
         """,
             (
@@ -1163,6 +1285,7 @@ def update_transaction(
                 kind,
                 to_account_id,
                 card_id,
+                savings_id,
                 trans_id,
             ),
         )
@@ -1197,7 +1320,7 @@ def ensure_recurring(month: int, year: int) -> int:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date, amount_cents, category_id, description,
-                   recurring_day, subcategory_id, account_id, kind, to_account_id, card_id
+                   recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id
             FROM transactions
             WHERE is_recurring = 1 AND generated_from IS NULL
               AND recurring_day IS NOT NULL
@@ -1218,8 +1341,8 @@ def ensure_recurring(month: int, year: int) -> int:
                 """
                 INSERT INTO transactions
                     (date, amount_cents, category_id, description,
-                     is_recurring, recurring_day, subcategory_id, generated_from, account_id, kind, to_account_id, card_id)
-                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?)
+                     is_recurring, recurring_day, subcategory_id, generated_from, account_id, kind, to_account_id, card_id, savings_id)
+                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     f"{year:04d}-{month:02d}-{day:02d}",
@@ -1232,6 +1355,7 @@ def ensure_recurring(month: int, year: int) -> int:
                     t["kind"],
                     t["to_account_id"],
                     t["card_id"],
+                    t["savings_id"],
                 ),
             )
             cursor.execute(
@@ -1341,7 +1465,8 @@ def get_accounts() -> list[Account]:
                        SELECT SUM(
                            CASE
                                WHEN t.kind = 'ingreso' THEN t.amount_cents
-                               WHEN t.kind IN ('gasto', 'pago_tc') THEN -t.amount_cents
+                               WHEN t.kind IN ('gasto', 'pago_tc', 'ahorro') THEN -t.amount_cents
+                               WHEN t.kind = 'retiro' THEN t.amount_cents
                                WHEN t.kind = 'transferencia' THEN
                                    CASE WHEN t.account_id = a.id THEN -t.amount_cents
                                         WHEN t.to_account_id = a.id THEN t.amount_cents
@@ -1572,6 +1697,210 @@ def delete_credit_card(card_id: int) -> None:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM credit_cards WHERE id = ?", (card_id,))
+        conn.commit()
+
+
+# ── Savings and investments ───────────────────────────────────
+# Bolsillos hold money moved from accounts. Their balance is always
+# derived from ahorro (deposit) minus retiro (withdrawal) movements.
+# A bolsillo_programado adds a recurring ahorro template that the
+# recurring engine materializes every month.
+
+
+def _row_to_savings(row: sqlite3.Row) -> SavingsItem:
+    balance = _to_dec(row["balance_cents"])
+    current_value = (
+        _to_dec(row["current_value_cents"]) if row["current_value_cents"] is not None else None
+    )
+    return SavingsItem(
+        id=row["id"],
+        name=row["name"],
+        kind=row["kind"],
+        target=_to_dec(row["target_cents"]) if row["target_cents"] is not None else None,
+        rate_bp=row["rate_bp"],
+        term_days=row["term_days"],
+        current_value=current_value,
+        scheduled_day=row["scheduled_day"],
+        scheduled_amount=(
+            _to_dec(row["scheduled_amount_cents"])
+            if row["scheduled_amount_cents"] is not None
+            else None
+        ),
+        source_account_id=row["source_account_id"],
+        balance=balance,
+        invested=balance,
+    )
+
+
+def get_savings() -> list[SavingsItem]:
+    """Return all savings items with their computed balance."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.*,
+                   COALESCE((
+                       SELECT SUM(CASE WHEN t.kind = 'ahorro' THEN t.amount_cents
+                                       WHEN t.kind = 'retiro' THEN -t.amount_cents
+                                       ELSE 0 END)
+                       FROM transactions t
+                       WHERE t.savings_id = s.id
+                   ), 0) as balance_cents
+            FROM savings s
+            ORDER BY s.created_at, s.id
+        """)
+        return [_row_to_savings(row) for row in cursor.fetchall()]
+
+
+def add_savings(
+    name: str,
+    kind: str,
+    target: Decimal | float | int | None = None,
+    rate_bp: int | None = None,
+    term_days: int | None = None,
+    current_value: Decimal | float | int | None = None,
+    scheduled_day: int | None = None,
+    scheduled_amount: Decimal | float | int | None = None,
+    source_account_id: int | None = None,
+    initial_amount: Decimal | float | int | None = None,
+    initial_account_id: int | None = None,
+) -> int:
+    """Create a savings item and return its id.
+
+    An optional initial deposit is recorded as an ahorro movement.
+    A bolsillo_programado also creates a recurring ahorro template
+    that materializes every month on the scheduled day.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO savings
+                (name, kind, target_cents, rate_bp, term_days, current_value_cents,
+                 scheduled_day, scheduled_amount_cents, source_account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                kind,
+                _to_cents(target) if target is not None else None,
+                rate_bp,
+                term_days,
+                _to_cents(current_value) if current_value is not None else None,
+                scheduled_day,
+                _to_cents(scheduled_amount) if scheduled_amount is not None else None,
+                source_account_id,
+            ),
+        )
+        item_id = int(cursor.lastrowid)
+
+        if initial_amount is not None and initial_account_id is not None:
+            cents = _to_cents(initial_amount)
+            if cents > 0:
+                cursor.execute(
+                    """
+                    INSERT INTO transactions
+                        (date, amount_cents, category_id, description, is_recurring,
+                         recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id)
+                    VALUES (?, ?, NULL, ?, 0, NULL, NULL, ?, 'ahorro', NULL, NULL, ?)
+                    """,
+                    (
+                        date.today().isoformat(),
+                        cents,
+                        f"Depósito inicial: {name}",
+                        initial_account_id,
+                        item_id,
+                    ),
+                )
+
+        if kind == "bolsillo_programado" and scheduled_day is not None:
+            template_date = date(date.today().year, date.today().month, scheduled_day)
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                    (date, amount_cents, category_id, description, is_recurring,
+                     recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id)
+                VALUES (?, ?, NULL, ?, 1, ?, NULL, ?, 'ahorro', NULL, NULL, ?)
+                """,
+                (
+                    template_date.isoformat(),
+                    _to_cents(scheduled_amount) if scheduled_amount is not None else 0,
+                    f"Ahorro programado: {name}",
+                    scheduled_day,
+                    source_account_id,
+                    item_id,
+                ),
+            )
+
+        conn.commit()
+        return item_id
+
+
+def update_savings(
+    item_id: int,
+    name: str,
+    kind: str,
+    target: Decimal | float | int | None = None,
+    rate_bp: int | None = None,
+    term_days: int | None = None,
+    current_value: Decimal | float | int | None = None,
+    scheduled_day: int | None = None,
+    scheduled_amount: Decimal | float | int | None = None,
+    source_account_id: int | None = None,
+) -> None:
+    """Update a savings item, keeping its recurring template in sync."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE savings
+            SET name = ?, kind = ?, target_cents = ?, rate_bp = ?, term_days = ?,
+                current_value_cents = ?, scheduled_day = ?, scheduled_amount_cents = ?,
+                source_account_id = ?
+            WHERE id = ?
+            """,
+            (
+                name,
+                kind,
+                _to_cents(target) if target is not None else None,
+                rate_bp,
+                term_days,
+                _to_cents(current_value) if current_value is not None else None,
+                scheduled_day,
+                _to_cents(scheduled_amount) if scheduled_amount is not None else None,
+                source_account_id,
+                item_id,
+            ),
+        )
+        if kind == "bolsillo_programado" and scheduled_day is not None:
+            template_date = date(date.today().year, date.today().month, scheduled_day)
+            cursor.execute(
+                """
+                UPDATE transactions
+                SET date = ?, amount_cents = ?, account_id = ?, recurring_day = ?
+                WHERE is_recurring = 1 AND generated_from IS NULL
+                  AND kind = 'ahorro' AND savings_id = ?
+                """,
+                (
+                    template_date.isoformat(),
+                    _to_cents(scheduled_amount) if scheduled_amount is not None else 0,
+                    source_account_id,
+                    scheduled_day,
+                    item_id,
+                ),
+            )
+        conn.commit()
+
+
+def delete_savings(item_id: int) -> None:
+    """Delete a savings item and its recurring template."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM transactions WHERE is_recurring = 1 AND generated_from IS NULL "
+            "AND kind = 'ahorro' AND savings_id = ?",
+            (item_id,),
+        )
+        cursor.execute("DELETE FROM savings WHERE id = ?", (item_id,))
         conn.commit()
 
 
@@ -1848,6 +2177,8 @@ KIND_LABELS = {
     "transferencia": "Transferencia",
     "gasto_tc": "Gasto TC",
     "pago_tc": "Pago TC",
+    "ahorro": "Ahorro",
+    "retiro": "Retiro",
 }
 
 

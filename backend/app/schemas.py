@@ -68,11 +68,14 @@ class TransactionIn(BaseModel):
 
     date: date
     amount: Money = Field(gt=0)
-    kind: Literal["ingreso", "gasto", "transferencia", "gasto_tc", "pago_tc"] = "gasto"
+    kind: Literal[
+        "ingreso", "gasto", "transferencia", "gasto_tc", "pago_tc", "ahorro", "retiro"
+    ] = "gasto"
     category_id: int | None = None
     account_id: int | None = None
     to_account_id: int | None = None
     card_id: int | None = None
+    savings_id: int | None = None
     description: str = Field(default="", max_length=500)
     is_recurring: bool = False
     recurring_day: int | None = Field(default=None, ge=1, le=31)
@@ -106,6 +109,62 @@ class TransactionOut(BaseModel):
     to_account_icon: str | None
     card_id: int | None
     card_name: str | None
+    savings_id: int | None
+    savings_name: str | None
+
+
+class SavingsIn(BaseModel):
+    """Payload to create a savings item.
+
+    Field relevance by kind: bolsillo uses target; bolsillo_programado
+    uses target, scheduled_day, scheduled_amount and source_account_id;
+    cdt uses rate_bp and term_days; acciones uses current_value. The
+    optional initial deposit records an ahorro movement from
+    initial_account_id.
+    """
+
+    name: str = Field(min_length=1, max_length=100)
+    kind: Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
+    target: Money | None = None
+    rate_bp: int | None = Field(default=None, ge=0, le=10000)
+    term_days: int | None = Field(default=None, ge=1, le=3650)
+    current_value: Money | None = None
+    scheduled_day: int | None = Field(default=None, ge=1, le=31)
+    scheduled_amount: Money | None = None
+    source_account_id: int | None = None
+    initial_amount: Money | None = None
+    initial_account_id: int | None = None
+
+
+class SavingsUpdate(BaseModel):
+    """Payload to update a savings item."""
+
+    name: str = Field(min_length=1, max_length=100)
+    kind: Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
+    target: Money | None = None
+    rate_bp: int | None = Field(default=None, ge=0, le=10000)
+    term_days: int | None = Field(default=None, ge=1, le=3650)
+    current_value: Money | None = None
+    scheduled_day: int | None = Field(default=None, ge=1, le=31)
+    scheduled_amount: Money | None = None
+    source_account_id: int | None = None
+
+
+class SavingsOut(BaseModel):
+    """Savings item as returned by the API, with its computed balance."""
+
+    id: int
+    name: str
+    kind: str
+    target: Money | None
+    rate_bp: int | None
+    term_days: int | None
+    current_value: Money | None
+    scheduled_day: int | None
+    scheduled_amount: Money | None
+    source_account_id: int | None
+    balance: Money
+    invested: Money
 
 
 class BudgetIn(BaseModel):

@@ -698,3 +698,104 @@ class TestCardPayments:
         )
         assert response.status_code == 400
         assert "exceeds the current debt" in response.json()["detail"]
+
+
+class TestSavings:
+    """Tests for the savings endpoints."""
+
+    def test_create_bolsillo_with_initial_deposit(self, client: TestClient) -> None:
+        account_id = client.post(
+            "/api/accounts",
+            json={"name": "Banco", "type": "banco", "starting_amount": "1000000.00"},
+        ).json()["id"]
+
+        response = client.post(
+            "/api/savings",
+            json={
+                "name": "Emergencias",
+                "kind": "bolsillo",
+                "target": "2000000.00",
+                "initial_amount": "200000.00",
+                "initial_account_id": account_id,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+        items = client.get("/api/savings").json()
+        assert len(items) == 1
+        assert items[0]["balance"] == "200000.00"
+        assert items[0]["target"] == "2000000.00"
+
+        accounts = client.get("/api/accounts").json()
+        assert accounts[0]["balance"] == "800000.00"
+
+    def test_programmed_pocket_schedule(self, client: TestClient) -> None:
+        account_id = client.post(
+            "/api/accounts", json={"name": "Banco", "type": "banco", "starting_amount": "0.00"}
+        ).json()["id"]
+
+        response = client.post(
+            "/api/savings",
+            json={
+                "name": "Navidad",
+                "kind": "bolsillo_programado",
+                "scheduled_day": 15,
+                "scheduled_amount": "200000.00",
+                "source_account_id": account_id,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+        items = client.get("/api/savings").json()
+        assert items[0]["scheduled_day"] == 15
+        assert items[0]["scheduled_amount"] == "200000.00"
+
+    def test_ahorro_requires_funds(self, client: TestClient) -> None:
+        account_id = client.post(
+            "/api/accounts", json={"name": "Banco", "type": "banco", "starting_amount": "0.00"}
+        ).json()["id"]
+        item_id = client.post("/api/savings", json={"name": "Meta", "kind": "bolsillo"}).json()[
+            "id"
+        ]
+
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-20",
+                "amount": "500000.00",
+                "kind": "ahorro",
+                "account_id": account_id,
+                "savings_id": item_id,
+            },
+        )
+        assert response.status_code == 400
+        assert "Insufficient balance" in response.json()["detail"]
+
+    def test_retiro_requires_savings_balance(self, client: TestClient) -> None:
+        account_id = client.post(
+            "/api/accounts", json={"name": "Banco", "type": "banco", "starting_amount": "0.00"}
+        ).json()["id"]
+        item_id = client.post("/api/savings", json={"name": "Meta", "kind": "bolsillo"}).json()[
+            "id"
+        ]
+
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-09-20",
+                "amount": "500000.00",
+                "kind": "retiro",
+                "account_id": account_id,
+                "savings_id": item_id,
+            },
+        )
+        assert response.status_code == 400
+        assert "Insufficient balance in the savings item" in response.json()["detail"]
+
+    def test_delete_savings(self, client: TestClient) -> None:
+        item_id = client.post("/api/savings", json={"name": "Meta", "kind": "bolsillo"}).json()[
+            "id"
+        ]
+
+        assert client.delete(f"/api/savings/{item_id}").status_code == 200
+        assert client.get("/api/savings").json() == []
