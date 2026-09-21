@@ -34,6 +34,15 @@ function BudgetSetupDialog({
     queryFn: () => api.listBudgets(month.month, month.year),
   })
 
+  // Previous month (for the copy action).
+  const prevDate = new Date(month.year, month.month - 2, 1)
+  const prevMonth = { month: prevDate.getMonth() + 1, year: prevDate.getFullYear() }
+  const previousBudgets = useQuery({
+    queryKey: ['budgets', prevMonth],
+    queryFn: () => api.listBudgets(prevMonth.month, prevMonth.year),
+    enabled: open,
+  })
+
   const [total, setTotal] = useState('')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
 
@@ -60,6 +69,18 @@ function BudgetSetupDialog({
   )
   const totalNum = Number(normalizeAmount(total || '0'))
   const pending = totalNum - assigned
+
+  const hasPreviousBudgets = (previousBudgets.data ?? []).length > 0
+
+  const copyPrevious = () => {
+    const map: Record<string, string> = {}
+    for (const b of previousBudgets.data ?? []) {
+      map[String(b.category_id)] = b.amount
+    }
+    setAmounts(map)
+    setTotal(String((previousBudgets.data ?? []).reduce((sum, b) => sum + Number(b.amount), 0)))
+    toast.success('Presupuesto del mes anterior copiado')
+  }
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -115,6 +136,12 @@ function BudgetSetupDialog({
                     : `Te pasaste por ${fmtCopDecimals(Math.abs(pending))}`}
                 </span>
               </div>
+
+              {hasPreviousBudgets && (
+                <Button type="button" variant="outline" className="w-full" onClick={copyPrevious}>
+                  📋 Copiar presupuesto del mes anterior
+                </Button>
+              )}
 
               <div className="space-y-3">
                 {expenseCategories.map((cat) => (
@@ -242,7 +269,14 @@ export function BudgetsPage() {
             <Skeleton className="h-44 w-full" />
           </>
         ) : (
-          expenseCategories.map((category) => {
+          [...expenseCategories]
+            .sort((a, b) => {
+              const budgetA = Number(budgetByCategory.get(a.id) ?? 0)
+              const budgetB = Number(budgetByCategory.get(b.id) ?? 0)
+              if (budgetA !== budgetB) return budgetB - budgetA
+              return Number(actualByCategory.get(b.id) ?? 0) - Number(actualByCategory.get(a.id) ?? 0)
+            })
+            .map((category) => {
             const current = budgetByCategory.get(category.id) ?? ''
             const actual = actualByCategory.get(category.id) ?? '0'
             const hasBudget = current !== '' && Number(current) > 0

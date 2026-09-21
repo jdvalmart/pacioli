@@ -218,7 +218,9 @@ export function AccountsSection() {
             para saber cuánto tienes y dónde.
           </Card>
         ) : (
-          accounts.data?.map((account) => (
+          [...(accounts.data ?? [])]
+            .sort((a, b) => Number(b.balance) - Number(a.balance))
+            .map((account) => (
             <Card key={account.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">

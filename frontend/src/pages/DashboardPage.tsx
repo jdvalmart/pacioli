@@ -73,7 +73,10 @@ export function DashboardPage() {
 
   // Only categories with a defined budget appear on the dashboard;
   // categories with spending but no budget live in the Budgets page.
-  const budgetCards = (budgetVsActual.data ?? []).filter((row) => Number(row.budget) > 0)
+  // Highest budgets come first.
+  const budgetCards = (budgetVsActual.data ?? [])
+    .filter((row) => Number(row.budget) > 0)
+    .sort((a, b) => Number(b.budget) - Number(a.budget))
 
   return (
     <div className="space-y-6">

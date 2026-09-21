@@ -376,7 +376,9 @@ export function CreditCardsSection() {
             Aún no tienes tarjetas. Añade una para registrar tus gastos con tarjeta de crédito.
           </Card>
         ) : (
-          cards.data?.map((card) => {
+          [...(cards.data ?? [])]
+            .sort((a, b) => Number(b.available) - Number(a.available))
+            .map((card) => {
             const limit = Number(card.limit)
             const spent = Number(card.spent)
             const percent = limit > 0 ? (spent / limit) * 100 : 0

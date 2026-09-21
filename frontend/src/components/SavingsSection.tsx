@@ -364,7 +364,13 @@ export function SavingsSection() {
             acciones para ver crecer tu dinero.
           </Card>
         ) : (
-          items.data?.map((item) => {
+          [...(items.data ?? [])]
+            .sort((a, b) => {
+              const valueA = a.current_value != null ? Number(a.current_value) : Number(a.balance)
+              const valueB = b.current_value != null ? Number(b.current_value) : Number(b.balance)
+              return valueB - valueA
+            })
+            .map((item) => {
             const balance = Number(item.balance)
             const invested = Number(item.invested)
             const current = item.current_value != null ? Number(item.current_value) : invested

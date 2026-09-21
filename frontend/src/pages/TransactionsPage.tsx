@@ -382,8 +382,8 @@ function TransactionFormBody({
               )}
               <p className="text-xs text-muted-foreground">
                 {kind === 'ahorro'
-                  ? 'El dinero sale de la cuenta y entra al bolsillo. No cuenta como gasto.'
-                  : 'El dinero sale del bolsillo y vuelve a la cuenta.'}
+                  ? 'Se asigna al bolsillo sin descontar el saldo de tu cuenta (ej. CDT del mismo banco).'
+                  : 'El dinero sale del bolsillo sin tocar el saldo de tu cuenta.'}
               </p>
             </div>
           </>
