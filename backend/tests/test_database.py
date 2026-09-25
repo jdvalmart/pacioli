@@ -490,6 +490,52 @@ class TestAccounts:
         assert account.color == "#3B82F6"
         assert account.balance == Decimal("0.00")
 
+    def test_savings_leave_the_account_except_bolsillo(
+        self, temp_db: str, sample_category: int
+    ) -> None:
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        income_cat = add_category("Ingreso test", "income")
+        add_transaction(
+            date(2026, 9, 1),
+            Decimal("1000000.00"),
+            income_cat,
+            "Salary",
+            kind="ingreso",
+            account_id=account_id,
+        )
+
+        bolsillo = add_savings("Viaje", "bolsillo")
+        cdt = add_savings("CDT", "cdt", rate_bp=1000, term_days=180)
+
+        # A plain bolsillo keeps the money in the account, just earmarked.
+        add_transaction(
+            date(2026, 9, 2),
+            Decimal("200000.00"),
+            account_id=account_id,
+            kind="ahorro",
+            savings_id=bolsillo,
+        )
+        # A CDT takes the money out of the account (without being an expense).
+        add_transaction(
+            date(2026, 9, 3),
+            Decimal("300000.00"),
+            account_id=account_id,
+            kind="ahorro",
+            savings_id=cdt,
+        )
+        # Returning from the CDT puts it back into the account.
+        add_transaction(
+            date(2026, 9, 4),
+            Decimal("100000.00"),
+            account_id=account_id,
+            kind="retiro",
+            savings_id=cdt,
+        )
+
+        accounts = {a.name: a for a in get_accounts()}
+        # 1.000.000 - 300.000 (CDT) + 100.000 = 800.000; the bolsillo does not reduce it.
+        assert accounts["Banco"].balance == Decimal("800000.00")
+
     def test_update_and_delete_account(self, temp_db: str) -> None:
         account_id = add_account("Ahorro", "ahorros", Decimal("50.00"))
         update_account(account_id, "Ahorro grande")

@@ -52,6 +52,7 @@ import {
 } from '@/components/ui/table'
 import { useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
+import { SavingsFormDialog } from '@/components/SavingsFormDialog'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Transaction, TransactionInput, TransactionKind } from '@/lib/types'
 
@@ -154,6 +155,7 @@ function TransactionFormBody({
   const [savingsId, setSavingsId] = useState(
     transaction?.savings_id ? String(transaction.savings_id) : '',
   )
+  const [savingsFormOpen, setSavingsFormOpen] = useState(false)
   const [description, setDescription] = useState(transaction?.description ?? '')
   const [isRecurring, setIsRecurring] = useState(transaction?.is_recurring ?? false)
   const [recurringDay, setRecurringDay] = useState(String(transaction?.recurring_day ?? 1))
@@ -161,6 +163,11 @@ function TransactionFormBody({
   const incomeCategories = (categories.data ?? []).filter((c) => c.type === 'income')
   const expenseCategories = (categories.data ?? []).filter((c) => c.type === 'expense')
   const visibleCategories = kind === 'ingreso' ? incomeCategories : expenseCategories
+  const selectedSavings = (savings.data ?? []).find((s) => String(s.id) === savingsId)
+  const savingsIsBolsillo = (selectedSavings?.kind ?? 'bolsillo') === 'bolsillo'
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const selectedSavingsLocked =
+    selectedSavings?.matures_on != null && selectedSavings.matures_on > todayStr
 
   const subcategories = useQuery({
     queryKey: ['subcategories', categoryId],
@@ -214,6 +221,10 @@ function TransactionFormBody({
     }
     if (isSavingsKind && !savingsId) {
       toast.error('Selecciona el bolsillo o inversión')
+      return
+    }
+    if (isSavingsKind && selectedSavingsLocked) {
+      toast.error(`Este ahorro está bloqueado hasta el ${selectedSavings?.matures_on}`)
       return
     }
     if (needsAccount && !accountId) {
@@ -349,25 +360,38 @@ function TransactionFormBody({
           <>
             <div className="space-y-1.5">
               <Label>{kind === 'ahorro' ? 'Bolsillo destino' : 'Bolsillo origen'}</Label>
-              {(savings.data ?? []).length === 0 ? (
-                <div className="rounded-xl border border-dashed border-amber-400/60 bg-amber-500/10 p-3 text-sm font-semibold text-muted-foreground">
-                  👝 Aún no tienes bolsillos ni inversiones. Crea uno en la sección Ahorro e
-                  inversión del Dashboard.
-                </div>
-              ) : (
+              {(savings.data ?? []).length > 0 && (
                 <Select value={savingsId} onValueChange={(v) => setSavingsId(v ?? '')}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona el bolsillo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(savings.data ?? []).map((item) => (
-                      <SelectItem key={item.id} value={String(item.id)}>
-                        {item.kind === 'cdt' ? '🏦' : item.kind === 'acciones' ? '📈' : item.kind === 'bolsillo_programado' ? '📆' : '👝'}{' '}
-                        {item.name}
-                      </SelectItem>
-                    ))}
+                    {(savings.data ?? []).map((item) => {
+                      const isLocked = item.matures_on != null && item.matures_on > todayStr
+                      return (
+                        <SelectItem key={item.id} value={String(item.id)} disabled={isLocked}>
+                          {item.kind === 'cdt' ? '🏦' : item.kind === 'acciones' ? '📈' : item.kind === 'bolsillo_programado' ? '📆' : '👝'}{' '}
+                          {item.name}
+                          {isLocked ? ' 🔒' : ''}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => setSavingsFormOpen(true)}
+              >
+                <Plus /> Crear bolsillo, CDT o acciones
+              </Button>
+              {selectedSavingsLocked && (
+                <p className="text-xs font-bold text-amber-600">
+                  🔒 Bloqueado hasta el {selectedSavings?.matures_on} — no puedes mover dinero hasta el vencimiento.
+                </p>
               )}
             </div>
             <div className="space-y-1.5">
@@ -392,8 +416,12 @@ function TransactionFormBody({
               )}
               <p className="text-xs text-muted-foreground">
                 {kind === 'ahorro'
-                  ? 'Se asigna al bolsillo sin descontar el saldo de tu cuenta (ej. CDT del mismo banco).'
-                  : 'El dinero sale del bolsillo sin tocar el saldo de tu cuenta.'}
+                  ? savingsIsBolsillo
+                    ? 'Se asigna al bolsillo: el dinero sigue en tu cuenta, solo queda apartado.'
+                    : 'El dinero sale de tu cuenta hacia el ahorro (no cuenta como gasto).'
+                  : savingsIsBolsillo
+                    ? 'Se libera del bolsillo: el dinero sigue en tu cuenta.'
+                    : 'El dinero vuelve a tu cuenta.'}
               </p>
             </div>
           </>
@@ -581,6 +609,13 @@ function TransactionFormBody({
           {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
       </form>
+
+      <SavingsFormDialog
+        open={savingsFormOpen}
+        onOpenChange={setSavingsFormOpen}
+        item={null}
+        onCreated={(id) => setSavingsId(String(id))}
+      />
     </>
   )
 }

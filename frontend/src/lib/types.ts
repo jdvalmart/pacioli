@@ -116,12 +116,14 @@ export interface SavingsItem {
   rate_bp: number | null
   term_days: number | null
   current_value: string | null
+  dividends: string
   scheduled_day: number | null
   scheduled_amount: string | null
   source_account_id: number | null
   opening: string
   balance: string
   invested: string
+  matures_on: string | null
 }
 
 export interface Budget {

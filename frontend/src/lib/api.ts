@@ -164,6 +164,7 @@ export const api = {
     rate_bp?: number | null
     term_days?: number | null
     current_value?: string | null
+    dividends?: string | null
     scheduled_day?: number | null
     scheduled_amount?: string | null
     source_account_id?: number | null
@@ -182,6 +183,7 @@ export const api = {
       rate_bp?: number | null
       term_days?: number | null
       current_value?: string | null
+      dividends?: string | null
       scheduled_day?: number | null
       scheduled_amount?: string | null
       source_account_id?: number | null

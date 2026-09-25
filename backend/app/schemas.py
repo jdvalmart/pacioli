@@ -133,6 +133,7 @@ class SavingsIn(BaseModel):
     rate_bp: int | None = Field(default=None, ge=0, le=10000)
     term_days: int | None = Field(default=None, ge=1, le=3650)
     current_value: Money | None = None
+    dividends: Money | None = None
     scheduled_day: int | None = Field(default=None, ge=1, le=31)
     scheduled_amount: Money | None = None
     source_account_id: int | None = None
@@ -149,6 +150,7 @@ class SavingsUpdate(BaseModel):
     rate_bp: int | None = Field(default=None, ge=0, le=10000)
     term_days: int | None = Field(default=None, ge=1, le=3650)
     current_value: Money | None = None
+    dividends: Money | None = None
     scheduled_day: int | None = Field(default=None, ge=1, le=31)
     scheduled_amount: Money | None = None
     source_account_id: int | None = None
@@ -164,12 +166,14 @@ class SavingsOut(BaseModel):
     rate_bp: int | None
     term_days: int | None
     current_value: Money | None
+    dividends: Money
     scheduled_day: int | None
     scheduled_amount: Money | None
     source_account_id: int | None
     opening: Money
     balance: Money
     invested: Money
+    matures_on: date | None
 
 
 class BudgetIn(BaseModel):

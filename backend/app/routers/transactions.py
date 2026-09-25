@@ -67,8 +67,17 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
                 detail="Savings movements require account_id and savings_id",
             )
         items = {s.id: s for s in db.get_savings()}
-        if items.get(payload.savings_id) is None:
+        item = items.get(payload.savings_id)
+        if item is None:
             raise HTTPException(status_code=400, detail="Savings item does not exist")
+        if item.matures_on is not None and item.matures_on > _today():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This savings item is locked until it matures on "
+                    f"{item.matures_on.isoformat()}"
+                ),
+            )
         accounts = {a.id: a for a in db.get_accounts()}
         if accounts.get(payload.account_id) is None:
             raise HTTPException(status_code=400, detail="Account does not exist")

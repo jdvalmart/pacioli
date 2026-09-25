@@ -23,12 +23,14 @@ def list_savings() -> list[SavingsOut]:
             rate_bp=s.rate_bp,
             term_days=s.term_days,
             current_value=s.current_value,
+            dividends=s.dividends or Decimal("0.00"),
             scheduled_day=s.scheduled_day,
             scheduled_amount=s.scheduled_amount,
             source_account_id=s.source_account_id,
             opening=s.opening or Decimal("0.00"),
             balance=s.balance or Decimal("0.00"),
             invested=s.invested or Decimal("0.00"),
+            matures_on=s.matures_on,
         )
         for s in db.get_savings()
     ]
@@ -45,6 +47,7 @@ def create_savings(payload: SavingsIn) -> CreatedOut:
             rate_bp=payload.rate_bp,
             term_days=payload.term_days,
             current_value=payload.current_value,
+            dividends=payload.dividends,
             scheduled_day=payload.scheduled_day,
             scheduled_amount=payload.scheduled_amount,
             source_account_id=payload.source_account_id,
@@ -69,6 +72,7 @@ def update_savings(item_id: int, payload: SavingsUpdate) -> MessageOut:
         rate_bp=payload.rate_bp,
         term_days=payload.term_days,
         current_value=payload.current_value,
+        dividends=payload.dividends,
         scheduled_day=payload.scheduled_day,
         scheduled_amount=payload.scheduled_amount,
         source_account_id=payload.source_account_id,

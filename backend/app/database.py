@@ -18,12 +18,12 @@ import os
 import sqlite3
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def _default_data_dir() -> str:
@@ -261,12 +261,14 @@ class SavingsItem:
     rate_bp: int | None = None
     term_days: int | None = None
     current_value: Decimal | None = None
+    dividends: Decimal | None = None
     scheduled_day: int | None = None
     scheduled_amount: Decimal | None = None
     source_account_id: int | None = None
     opening: Decimal | None = None
     balance: Decimal | None = None
     invested: Decimal | None = None
+    matures_on: date | None = None
 
 
 SAVINGS_KIND_ICONS = {
@@ -1036,6 +1038,19 @@ def _migrate_v13_installments(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA user_version = 13")
 
 
+def _migrate_v14_savings_dividends(conn: sqlite3.Connection) -> None:
+    """v13 -> v14: dividends received on a stock holding.
+
+    Stocks pay no term but do pay dividends; the total is tracked on the
+    item so the return can combine price growth and dividends.
+    """
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM pragma_table_info('savings') WHERE name = 'dividends_cents'")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE savings ADD COLUMN dividends_cents INTEGER NOT NULL DEFAULT 0")
+    cursor.execute("PRAGMA user_version = 14")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -1162,6 +1177,8 @@ def init_db() -> None:
             _migrate_v12_opening_balances(conn)
         if v < 13:
             _migrate_v13_installments(conn)
+        if v < 14:
+            _migrate_v14_savings_dividends(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -1620,9 +1637,10 @@ def get_accounts() -> list[Account]:
     """Return all accounts with their computed balance, oldest first.
 
     The balance starts from the account's opening amount and then adds
-    ingresos, subtracts gastos, moves transfers between two accounts and
-    treats savings movements (ahorro/retiro) as allocations that do not
-    change the cash. Gastos_tc never touch cash.
+    ingresos, subtracts gastos and pagos_tc, and moves transfers between
+    two accounts. Savings movements only leave the cash when they go to
+    a pocket *programado*, a CDT or stocks: a plain bolsillo keeps the
+    money in the account, just earmarked.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -1637,6 +1655,12 @@ def get_accounts() -> list[Account]:
                                    CASE WHEN t.account_id = a.id THEN -t.amount_cents
                                         WHEN t.to_account_id = a.id THEN t.amount_cents
                                         ELSE 0 END
+                               WHEN t.kind = 'ahorro' THEN
+                                   CASE WHEN COALESCE((SELECT s.kind FROM savings s WHERE s.id = t.savings_id), 'bolsillo') = 'bolsillo'
+                                        THEN 0 ELSE -t.amount_cents END
+                               WHEN t.kind = 'retiro' THEN
+                                   CASE WHEN COALESCE((SELECT s.kind FROM savings s WHERE s.id = t.savings_id), 'bolsillo') = 'bolsillo'
+                                        THEN 0 ELSE t.amount_cents END
                                ELSE 0
                            END
                        )
@@ -1922,6 +1946,7 @@ def _row_to_savings(row: sqlite3.Row) -> SavingsItem:
         rate_bp=row["rate_bp"],
         term_days=row["term_days"],
         current_value=current_value,
+        dividends=_to_dec(row["dividends_cents"]),
         scheduled_day=row["scheduled_day"],
         scheduled_amount=(
             _to_dec(row["scheduled_amount_cents"])
@@ -1932,6 +1957,11 @@ def _row_to_savings(row: sqlite3.Row) -> SavingsItem:
         opening=_to_dec(row["opening_cents"]),
         balance=balance,
         invested=balance,
+        matures_on=(
+            date.fromisoformat(str(row["created_at"])[:10]) + timedelta(days=row["term_days"])
+            if row["term_days"] and row["created_at"]
+            else None
+        ),
     )
 
 
@@ -1966,6 +1996,7 @@ def add_savings(
     rate_bp: int | None = None,
     term_days: int | None = None,
     current_value: Decimal | float | int | None = None,
+    dividends: Decimal | float | int | None = None,
     scheduled_day: int | None = None,
     scheduled_amount: Decimal | float | int | None = None,
     source_account_id: int | None = None,
@@ -1980,14 +2011,16 @@ def add_savings(
     A bolsillo_programado also creates a recurring ahorro template that
     materializes every month on the scheduled day.
     """
+    cents = _to_cents(initial_amount) if initial_amount is not None else 0
+    from_account = initial_account_id is not None and cents > 0
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
             INSERT INTO savings
                 (name, kind, target_cents, rate_bp, term_days, current_value_cents,
-                 scheduled_day, scheduled_amount_cents, source_account_id, opening_cents)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 dividends_cents, scheduled_day, scheduled_amount_cents, source_account_id, opening_cents)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -1996,13 +2029,31 @@ def add_savings(
                 rate_bp,
                 term_days,
                 _to_cents(current_value) if current_value is not None else None,
+                _to_cents(dividends) if dividends is not None else 0,
                 scheduled_day,
                 _to_cents(scheduled_amount) if scheduled_amount is not None else None,
                 source_account_id,
-                _to_cents(initial_amount) if initial_amount is not None else 0,
+                0 if from_account else cents,
             ),
         )
         item_id = int(cursor.lastrowid)
+
+        if from_account:
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                    (date, amount_cents, category_id, description, is_recurring,
+                     recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id)
+                VALUES (?, ?, NULL, ?, 0, NULL, NULL, ?, 'ahorro', NULL, NULL, ?)
+                """,
+                (
+                    date.today().isoformat(),
+                    cents,
+                    f"Ahorro inicial: {name}",
+                    initial_account_id,
+                    item_id,
+                ),
+            )
 
         if kind == "bolsillo_programado" and scheduled_day is not None:
             template_date = date(date.today().year, date.today().month, scheduled_day)
@@ -2035,6 +2086,7 @@ def update_savings(
     rate_bp: int | None = None,
     term_days: int | None = None,
     current_value: Decimal | float | int | None = None,
+    dividends: Decimal | float | int | None = None,
     scheduled_day: int | None = None,
     scheduled_amount: Decimal | float | int | None = None,
     source_account_id: int | None = None,
@@ -2046,8 +2098,8 @@ def update_savings(
             """
             UPDATE savings
             SET name = ?, kind = ?, target_cents = ?, rate_bp = ?, term_days = ?,
-                current_value_cents = ?, scheduled_day = ?, scheduled_amount_cents = ?,
-                source_account_id = ?
+                current_value_cents = ?, dividends_cents = ?, scheduled_day = ?,
+                scheduled_amount_cents = ?, source_account_id = ?
             WHERE id = ?
             """,
             (
@@ -2057,6 +2109,7 @@ def update_savings(
                 rate_bp,
                 term_days,
                 _to_cents(current_value) if current_value is not None else None,
+                _to_cents(dividends) if dividends is not None else 0,
                 scheduled_day,
                 _to_cents(scheduled_amount) if scheduled_amount is not None else None,
                 source_account_id,
