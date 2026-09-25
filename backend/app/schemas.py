@@ -201,6 +201,22 @@ class BudgetOut(BaseModel):
     amount: Money
 
 
+class BudgetPlanIn(BaseModel):
+    """Payload to set the total budget of a month."""
+
+    month: int = Field(ge=1, le=12)
+    year: int = Field(ge=2000, le=2100)
+    total: Money = Field(ge=0)
+
+
+class BudgetPlanOut(BaseModel):
+    """The total budget of a month, or None when never set."""
+
+    month: int
+    year: int
+    total: Money | None = None
+
+
 class MonthlySummaryOut(BaseModel):
     """Aggregated totals for a month."""
 

@@ -276,6 +276,25 @@ class TestBudgets:
         assert response.status_code == 200
         assert client.get("/api/budgets?month=1&year=2026").json() == []
 
+    def test_budget_plan(self, client: TestClient) -> None:
+        response = client.get("/api/budgets/plan?month=1&year=2026")
+        assert response.status_code == 200
+        assert response.json()["total"] is None
+
+        client.put(
+            "/api/budgets/plan",
+            json={"month": 1, "year": 2026, "total": "2500000.00"},
+        )
+        response = client.get("/api/budgets/plan?month=1&year=2026")
+        assert response.json()["total"] == "2500000.00"
+
+        client.put(
+            "/api/budgets/plan",
+            json={"month": 1, "year": 2026, "total": "3000000.00"},
+        )
+        response = client.get("/api/budgets/plan?month=1&year=2026")
+        assert response.json()["total"] == "3000000.00"
+
 
 class TestReports:
     """Tests for report endpoints."""

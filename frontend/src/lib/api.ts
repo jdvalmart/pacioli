@@ -9,6 +9,7 @@ import type {
   Account,
   AccountType,
   Budget,
+  BudgetPlan,
   BudgetVsActual,
   Category,
   CategorySpending,
@@ -106,6 +107,13 @@ export const api = {
       `/budgets?category_id=${categoryId}&month=${month}&year=${year}`,
       { method: 'DELETE' },
     ),
+  getBudgetPlan: (month: number, year: number) =>
+    request<BudgetPlan>(`/budgets/plan${query(month, year)}`),
+  setBudgetPlan: (payload: { month: number; year: number; total: string }) =>
+    request<{ message: string }>('/budgets/plan', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
 
   // Accounts
   listAccounts: () => request<Account[]>('/accounts'),

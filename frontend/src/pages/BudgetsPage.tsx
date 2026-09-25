@@ -18,6 +18,90 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
 import { fmtCop, fmtCopDecimals, normalizeAmount } from '@/lib/money'
+import { cn } from '@/lib/utils'
+import type { Category } from '@/lib/types'
+
+const num = (value: string | undefined): number => Number(normalizeAmount(value || '0'))
+
+const fmtInput = (value: string | number): string => {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n) || n === 0) return ''
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+}
+
+const parseMoneyInput = (raw: string): string => {
+  const digits = raw.replace(/\D/g, '').replace(/^0+/, '')
+  if (!digits) return ''
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+}
+
+function MoneyInput({
+  id,
+  value,
+  onChange,
+  placeholder = '0',
+  className,
+}: {
+  id?: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  className?: string
+}) {
+  return (
+    <div className={cn('relative', className)}>
+      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm font-bold text-muted-foreground">
+        $
+      </span>
+      <Input
+        id={id}
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder={placeholder}
+        className="pl-7 text-right font-bold tabular-nums"
+        value={value}
+        onChange={(e) => onChange(parseMoneyInput(e.target.value))}
+      />
+    </div>
+  )
+}
+
+function CategoryField({
+  category,
+  value,
+  onChange,
+  total,
+}: {
+  category: Category
+  value: string
+  onChange: (value: string) => void
+  total: number
+}) {
+  const amount = num(value)
+  const percent = total > 0 && amount > 0 ? Math.round((amount / total) * 100) : null
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-base text-white shadow-[0_2px_0_0_rgba(0,0,0,0.2)]"
+        style={{ backgroundColor: category.color || '#888' }}
+      >
+        {category.icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold">{category.name}</p>
+        {percent != null && (
+          <p className="text-[11px] font-semibold text-muted-foreground">{percent}% del total</p>
+        )}
+      </div>
+      <MoneyInput
+        id={`budget-${category.id}`}
+        className="w-36"
+        value={value}
+        onChange={onChange}
+      />
+    </div>
+  )
+}
 
 function BudgetSetupDialog({
   open,
@@ -42,91 +126,85 @@ function BudgetSetupDialog({
     queryFn: () => api.listBudgets(prevMonth.month, prevMonth.year),
     enabled: open,
   })
+  const summary = useQuery({
+    queryKey: ['summary', month],
+    queryFn: () => api.summary(month.month, month.year),
+    enabled: open,
+  })
+  const plan = useQuery({
+    queryKey: ['budgetPlan', month],
+    queryFn: () => api.getBudgetPlan(month.month, month.year),
+    enabled: open,
+  })
 
   const [total, setTotal] = useState('')
-  const [diezmo, setDiezmo] = useState('')
-  const [ahorro, setAhorro] = useState('')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
 
-  const expenseCategories = (() => {
-    const all = categories.data?.filter((c) => c.type === 'expense') ?? []
-    const order = ['Vivienda', 'Alimentación', 'Servicios', 'Transporte', 'Diezmo', 'Ahorro']
-    const ordered = order
-      .map((name) => all.find((c) => c.name === name))
-      .filter(Boolean) as typeof all
-    const rest = all.filter((c) => !order.includes(c.name))
-    return [...ordered, ...rest]
-  })()
+  const allExpense = categories.data?.filter((c) => c.type === 'expense') ?? []
+  const findCat = (name: string) => allExpense.find((c) => c.name === name)
 
-  // Initialize the form from the current budgets when it opens.
+  // Diezmo and Ahorro are budget categories like any other, shown in
+  // the user's preferred order rather than set apart.
+  const orderedNames = ['Vivienda', 'Alimentación', 'Servicios', 'Transporte', 'Diezmo', 'Ahorro']
+  const orderedCategories = [
+    ...orderedNames.map((name) => findCat(name)).filter((c): c is Category => Boolean(c)),
+    ...allExpense.filter((c) => !orderedNames.includes(c.name)),
+  ]
+
+  // Initialize the form: total = saved plan (or the month's income),
+  // amounts from saved budgets.
   const [initialized, setInitialized] = useState(false)
-  if (open && !initialized && budgets.data) {
+  if (open && !initialized && budgets.data && categories.data && summary.data && plan.data) {
     const map: Record<string, string> = {}
     for (const b of budgets.data) {
-      if (b.category_id === 14) setDiezmo(b.amount)
-      else if (b.category_id === 15) setAhorro(b.amount)
-      else map[String(b.category_id)] = b.amount
+      map[String(b.category_id)] = fmtInput(b.amount)
     }
     setAmounts(map)
-    const catTotal = expenseCategories.reduce(
-      (sum, c) => sum + Number(map[String(c.id)] ?? 0),
-      0,
-    )
-    const diezmoAmt = Number(budgets.data.find((b) => b.category_id === 14)?.amount ?? 0)
-    const ahorroAmt = Number(budgets.data.find((b) => b.category_id === 15)?.amount ?? 0)
-    setTotal(String(catTotal + diezmoAmt + ahorroAmt))
+    const savedTotal = plan.data.total
+    setTotal(savedTotal != null ? fmtInput(savedTotal) : fmtInput(Number(summary.data.total_income)))
     setInitialized(true)
   }
   if (!open && initialized) {
     setInitialized(false)
   }
 
-  const assigned = expenseCategories.reduce(
-    (sum, cat) => sum + Number(normalizeAmount(amounts[String(cat.id)] || '0')),
-    0,
-  )
-  const diezmoAmt = Number(normalizeAmount(diezmo || '0'))
-  const ahorroAmt = Number(normalizeAmount(ahorro || '0'))
-  const totalNum = Number(normalizeAmount(total || '0'))
-  const remaining = totalNum - diezmoAmt - ahorroAmt
-  const pending = remaining - assigned
+  const setAmount = (id: number | undefined, value: string) => {
+    if (id == null) return
+    setAmounts((prev) => ({ ...prev, [String(id)]: value }))
+  }
+
+  const totalNum = num(total)
+  const assigned = orderedCategories.reduce((sum, c) => sum + num(amounts[String(c.id)]), 0)
+  const pending = totalNum - assigned
+  const usedPercent = totalNum > 0 ? Math.min(100, (assigned / totalNum) * 100) : 0
 
   const hasPreviousBudgets = (previousBudgets.data ?? []).length > 0
 
   const copyPrevious = () => {
     const map: Record<string, string> = {}
     for (const b of previousBudgets.data ?? []) {
-      if (b.category_id === 14) setDiezmo(b.amount)
-      else if (b.category_id === 15) setAhorro(b.amount)
-      else map[String(b.category_id)] = b.amount
+      map[String(b.category_id)] = fmtInput(b.amount)
     }
     setAmounts(map)
-    const catTotal = expenseCategories.reduce(
-      (sum, c) => sum + Number(map[String(c.id)] ?? 0),
-      0,
-    )
-    const prevDiezmo = Number((previousBudgets.data ?? []).find((b) => b.category_id === 14)?.amount ?? 0)
-    const prevAhorro = Number((previousBudgets.data ?? []).find((b) => b.category_id === 15)?.amount ?? 0)
-    setTotal(String(catTotal + prevDiezmo + prevAhorro))
     toast.success('Presupuesto del mes anterior copiado')
   }
 
   const mutation = useMutation({
-    mutationFn: () => {
-      const allBudgets = [
-        ...expenseCategories
-          .filter((cat) => Number(normalizeAmount(amounts[String(cat.id)] || '0')) > 0)
+    mutationFn: async () => {
+      await api.replaceBudgets({
+        month: month.month,
+        year: month.year,
+        budgets: allExpense
+          .filter((cat) => num(amounts[String(cat.id)]) > 0)
           .map((cat) => ({
             category_id: cat.id,
             amount: normalizeAmount(amounts[String(cat.id)]),
           })),
-      ]
-      if (diezmoAmt > 0) allBudgets.push({ category_id: 14, amount: normalizeAmount(diezmo) })
-      if (ahorroAmt > 0) allBudgets.push({ category_id: 15, amount: normalizeAmount(ahorro) })
-      return api.replaceBudgets({
+      })
+      await api.setBudgetPlan({
         month: month.month,
         year: month.year,
-        budgets: allBudgets,
+        total: normalizeAmount(total || '0'),
       })
     },
     onSuccess: () => {
@@ -134,47 +212,69 @@ function BudgetSetupDialog({
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['budgets', month] })
       void queryClient.invalidateQueries({ queryKey: ['budgetVsActual', month] })
+      void queryClient.invalidateQueries({ queryKey: ['budgetPlan', month] })
     },
     onError: (error: Error) => toast.error(error.message),
   })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
         {open && (
           <>
             <DialogHeader>
               <DialogTitle>Establecer presupuesto</DialogTitle>
               <DialogDescription>
-                Define tu presupuesto total y repártelo por categorías para{' '}
-                {monthLabel(month)}.
+                Planifica tus gastos de {monthLabel(month)}: reparte tu presupuesto total entre
+                las categorías.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="space-y-1.5">
                 <Label htmlFor="budget-total">Mi presupuesto total</Label>
-                <Input
-                  id="budget-total"
-                  placeholder="3.000.000"
-                  className="text-lg font-black"
-                  value={total}
-                  onChange={(e) => setTotal(e.target.value)}
-                />
+                <MoneyInput id="budget-total" value={total} onChange={setTotal} placeholder="3.000.000" />
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Por defecto usamos tu ingreso del mes: {fmtCop(Number(summary.data?.total_income ?? 0))}
+                </p>
               </div>
 
-              {totalNum > 0 && (
-                <div className="flex items-center justify-between rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-sm font-bold">
-                  <span>
-                    Resto: {fmtCopDecimals(remaining)}
-                  </span>
-                  <span className={pending < 0 ? 'text-rose-600' : 'text-muted-foreground'}>
-                    {pending >= 0
-                      ? `Por asignar: ${fmtCopDecimals(pending)}`
-                      : `Te pasaste por ${fmtCopDecimals(Math.abs(pending))}`}
-                  </span>
+              <div className="rounded-2xl border-2 border-border bg-muted/40 p-4">
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div>
+                    <p className="text-[10px] font-extrabold tracking-wide text-muted-foreground uppercase">
+                      Asignado
+                    </p>
+                    <p className="text-sm font-black">{fmtCop(assigned)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold tracking-wide text-muted-foreground uppercase">
+                      Sin asignar
+                    </p>
+                    <p
+                      className={cn(
+                        'text-sm font-black',
+                        pending < 0
+                          ? 'text-rose-600'
+                          : pending > 0
+                            ? 'text-amber-600'
+                            : 'text-emerald-600',
+                      )}
+                    >
+                      {fmtCop(pending)}
+                    </p>
+                  </div>
                 </div>
-              )}
+                <Progress
+                  value={usedPercent}
+                  className={cn('mt-3', pending < 0 && '[&>div]:bg-rose-500')}
+                />
+                {pending < 0 && (
+                  <p className="mt-2 text-xs font-bold text-rose-600">
+                    Te pasaste por {fmtCopDecimals(Math.abs(pending))}
+                  </p>
+                )}
+              </div>
 
               {hasPreviousBudgets && (
                 <Button type="button" variant="outline" className="w-full" onClick={copyPrevious}>
@@ -183,50 +283,18 @@ function BudgetSetupDialog({
               )}
 
               <div className="space-y-3">
-                {expenseCategories.map((cat) => {
-                  if (cat.name === 'Diezmo' || cat.name === 'Ahorro') return null
-                  return (
-                    <div key={cat.id} className="space-y-1.5">
-                      <Label htmlFor={`budget-${cat.id}`} className="flex items-center gap-1.5">
-                        <span>{cat.icon}</span> {cat.name}
-                      </Label>
-                      <Input
-                        id={`budget-${cat.id}`}
-                        placeholder="0"
-                        value={amounts[String(cat.id)] ?? ''}
-                        onChange={(e) =>
-                          setAmounts((prev) => ({ ...prev, [String(cat.id)]: e.target.value }))
-                        }
-                      />
-                      {cat.name === 'Transporte' && (
-                        <>
-                          <div className="space-y-1.5">
-                            <Label htmlFor="budget-diezmo" className="flex items-center gap-1.5">
-                              🙏 Diezmo
-                            </Label>
-                            <Input
-                              id="budget-diezmo"
-                              placeholder="0"
-                              value={diezmo}
-                              onChange={(e) => setDiezmo(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor="budget-ahorro" className="flex items-center gap-1.5">
-                              🏧 Ahorro
-                            </Label>
-                            <Input
-                              id="budget-ahorro"
-                              placeholder="0"
-                              value={ahorro}
-                              onChange={(e) => setAhorro(e.target.value)}
-                            />
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )
-                })}
+                <p className="text-[11px] font-extrabold tracking-wide text-muted-foreground uppercase">
+                  Categorías
+                </p>
+                {orderedCategories.map((cat) => (
+                  <CategoryField
+                    key={cat.id}
+                    category={cat}
+                    value={amounts[String(cat.id)] ?? ''}
+                    onChange={(v) => setAmount(cat.id, v)}
+                    total={totalNum}
+                  />
+                ))}
               </div>
 
               <Button
@@ -260,6 +328,10 @@ export function BudgetsPage() {
     queryKey: ['summary', month],
     queryFn: () => api.summary(month.month, month.year),
   })
+  const plan = useQuery({
+    queryKey: ['budgetPlan', month],
+    queryFn: () => api.getBudgetPlan(month.month, month.year),
+  })
 
   const [setupOpen, setSetupOpen] = useState(false)
 
@@ -270,10 +342,17 @@ export function BudgetsPage() {
   )
 
   const totalBudget = (budgets.data ?? []).reduce((sum, b) => sum + Number(b.amount), 0)
-  const totalActual = (budgetVsActual.data ?? []).reduce((sum, row) => sum + Number(row.actual), 0)
+  // Compare only against budgeted categories, so this matches the
+  // dashboard. Spending in categories without a budget is shown apart.
+  const budgetedRows = (budgetVsActual.data ?? []).filter((row) => Number(row.budget) > 0)
+  const totalActual = budgetedRows.reduce((sum, row) => sum + Number(row.actual), 0)
+  const unbudgeted = (budgetVsActual.data ?? [])
+    .filter((row) => Number(row.budget) === 0)
+    .reduce((sum, row) => sum + Number(row.actual), 0)
   const totalRemaining = totalBudget - totalActual
   const income = Number(summary.data?.total_income ?? 0)
-  const unassigned = income - totalBudget
+  const planTotal = plan.data?.total != null ? Number(plan.data.total) : income
+  const unassigned = planTotal - totalBudget
 
   return (
     <div className="space-y-6">
@@ -289,10 +368,16 @@ export function BudgetsPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+          <p className="text-[11px] font-extrabold uppercase tracking-wide text-violet-700">
+            Presupuesto total
+          </p>
+          <p className="text-lg font-black text-violet-700">{fmtCop(planTotal)}</p>
+        </div>
         <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
           <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-            Presupuestado
+            Asignado
           </p>
           <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
         </div>
@@ -316,17 +401,27 @@ export function BudgetsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-3">
-        <span className="text-sm font-bold">
-          Ingresos del mes: <span className="text-emerald-600">{fmtCop(income)}</span>
-        </span>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-3">
         <span
-          className={`text-sm font-bold ${unassigned < 0 ? 'text-rose-600' : 'text-muted-foreground'}`}
+          className={`text-sm font-bold ${
+            unassigned < 0
+              ? 'text-rose-600'
+              : unassigned > 0
+                ? 'text-amber-600'
+                : 'text-emerald-600'
+          }`}
         >
-          {unassigned >= 0
-            ? `Sin asignar: ${fmtCopDecimals(unassigned)}`
-            : `Sobrepasaste tus ingresos por ${fmtCopDecimals(Math.abs(unassigned))}`}
+          {unassigned > 0
+            ? `Sin asignar: ${fmtCop(unassigned)} (falta repartirlo entre categorías)`
+            : unassigned < 0
+              ? `Te pasaste del presupuesto total por ${fmtCop(Math.abs(unassigned))}`
+              : 'Todo el presupuesto está asignado ✓'}
         </span>
+        {unbudgeted > 0 && (
+          <span className="text-sm font-bold text-muted-foreground">
+            Gastado sin presupuesto: <span className="text-rose-600">{fmtCop(unbudgeted)}</span>
+          </span>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

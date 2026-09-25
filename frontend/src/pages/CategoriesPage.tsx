@@ -38,7 +38,10 @@ import type { Category, CategoryType } from '@/lib/types'
 
 const COLORS = ['#EF4444', '#F97316', '#EAB308', '#10B981', '#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F43F5E', '#6366F1']
 
-const ICONS = ['📁', '🏠', '🍕', '🚌', '⚡', '🎮', '🏥', '📚', '🛍️', '📦', '💰', '💻', '📈', '💵']
+const ICONS = [
+  '📁', '🏠', '🍕', '🚌', '⚡', '🎮', '🏥', '📚', '🛍️', '📦',
+  '💰', '💻', '📈', '💵', '🐷', '🪙', '🙏', '🎁', '🐾', '✈️', '📱', '🔒',
+]
 
 interface CategoryFormProps {
   open: boolean
@@ -360,7 +363,7 @@ export function CategoriesPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-emerald-600">Ingresos</CardTitle>

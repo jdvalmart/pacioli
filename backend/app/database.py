@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def _default_data_dir() -> str:
@@ -938,6 +938,25 @@ def _migrate_v10_savings(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrate_v11_monthly_plan(conn: sqlite3.Connection) -> None:
+    """v10 -> v11: store the month's total budget.
+
+    The setup form lets the user set a total for the month. Category
+    budgets only keep their own amounts, so the chosen total lives in
+    ``monthly_plans`` and is returned to the form.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS monthly_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+            year INTEGER NOT NULL,
+            total_cents INTEGER NOT NULL,
+            UNIQUE(month, year)
+        )
+    """)
+    conn.execute("PRAGMA user_version = 11")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -1058,6 +1077,8 @@ def init_db() -> None:
             _migrate_v9_payment_kind(conn)
         if v < 10:
             _migrate_v10_savings(conn)
+        if v < 11:
+            _migrate_v11_monthly_plan(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -1431,6 +1452,31 @@ def delete_budget(category_id: int, month: int, year: int) -> None:
         cursor.execute(
             "DELETE FROM budgets WHERE category_id = ? AND month = ? AND year = ?",
             (category_id, month, year),
+        )
+        conn.commit()
+
+
+def get_monthly_plan(month: int, year: int) -> Decimal | None:
+    """Return the total budget the user set for a month, if any."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT total_cents FROM monthly_plans WHERE month = ? AND year = ?",
+            (month, year),
+        ).fetchone()
+        return _to_dec(row["total_cents"]) if row else None
+
+
+def set_monthly_plan(month: int, year: int, total: Decimal | float | int) -> None:
+    """Create or update the total budget of a month."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO monthly_plans (month, year, total_cents)
+            VALUES (?, ?, ?)
+            ON CONFLICT(month, year) DO UPDATE SET total_cents = excluded.total_cents
+        """,
+            (month, year, _to_cents(total)),
         )
         conn.commit()
 
@@ -1930,13 +1976,18 @@ def delete_savings(item_id: int) -> None:
 def get_monthly_summary(month: int, year: int) -> MonthlySummary:
     """Return income/expense/balance totals for a month.
 
-    Transfers never count as income or expense; gasto_tc counts as
-    an expense (credit card debt).
+    Transfers never count as income or expense. A credit card purchase
+    (gasto_tc) does not move money on the purchase date: it only becomes
+    an expense when the card is paid (pago_tc), at which point the money
+    leaves the chosen account. This keeps the accumulated balance equal
+    to the sum of the accounts.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
         start_date, end_date = _month_window(month, year)
 
+        # Spending by category (informational): real expenses plus card
+        # purchases, so the user still sees where the money went.
         cursor.execute(
             """
             SELECT c.name, t.kind, SUM(t.amount_cents) as total_cents
@@ -1950,22 +2001,31 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
         )
 
         by_category: dict[str, Decimal] = {}
-        total_income = Decimal("0.00")
-        total_expense = Decimal("0.00")
         for row in cursor.fetchall():
-            total = _to_dec(row["total_cents"])
-            by_category[row["name"]] = total
-            if row["kind"] == "ingreso":
-                total_income += total
-            else:
-                total_expense += total
+            name = row["name"]
+            by_category[name] = by_category.get(name, Decimal("0.00")) + _to_dec(row["total_cents"])
+
+        # Cash totals: expenses are actual outflows. A card payment is
+        # an outflow; the card purchase itself is not (yet).
+        totals = cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN kind = 'ingreso' THEN amount_cents ELSE 0 END), 0) as income_cents,
+                COALESCE(SUM(CASE WHEN kind IN ('gasto', 'pago_tc') THEN amount_cents ELSE 0 END), 0) as expense_cents
+            FROM transactions
+            WHERE date >= ? AND date < ?
+        """,
+            (start_date, end_date),
+        ).fetchone()
+        total_income = _to_dec(totals["income_cents"])
+        total_expense = _to_dec(totals["expense_cents"])
 
         # Running balance: everything recorded before this month.
         carryover = cursor.execute(
             """
             SELECT COALESCE(SUM(
                 CASE WHEN kind = 'ingreso' THEN amount_cents
-                     WHEN kind IN ('gasto', 'gasto_tc') THEN -amount_cents
+                     WHEN kind IN ('gasto', 'pago_tc') THEN -amount_cents
                      ELSE 0 END
             ), 0) as cents
             FROM transactions

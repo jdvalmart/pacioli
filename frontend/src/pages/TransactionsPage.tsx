@@ -10,6 +10,7 @@ import {
   PiggyBank,
   Plus,
   Trash2,
+  Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSearchParams } from 'react-router-dom'
@@ -549,6 +550,133 @@ const KIND_BADGES: Record<TransactionKind, { label: string; className: string }>
   retiro: { label: 'Retiro', className: 'bg-teal-100 text-teal-700' },
 }
 
+const amountClass = (tx: Transaction) =>
+  tx.kind === 'ingreso'
+    ? 'text-emerald-600'
+    : tx.kind === 'transferencia'
+      ? 'text-blue-600'
+      : 'text-red-600'
+
+const KIND_LABELS: Record<TransactionKind, string> = {
+  ingreso: 'Ingreso',
+  gasto: 'Gasto',
+  transferencia: 'Transferencia',
+  gasto_tc: 'Gasto TC',
+  pago_tc: 'Pago TC',
+  ahorro: 'Ahorro',
+  retiro: 'Retiro',
+}
+
+const KIND_FILTERS: { value: TransactionKind | 'all'; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: 'ingreso', label: KIND_LABELS.ingreso },
+  { value: 'gasto', label: KIND_LABELS.gasto },
+  { value: 'transferencia', label: KIND_LABELS.transferencia },
+  { value: 'gasto_tc', label: KIND_LABELS.gasto_tc },
+  { value: 'pago_tc', label: KIND_LABELS.pago_tc },
+  { value: 'ahorro', label: KIND_LABELS.ahorro },
+  { value: 'retiro', label: KIND_LABELS.retiro },
+]
+
+function TransactionsTable({
+  rows,
+  emptyMessage,
+  onEdit,
+  onDelete,
+}: {
+  rows: Transaction[]
+  emptyMessage: string
+  onEdit: (tx: Transaction) => void
+  onDelete: (tx: Transaction) => void
+}) {
+  return (
+    <div className="rounded-2xl border-2 border-border bg-card shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Movimiento</TableHead>
+            <TableHead>Detalle</TableHead>
+            <TableHead className="text-right">Monto</TableHead>
+            <TableHead className="w-24" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          )}
+          {rows.map((tx) => (
+            <TableRow key={tx.id}>
+              <TableCell className="whitespace-nowrap">
+                {new Date(`${tx.date}T00:00:00`).toLocaleDateString('es-CO', {
+                  day: '2-digit',
+                  month: 'short',
+                })}
+                {(tx.is_recurring || tx.generated_from) && (
+                  <Badge variant="outline" className="ml-2">
+                    recurrente
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell>
+                <Badge className={KIND_BADGES[tx.kind]?.className ?? ''}>
+                  {KIND_BADGES[tx.kind]?.label ?? tx.kind}
+                </Badge>
+                {tx.kind !== 'transferencia' && (
+                  <span className="ml-2">
+                    <span
+                      className="inline-block size-2.5 rounded-full align-middle"
+                      style={{ backgroundColor: tx.color || '#888' }}
+                    />
+                    <span className="ml-1.5">
+                      {tx.icon} {tx.category_name}
+                    </span>
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="max-w-64 truncate">
+                <div className="truncate">{tx.description || '—'}</div>
+                <div className="mt-0.5 truncate text-xs font-bold text-muted-foreground">
+                  {tx.kind === 'transferencia'
+                    ? `${tx.account_icon} ${tx.account_name ?? '—'} → ${tx.to_account_icon} ${tx.to_account_name ?? '—'}`
+                    : tx.kind === 'gasto_tc'
+                      ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}`
+                      : tx.kind === 'pago_tc'
+                        ? `${tx.account_icon} ${tx.account_name ?? '—'} → 💳 ${tx.card_name ?? 'TC'}`
+                        : tx.kind === 'ahorro' || tx.kind === 'retiro'
+                          ? `${tx.account_icon} ${tx.account_name ?? '—'} ⇄ 👝 ${tx.savings_name ?? 'Ahorro'}`
+                          : tx.account_name
+                            ? `${tx.account_icon} ${tx.account_name}`
+                            : '—'}
+                  {tx.subcategory_name && ` · ${tx.subcategory_name}`}
+                </div>
+              </TableCell>
+              <TableCell className={`text-right font-bold ${amountClass(tx)}`}>
+                {tx.kind === 'ingreso' ? '+' : tx.kind === 'transferencia' ? '⇄' : '−'}
+                {fmtCopDecimals(tx.amount)}
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => onEdit(tx)}>
+                    <Pencil />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => onDelete(tx)}>
+                    <Trash2 className="text-red-500" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
 export function TransactionsPage() {
   const { month } = useMonth()
   const queryClient = useQueryClient()
@@ -557,6 +685,7 @@ export function TransactionsPage() {
   const [formOpen, setFormOpen] = useState(() => searchParams.get('new') === '1')
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
+  const [kindFilter, setKindFilter] = useState<TransactionKind | 'all'>('all')
 
   const handleFormOpenChange = (open: boolean) => {
     setFormOpen(open)
@@ -607,15 +736,16 @@ export function TransactionsPage() {
     setFormOpen(true)
   }
 
-  const amountClass = (tx: Transaction) =>
-    tx.kind === 'ingreso'
-      ? 'text-emerald-600'
-      : tx.kind === 'transferencia'
-        ? 'text-blue-600'
-        : 'text-red-600'
+  const allTransactions = transactions.data ?? []
+  const accountTransactions = allTransactions.filter((tx) => tx.kind !== 'gasto_tc')
+  const cardTransactions = allTransactions.filter((tx) => tx.kind === 'gasto_tc')
+  const filteredTransactions =
+    kindFilter === 'all'
+      ? allTransactions
+      : allTransactions.filter((tx) => tx.kind === kindFilter)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-extrabold">Transacciones</h1>
@@ -628,90 +758,84 @@ export function TransactionsPage() {
         </Button>
       </div>
 
-      <div className="rounded-2xl border-2 border-border bg-card shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Movimiento</TableHead>
-              <TableHead>Detalle</TableHead>
-              <TableHead className="text-right">Monto</TableHead>
-              <TableHead className="w-24" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {transactions.data?.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  No hay transacciones este mes. Crea la primera con el botón de arriba.
-                </TableCell>
-              </TableRow>
-            )}
-            {transactions.data?.map((tx) => (
-              <TableRow key={tx.id}>
-                <TableCell className="whitespace-nowrap">
-                  {new Date(`${tx.date}T00:00:00`).toLocaleDateString('es-CO', {
-                    day: '2-digit',
-                    month: 'short',
-                  })}
-                  {(tx.is_recurring || tx.generated_from) && (
-                    <Badge variant="outline" className="ml-2">
-                      recurrente
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge className={KIND_BADGES[tx.kind]?.className ?? ''}>
-                    {KIND_BADGES[tx.kind]?.label ?? tx.kind}
-                  </Badge>
-                  {tx.kind !== 'transferencia' && (
-                    <span className="ml-2">
-                      <span
-                        className="inline-block size-2.5 rounded-full align-middle"
-                        style={{ backgroundColor: tx.color || '#888' }}
-                      />
-                      <span className="ml-1.5">
-                        {tx.icon} {tx.category_name}
-                      </span>
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="max-w-64 truncate">
-                  <div className="truncate">{tx.description || '—'}</div>
-                  <div className="mt-0.5 truncate text-xs font-bold text-muted-foreground">
-                    {tx.kind === 'transferencia'
-                      ? `${tx.account_icon} ${tx.account_name ?? '—'} → ${tx.to_account_icon} ${tx.to_account_name ?? '—'}`
-                      : tx.kind === 'gasto_tc'
-                        ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}`
-                        : tx.kind === 'pago_tc'
-                          ? `${tx.account_icon} ${tx.account_name ?? '—'} → 💳 ${tx.card_name ?? 'TC'}`
-                          : tx.kind === 'ahorro' || tx.kind === 'retiro'
-                            ? `${tx.account_icon} ${tx.account_name ?? '—'} ⇄ 👝 ${tx.savings_name ?? 'Ahorro'}`
-                            : tx.account_name
-                              ? `${tx.account_icon} ${tx.account_name}`
-                              : '—'}
-                    {tx.subcategory_name && ` · ${tx.subcategory_name}`}
-                  </div>
-                </TableCell>
-                <TableCell className={`text-right font-bold ${amountClass(tx)}`}>
-                  {tx.kind === 'ingreso' ? '+' : tx.kind === 'transferencia' ? '⇄' : '−'}
-                  {fmtCopDecimals(tx.amount)}
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(tx)}>
-                      <Pencil />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setDeleting(tx)}>
-                      <Trash2 className="text-red-500" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="flex flex-wrap gap-2">
+        {KIND_FILTERS.map(({ value, label }) => {
+          const active = kindFilter === value
+          const count =
+            value === 'all'
+              ? allTransactions.length
+              : allTransactions.filter((tx) => tx.kind === value).length
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setKindFilter(value)}
+              className={`rounded-xl border-2 px-3 py-1.5 text-xs font-bold transition-colors ${
+                active
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {label}
+              <span className={`ml-1.5 ${active ? 'opacity-80' : 'opacity-60'}`}>{count}</span>
+            </button>
+          )
+        })}
       </div>
+
+      {kindFilter === 'all' ? (
+        <>
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Wallet className="size-4 text-primary" />
+              <h2 className="text-base font-extrabold">Cuentas</h2>
+              <Badge variant="secondary">{accountTransactions.length}</Badge>
+              <span className="text-xs font-semibold text-muted-foreground">
+                Ingresos, gastos, transferencias, ahorros y pagos TC
+              </span>
+            </div>
+            <TransactionsTable
+              rows={accountTransactions}
+              emptyMessage="No hay movimientos de cuentas este mes."
+              onEdit={openEdit}
+              onDelete={setDeleting}
+            />
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <CreditCard className="size-4 text-orange-500" />
+              <h2 className="text-base font-extrabold">Tarjetas de crédito</h2>
+              <Badge variant="secondary">{cardTransactions.length}</Badge>
+              <span className="text-xs font-semibold text-muted-foreground">
+                Compras con tarjeta (no descuentan de tus cuentas hasta que las pagues)
+              </span>
+            </div>
+            <TransactionsTable
+              rows={cardTransactions}
+              emptyMessage="No hay compras con tarjeta este mes."
+              onEdit={openEdit}
+              onDelete={setDeleting}
+            />
+          </section>
+        </>
+      ) : (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-extrabold">{KIND_LABELS[kindFilter]}</h2>
+            <Badge variant="secondary">{filteredTransactions.length}</Badge>
+            <span className="text-xs font-semibold text-muted-foreground">
+              Movimientos de tipo {KIND_LABELS[kindFilter].toLowerCase()}
+            </span>
+          </div>
+          <TransactionsTable
+            rows={filteredTransactions}
+            emptyMessage={`No hay movimientos de tipo ${KIND_LABELS[kindFilter].toLowerCase()} este mes.`}
+            onEdit={openEdit}
+            onDelete={setDeleting}
+          />
+        </section>
+      )}
 
       <TransactionForm
         open={formOpen}

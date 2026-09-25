@@ -12,6 +12,7 @@ import pytest
 
 from app.database import (
     LEGACY_DB_PATH,
+    SCHEMA_VERSION,
     _migrate_v1_baseline,
     _migrate_v2_cents,
     _seed_defaults,
@@ -31,6 +32,7 @@ from app.database import (
     get_categories,
     get_connection,
     get_credit_cards,
+    get_monthly_plan,
     get_monthly_summary,
     get_savings,
     get_subcategories,
@@ -38,6 +40,7 @@ from app.database import (
     init_db,
     set_budget,
     set_db_path,
+    set_monthly_plan,
     update_account,
     update_credit_card,
 )
@@ -120,6 +123,16 @@ class TestBudgets:
         assert rows[0]["actual"] == Decimal("250.00")
         assert rows[0]["remaining"] == Decimal("750.00")
         assert rows[0]["percent"] == 25.0
+
+    def test_monthly_plan_roundtrip(self, temp_db: str) -> None:
+        assert get_monthly_plan(1, 2026) is None
+
+        set_monthly_plan(1, 2026, Decimal("2500000.00"))
+        assert get_monthly_plan(1, 2026) == Decimal("2500000.00")
+
+        # Upsert keeps a single row per month.
+        set_monthly_plan(1, 2026, Decimal("3000000.00"))
+        assert get_monthly_plan(1, 2026) == Decimal("3000000.00")
 
 
 class TestRecurring:
@@ -288,7 +301,7 @@ class TestMigrationV3:
                 "SELECT sql FROM sqlite_master WHERE name='subcategories'"
             ).fetchone()[0]
             assert "UNIQUE(category_id, name)" in schema
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         set_db_path(None)
 
     def test_repoints_transactions_to_canonical_subcategory(self, tmp_path: Path) -> None:
@@ -368,7 +381,7 @@ class TestMigrationV4:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='budgets'").fetchone()[
                 0
             ]
@@ -532,8 +545,9 @@ class TestTransfers:
         accounts = {a.name: a for a in get_accounts()}
         assert accounts["Ahorros"].balance == Decimal("1000.00")
 
+        # A card purchase is not a cash expense until it is paid.
         summary = get_monthly_summary(9, 2026)
-        assert summary.total_expense == Decimal("150.00")
+        assert summary.total_expense == Decimal("0.00")
 
 
 class TestMigrationV7:
@@ -584,7 +598,7 @@ class TestMigrationV7:
         init_db()
 
         with get_connection() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             rows = conn.execute("SELECT kind FROM transactions ORDER BY id").fetchall()
             assert [r[0] for r in rows] == ["ingreso", "gasto"]
         set_db_path(None)

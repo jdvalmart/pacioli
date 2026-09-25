@@ -142,7 +142,7 @@ export function DashboardPage() {
                 <>
                   <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Presupuestado
+                      Asignado
                     </p>
                     <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
                   </div>

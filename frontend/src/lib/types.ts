@@ -123,6 +123,12 @@ export interface Budget {
   amount: string
 }
 
+export interface BudgetPlan {
+  month: number
+  year: number
+  total: string | null
+}
+
 export interface MonthlySummary {
   month: number
   year: number
