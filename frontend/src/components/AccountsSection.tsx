@@ -164,7 +164,7 @@ function AccountFormBody({
   )
 }
 
-export function AccountsSection() {
+export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {}) {
   const queryClient = useQueryClient()
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
   const [formOpen, setFormOpen] = useState(false)
@@ -193,16 +193,18 @@ export function AccountsSection() {
             {(accounts.data ?? []).length > 0 && ` · total ${fmtCopDecimals(total)}`}
           </p>
         </div>
-        <Button
-          size="icon"
-          aria-label="Nueva cuenta"
-          onClick={() => {
-            setEditing(null)
-            setFormOpen(true)
-          }}
-        >
-          <Plus />
-        </Button>
+        {!readOnly && (
+          <Button
+            size="icon"
+            aria-label="Nueva cuenta"
+            onClick={() => {
+              setEditing(null)
+              setFormOpen(true)
+            }}
+          >
+            <Plus />
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -237,21 +239,23 @@ export function AccountsSection() {
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => {
-                      setEditing(account)
-                      setFormOpen(true)
-                    }}
-                  >
-                    <Pencil className="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(account)}>
-                    <Trash2 className="size-3.5 text-destructive" />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => {
+                        setEditing(account)
+                        setFormOpen(true)
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(account)}>
+                      <Trash2 className="size-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                )}
               </div>
               <p className="mt-3 text-xl font-black">{fmtCopDecimals(account.balance)}</p>
             </Card>

@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { ArrowDownLeft, ArrowUpRight, Plus, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { api } from '@/lib/api'
 import { fmtCop, fmtCopDecimals } from '@/lib/money'
@@ -8,7 +7,6 @@ import { useMonth } from '@/hooks/useMonth'
 import { AccountsSection } from '@/components/AccountsSection'
 import { CreditCardsSection } from '@/components/CreditCardsSection'
 import { SavingsSection } from '@/components/SavingsSection'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -80,14 +78,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold">Resumen</h1>
-        <Link to="/transactions?new=1">
-          <Button size="icon" aria-label="Nueva transacción">
-            <Plus />
-          </Button>
-        </Link>
-      </div>
+      <h1 className="text-xl font-extrabold">Resumen</h1>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <SummaryCard
@@ -115,21 +106,16 @@ export function DashboardPage() {
         />
       </div>
 
-      <AccountsSection />
+      <AccountsSection readOnly />
 
-      <CreditCardsSection />
+      <CreditCardsSection readOnly />
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-extrabold">Presupuestos</h2>
-            <p className="text-sm font-semibold text-muted-foreground">
-              Progreso de gasto por categoría
-            </p>
-          </div>
-          <Link to="/budgets">
-            <Button variant="outline">Ajustar</Button>
-          </Link>
+        <div>
+          <h2 className="text-lg font-extrabold">Presupuestos</h2>
+          <p className="text-sm font-semibold text-muted-foreground">
+            Progreso de gasto por categoría
+          </p>
         </div>
 
         {budgetCards.length > 0 && (
@@ -229,7 +215,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <SavingsSection />
+      <SavingsSection readOnly />
 
       <Card>
         <CardHeader>

@@ -326,7 +326,7 @@ function PayCardBody({
   )
 }
 
-export function CreditCardsSection() {
+export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } = {}) {
   const queryClient = useQueryClient()
   const cards = useQuery({ queryKey: ['creditCards'], queryFn: api.listCreditCards })
   const [formOpen, setFormOpen] = useState(false)
@@ -353,16 +353,18 @@ export function CreditCardsSection() {
             Cupo disponible según tus gastos TC del mes
           </p>
         </div>
-        <Button
-          size="icon"
-          aria-label="Nueva tarjeta"
-          onClick={() => {
-            setEditing(null)
-            setFormOpen(true)
-          }}
-        >
-          <Plus />
-        </Button>
+        {!readOnly && (
+          <Button
+            size="icon"
+            aria-label="Nueva tarjeta"
+            onClick={() => {
+              setEditing(null)
+              setFormOpen(true)
+            }}
+          >
+            <Plus />
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -397,21 +399,23 @@ export function CreditCardsSection() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => {
-                        setEditing(card)
-                        setFormOpen(true)
-                      }}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(card)}>
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => {
+                          setEditing(card)
+                          setFormOpen(true)
+                        }}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(card)}>
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-4 space-y-1.5">

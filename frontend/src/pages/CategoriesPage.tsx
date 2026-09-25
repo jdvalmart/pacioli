@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -213,33 +213,31 @@ function CategoryRow({ category, total }: { category: Category; total: number })
   })
 
   return (
-    <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-      <div className="flex items-center gap-3">
+    <div className="rounded-2xl border-2 border-border bg-card p-3 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+      <div className="flex items-center gap-2.5">
         <div
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl text-xl text-white shadow-[0_3px_0_0_rgba(0,0,0,0.25)]"
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-base text-white shadow-[0_2px_0_0_rgba(0,0,0,0.25)]"
           style={{ backgroundColor: category.color || '#888' }}
         >
           {category.icon}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{category.name}</p>
-          <p className="text-xs font-bold text-muted-foreground">
-            {total > 0
-              ? `Este mes: ${fmtCopDecimals(total)}`
-              : 'Sin movimientos este mes'}
+          <p className="truncate text-xs font-bold text-muted-foreground">
+            {total > 0 ? `Este mes: ${fmtCopDecimals(total)}` : 'Sin movimientos'}
           </p>
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={() => setEditing(true)}>
-          <Pencil />
+        <Button variant="ghost" size="icon-xs" onClick={() => setEditing(true)}>
+          <Pencil className="size-3.5" />
         </Button>
-        <Button variant="ghost" size="icon-sm" onClick={() => setDeleting(true)}>
-          <Trash2 className="text-red-500" />
+        <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(true)}>
+          <Trash2 className="size-3.5 text-red-500" />
         </Button>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {subcategories.data?.map((sub) => (
-          <Badge key={sub.id} variant="secondary" className="gap-1">
+          <Badge key={sub.id} variant="secondary" className="gap-1 text-[11px]">
             {sub.icon} {sub.name}
             <button
               onClick={() => setSubToDelete(sub.id)}
@@ -258,7 +256,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
           }}
         >
           <Input
-            className="h-7 w-32 text-xs"
+            className="h-7 w-24 text-xs"
             placeholder="Nueva sub…"
             value={newSub}
             onChange={(e) => setNewSub(e.target.value)}
@@ -315,7 +313,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
   )
 }
 
-export function CategoriesPage() {
+export function CategoriesSection() {
   const { month } = useMonth()
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
   const spendingExpense = useQuery({
@@ -345,13 +343,18 @@ export function CategoriesPage() {
   const expense = (categories.data?.filter((c) => c.type === 'expense') ?? []).sort(sortByUsage)
 
   return (
-    <div className="space-y-6">
+    <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold">Categorías</h1>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Organiza tus movimientos de {monthLabel(month)} con categorías y subcategorías
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
+            <Tags className="size-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-extrabold">Categorías</h2>
+            <p className="text-sm font-semibold text-muted-foreground">
+              Organiza tus movimientos de {monthLabel(month)} con categorías y subcategorías
+            </p>
+          </div>
         </div>
         <Button
           onClick={() => {
@@ -368,10 +371,12 @@ export function CategoriesPage() {
           <CardHeader>
             <CardTitle className="text-emerald-600">Ingresos</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {income.map((cat) => (
-              <CategoryRow key={cat.id} category={cat} total={totals.get(cat.name) ?? 0} />
-            ))}
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {income.map((cat) => (
+                <CategoryRow key={cat.id} category={cat} total={totals.get(cat.name) ?? 0} />
+              ))}
+            </div>
             <Button
               variant="outline"
               className="w-full"
@@ -389,10 +394,12 @@ export function CategoriesPage() {
           <CardHeader>
             <CardTitle className="text-red-600">Gastos</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {expense.map((cat) => (
-              <CategoryRow key={cat.id} category={cat} total={totals.get(cat.name) ?? 0} />
-            ))}
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {expense.map((cat) => (
+                <CategoryRow key={cat.id} category={cat} total={totals.get(cat.name) ?? 0} />
+              ))}
+            </div>
             <Button
               variant="outline"
               className="w-full"
@@ -413,6 +420,6 @@ export function CategoriesPage() {
         category={null}
         defaultType={formType}
       />
-    </div>
+    </section>
   )
 }

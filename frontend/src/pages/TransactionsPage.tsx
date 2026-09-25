@@ -695,6 +695,12 @@ export function TransactionsPage() {
     }
   }
 
+  // The floating "new transaction" button links here with ?new=1;
+  // open the form even when we are already on this page.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') setFormOpen(true)
+  }, [searchParams])
+
   const transactions = useQuery({
     queryKey: ['transactions', month],
     queryFn: () => api.listTransactions(month.month, month.year),

@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react'
-import { ChevronLeft, ChevronRight, Landmark, LayoutDashboard, PiggyBank, ReceiptText, Tags, ChartColumnBig, MessageSquare, Loader2 } from 'lucide-react'
-import { NavLink, Route, Routes } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, Landmark, LayoutDashboard, PiggyBank, Plus, ReceiptText, ChartColumnBig, Settings, Loader2 } from 'lucide-react'
+import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { ChatBubble } from '@/components/ChatBubble'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 
 // Pages load on demand so charts (Recharts) and other heavy
@@ -9,10 +10,9 @@ import { monthLabel, useMonth } from '@/hooks/useMonth'
 const BudgetsPage = lazy(() =>
   import('@/pages/BudgetsPage').then((m) => ({ default: m.BudgetsPage })),
 )
-const CategoriesPage = lazy(() =>
-  import('@/pages/CategoriesPage').then((m) => ({ default: m.CategoriesPage })),
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
-const ChatPage = lazy(() => import('@/pages/ChatPage').then((m) => ({ default: m.ChatPage })))
 const DashboardPage = lazy(() =>
   import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 )
@@ -35,10 +35,23 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/transactions', label: 'Transacciones', icon: ReceiptText },
   { to: '/budgets', label: 'Presupuestos', icon: PiggyBank },
-  { to: '/categories', label: 'Categorías', icon: Tags },
   { to: '/reports', label: 'Reportes', icon: ChartColumnBig },
-  { to: '/chat', label: 'Asistente', icon: MessageSquare },
+  { to: '/settings', label: 'Configuración', icon: Settings },
 ]
+
+function NewTransactionFab() {
+  const navigate = useNavigate()
+  return (
+    <button
+      type="button"
+      onClick={() => navigate('/transactions?new=1')}
+      className="fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_6px_0_0_#be123c] transition-transform hover:scale-105 active:translate-y-0.5"
+      aria-label="Nueva transacción"
+    >
+      <Plus className="size-6" />
+    </button>
+  )
+}
 
 export default function App() {
   const { month, shiftMonth } = useMonth()
@@ -121,13 +134,15 @@ export default function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />
               <Route path="/budgets" element={<BudgetsPage />} />
-              <Route path="/categories" element={<CategoriesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Routes>
           </Suspense>
         </main>
       </div>
+
+      <ChatBubble />
+      <NewTransactionFab />
     </div>
   )
 }

@@ -4,6 +4,8 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Line,
+  LineChart,
   Legend,
   ReferenceLine,
   ResponsiveContainer,
@@ -31,6 +33,7 @@ const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Se
 // Same tones as the Dashboard summary cards (emerald-500 / rose-500).
 const INCOME_COLOR = '#10B981'
 const EXPENSE_COLOR = '#F43F5E'
+const BALANCE_COLOR = '#F59E0B'
 
 function Kpi({
   label,
@@ -54,6 +57,24 @@ function Kpi({
   )
 }
 
+function Panel({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex h-[28rem] flex-col rounded-2xl border-2 border-border bg-card p-6 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+      <h2 className="text-lg font-extrabold">{title}</h2>
+      <p className="text-sm font-semibold text-muted-foreground">{subtitle}</p>
+      <div className="mt-4 min-h-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
 export function ReportsPage() {
   const { month } = useMonth()
   const yearly = useQuery({
@@ -69,17 +90,22 @@ export function ReportsPage() {
     queryFn: () => api.budgetVsActual(month.month, month.year),
   })
 
-  const chartData = (yearly.data ?? []).map((s) => ({
+  const monthly = yearly.data ?? []
+  const chartData = monthly.map((s) => ({
     name: MONTH_SHORT[s.month - 1],
     Ingresos: Number(s.total_income),
     Gastos: Number(s.total_expense),
   }))
+  const balanceData = monthly.map((s) => ({
+    name: MONTH_SHORT[s.month - 1],
+    Balance: Number(s.total_income) - Number(s.total_expense),
+  }))
   const currentMonthIndex = month.month - 1
 
-  const totalIncome = (yearly.data ?? []).reduce((acc, s) => acc + Number(s.total_income), 0)
-  const totalExpense = (yearly.data ?? []).reduce((acc, s) => acc + Number(s.total_expense), 0)
+  const totalIncome = monthly.reduce((acc, s) => acc + Number(s.total_income), 0)
+  const totalExpense = monthly.reduce((acc, s) => acc + Number(s.total_expense), 0)
   const totalBalance = totalIncome - totalExpense
-  const activeMonths = (yearly.data ?? []).filter(
+  const activeMonths = monthly.filter(
     (s) => Number(s.total_income) !== 0 || Number(s.total_expense) !== 0,
   ).length
   const avgExpense = activeMonths > 0 ? totalExpense / activeMonths : 0
@@ -87,6 +113,10 @@ export function ReportsPage() {
   const spendingRows = [...(spending.data ?? [])].sort((a, b) => Number(b.total) - Number(a.total))
   const maxSpending = Math.max(1, ...spendingRows.map((r) => Number(r.total)))
   const spendingTotal = spendingRows.reduce((acc, r) => acc + Number(r.total), 0)
+
+  const budgetRows = (budgetVsActual.data ?? [])
+    .filter((row) => Number(row.budget) > 0)
+    .sort((a, b) => Number(b.percent) - Number(a.percent))
 
   return (
     <div className="space-y-6">
@@ -119,24 +149,16 @@ export function ReportsPage() {
         />
       </div>
 
-      <div className="rounded-2xl border-2 border-border bg-card p-6 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-        <h2 className="text-lg font-extrabold">Ingresos vs gastos {month.year}</h2>
-        <p className="text-sm font-semibold text-muted-foreground">
-          El mes en curso aparece resaltado
-        </p>
-        {yearly.isLoading ? (
-          <Skeleton className="mt-4 h-72 w-full" />
-        ) : chartData.length === 0 ? (
-          <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
-            No hay datos para este año.
-          </div>
-        ) : (
-          <div className="mt-4 h-72">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title={`Ingresos vs gastos ${month.year}`} subtitle="El mes en curso aparece marcado">
+          {yearly.isLoading ? (
+            <Skeleton className="h-full w-full" />
+          ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="name" />
-                <YAxis tickFormatter={(v: number) => fmtCop(v)} width={90} />
+                <YAxis tickFormatter={(v: number) => fmtCop(v)} width={80} />
                 <Tooltip formatter={(value) => fmtCop(Number(value))} />
                 <Legend />
                 <ReferenceLine
@@ -158,25 +180,46 @@ export function ReportsPage() {
                 />
               </BarChart>
             </ResponsiveContainer>
-          </div>
-        )}
-      </div>
+          )}
+        </Panel>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="flex h-full flex-col rounded-2xl border-2 border-border bg-card p-6 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-          <h2 className="text-lg font-extrabold">Gasto por categoría</h2>
-          <p className="text-sm font-semibold text-muted-foreground">
-            {monthLabel(month)} · total {fmtCop(spendingTotal)}
-          </p>
-          <div className="mt-4 space-y-3">
-            {spending.isLoading ? (
-              <Skeleton className="h-40 w-full" />
-            ) : spendingRows.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                No hay gastos este mes.
-              </div>
-            ) : (
-              spendingRows.map((row) => {
+        <Panel title={`Balance mensual ${month.year}`} subtitle="Ingresos menos gastos de cada mes">
+          {yearly.isLoading ? (
+            <Skeleton className="h-full w-full" />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={balanceData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="name" />
+                <YAxis tickFormatter={(v: number) => fmtCop(v)} width={80} />
+                <Tooltip formatter={(value) => fmtCop(Number(value))} />
+                <ReferenceLine y={0} stroke="#94a3b8" />
+                <Line
+                  type="monotone"
+                  dataKey="Balance"
+                  stroke={BALANCE_COLOR}
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </Panel>
+
+        <Panel
+          title="Gasto por categoría"
+          subtitle={`${monthLabel(month)} · total ${fmtCop(spendingTotal)}`}
+        >
+          {spending.isLoading ? (
+            <Skeleton className="h-full w-full" />
+          ) : spendingRows.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No hay gastos este mes.
+            </div>
+          ) : (
+            <div className="h-full space-y-3 overflow-y-auto pr-1">
+              {spendingRows.map((row) => {
                 const total = Number(row.total)
                 const percent = spendingTotal > 0 ? (total / spendingTotal) * 100 : 0
                 return (
@@ -203,64 +246,57 @@ export function ReportsPage() {
                     </div>
                   </div>
                 )
-              })
-            )}
-          </div>
-        </div>
+              })}
+            </div>
+          )}
+        </Panel>
 
-        <div className="flex h-full flex-col rounded-2xl border-2 border-border bg-card p-6 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-          <h2 className="text-lg font-extrabold">Presupuesto vs real</h2>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Ejecución presupuestal de {monthLabel(month)}
-          </p>
-          <div className="mt-4">
-            {budgetVsActual.data?.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                No hay presupuestos ni gastos este mes.
-              </div>
-            ) : (
+        <Panel title="Presupuesto vs real" subtitle={`Ejecución de ${monthLabel(month)}`}>
+          {budgetRows.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No hay presupuestos este mes.
+            </div>
+          ) : (
+            <div className="h-full overflow-y-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Categoría</TableHead>
                     <TableHead className="text-right">Gastado</TableHead>
-                    <TableHead className="w-32">Progreso</TableHead>
+                    <TableHead className="w-28">Progreso</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {budgetVsActual.data
-                    ?.filter((row) => Number(row.budget) > 0)
-                    .sort((a, b) => Number(b.percent) - Number(a.percent))
-                    .map((row) => (
-                      <TableRow key={row.category_id}>
-                        <TableCell className="font-medium">
-                          {row.icon} {row.name}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="font-bold">{fmtCop(row.actual)}</span>
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            {' '}
-                            / {fmtCop(row.budget)}
+                  {budgetRows.map((row) => (
+                    <TableRow key={row.category_id}>
+                      <TableCell className="font-medium">
+                        {row.icon} {row.name}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-bold">{fmtCop(row.actual)}</span>
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          {' '}
+                          / {fmtCop(row.budget)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Progress
+                            value={Math.min(row.percent, 100)}
+                            className={`flex-1 ${row.percent > 100 ? '[&>div]:bg-red-500' : ''}`}
+                          />
+                          <span className="w-9 text-right text-xs font-bold text-muted-foreground">
+                            {Math.round(row.percent)}%
                           </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Progress
-                              value={Math.min(row.percent, 100)}
-                              className={`flex-1 ${row.percent > 100 ? '[&>div]:bg-red-500' : ''}`}
-                            />
-                            <span className="w-10 text-right text-xs font-bold text-muted-foreground">
-                              {Math.round(row.percent)}%
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </Panel>
       </div>
     </div>
   )
