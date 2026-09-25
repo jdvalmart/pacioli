@@ -160,7 +160,7 @@ export function DashboardPage() {
                     </div>
                     <Progress
                       value={Math.min(row.percent, 100)}
-                      className={over ? '[&>div]:bg-red-500' : '[&>div]:bg-primary'}
+                      indicatorClassName={over ? 'bg-red-500' : undefined}
                     />
                     <p
                       className={`text-xs font-bold ${

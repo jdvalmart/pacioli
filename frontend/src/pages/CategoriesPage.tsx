@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals } from '@/lib/money'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import type { Category, CategoryType } from '@/lib/types'
@@ -343,29 +344,22 @@ export function CategoriesSection() {
   const expense = (categories.data?.filter((c) => c.type === 'expense') ?? []).sort(sortByUsage)
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
-            <Tags className="size-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-extrabold">Categorías</h2>
-            <p className="text-sm font-semibold text-muted-foreground">
-              Organiza tus movimientos de {monthLabel(month)} con categorías y subcategorías
-            </p>
-          </div>
-        </div>
-        <Button
-          onClick={() => {
-            setFormType('expense')
-            setFormOpen(true)
-          }}
-        >
-          <Plus /> Nueva categoría
-        </Button>
-      </div>
-
+    <>
+      <SectionCard
+        icon={Tags}
+        title="Categorías"
+        subtitle={`Organiza tus movimientos de ${monthLabel(month)} con categorías y subcategorías`}
+        action={
+          <Button
+            onClick={() => {
+              setFormType('expense')
+              setFormOpen(true)
+            }}
+          >
+            <Plus /> Nueva categoría
+          </Button>
+        }
+      >
       <div className="space-y-4">
         <Card>
           <CardHeader>
@@ -413,6 +407,7 @@ export function CategoriesSection() {
           </CardContent>
         </Card>
       </div>
+      </SectionCard>
 
       <CategoryForm
         open={formOpen}
@@ -420,6 +415,6 @@ export function CategoriesSection() {
         category={null}
         defaultType={formType}
       />
-    </section>
+    </>
   )
 }

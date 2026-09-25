@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
+import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Account, AccountType } from '@/lib/types'
 
@@ -180,35 +181,29 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
   const total = (accounts.data ?? []).reduce((sum, a) => sum + Number(a.balance), 0)
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
-            <Wallet className="size-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-extrabold">Cuentas</h2>
-            <p className="text-sm font-semibold text-muted-foreground">
-              Dónde está tu dinero
-              {(accounts.data ?? []).length > 0 && ` · total ${fmtCopDecimals(total)}`}
-            </p>
-          </div>
-        </div>
-        {!readOnly && (
-          <Button
-            size="icon"
-            aria-label="Nueva cuenta"
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus />
-          </Button>
-        )}
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <>
+      <SectionCard
+        icon={Wallet}
+        title="Cuentas"
+        subtitle={`Dónde está tu dinero${
+          (accounts.data ?? []).length > 0 ? ` · total ${fmtCopDecimals(total)}` : ''
+        }`}
+        action={
+          !readOnly ? (
+            <Button
+              size="icon"
+              aria-label="Nueva cuenta"
+              onClick={() => {
+                setEditing(null)
+                setFormOpen(true)
+              }}
+            >
+              <Plus />
+            </Button>
+          ) : undefined
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {accounts.isLoading ? (
           <>
             <Skeleton className="h-28 w-full" />
@@ -267,7 +262,8 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
             </Card>
           ))
         )}
-      </div>
+        </div>
+      </SectionCard>
 
       <AccountForm open={formOpen} onOpenChange={setFormOpen} account={editing} />
 
@@ -291,6 +287,6 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </>
   )
 }

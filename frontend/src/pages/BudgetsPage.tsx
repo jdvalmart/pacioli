@@ -268,7 +268,8 @@ function BudgetSetupDialog({
                 </div>
                 <Progress
                   value={usedPercent}
-                  className={cn('mt-3', pending < 0 && '[&>div]:bg-rose-500')}
+                  className="mt-3"
+                  indicatorClassName={pending < 0 ? 'bg-rose-500' : undefined}
                 />
                 {pending < 0 && (
                   <p className="mt-2 text-xs font-bold text-rose-600">
@@ -301,7 +302,7 @@ function BudgetSetupDialog({
               <Button
                 type="button"
                 className="w-full"
-                disabled={mutation.isPending || totalNum <= 0}
+                disabled={mutation.isPending}
                 onClick={() => mutation.mutate()}
               >
                 {mutation.isPending ? 'Guardando…' : 'Guardar presupuesto'}
@@ -450,7 +451,7 @@ export function BudgetsPage() {
                   <div className="mt-3 space-y-1">
                     <Progress
                       value={Math.min(percent, 100)}
-                      className={over ? '[&>div]:bg-red-500' : '[&>div]:bg-primary'}
+                      indicatorClassName={over ? 'bg-red-500' : undefined}
                     />
                     <p
                       className={`text-xs font-bold ${

@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
+import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { SavingsItem, SavingsKind } from '@/lib/types'
 
@@ -315,34 +316,28 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
   const total = (items.data ?? []).reduce((sum, s) => sum + Number(s.balance), 0)
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
-            <PiggyBank className="size-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-extrabold">Ahorro e inversión</h2>
-            <p className="text-sm font-semibold text-muted-foreground">
-              Bolsillos, ahorros programados, CDTs y acciones
-              {(items.data ?? []).length > 0 && ` · total ${fmtCopDecimals(total)}`}
-            </p>
-          </div>
-        </div>
-        {!readOnly && (
-          <Button
-            size="icon"
-            aria-label="Nuevo ahorro o inversión"
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus />
-          </Button>
-        )}
-      </div>
-
+    <>
+      <SectionCard
+        icon={PiggyBank}
+        title="Ahorro e inversión"
+        subtitle={`Bolsillos, ahorros programados, CDTs y acciones${
+          (items.data ?? []).length > 0 ? ` · total ${fmtCopDecimals(total)}` : ''
+        }`}
+        action={
+          !readOnly ? (
+            <Button
+              size="icon"
+              aria-label="Nuevo ahorro o inversión"
+              onClick={() => {
+                setEditing(null)
+                setFormOpen(true)
+              }}
+            >
+              <Plus />
+            </Button>
+          ) : undefined
+        }
+      >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.isLoading ? (
           <>
@@ -440,7 +435,7 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                     <>
                       <Progress
                         value={Math.min(targetPct, 100)}
-                        className="[&>div]:bg-amber-400"
+                        indicatorClassName="bg-amber-400"
                       />
                       <p className="text-xs font-bold text-muted-foreground">
                         {Math.round(targetPct)}% de la meta {fmtCopDecimals(target)}
@@ -453,6 +448,7 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
           })
         )}
       </div>
+      </SectionCard>
 
       <SavingsForm open={formOpen} onOpenChange={setFormOpen} item={editing} />
 
@@ -476,6 +472,6 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </>
   )
 }

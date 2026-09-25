@@ -31,10 +31,10 @@ import { fmtCop } from '@/lib/money'
 
 const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
-// Same tones as the Dashboard summary cards (emerald-500 / rose-500).
-const INCOME_COLOR = '#10B981'
-const EXPENSE_COLOR = '#F43F5E'
-const BALANCE_COLOR = '#F59E0B'
+// Income/expense pair (blue + orange, colour-blind friendly).
+const INCOME_COLOR = '#3B82F6'
+const EXPENSE_COLOR = '#F97316'
+const BALANCE_COLOR = '#8B5CF6'
 
 // Compact axis labels so they fit the half-width panels.
 function fmtAxis(value: number): string {
@@ -272,19 +272,19 @@ export function ReportsPage() {
                       <TableCell className="font-medium">
                         {row.icon} {row.name}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-bold">{fmtCop(row.actual)}</span>
-                        <span className="text-xs font-semibold text-muted-foreground">
-                          {' '}
-                          / {fmtCop(row.budget)}
-                        </span>
+                      <TableCell className="text-right align-top">
+                        <div className="font-bold tabular-nums">{fmtCop(row.actual)}</div>
+                        <div className="text-[11px] font-semibold text-muted-foreground tabular-nums">
+                          de {fmtCop(row.budget)}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Progress
-                            value={Math.min(row.percent, 100)}
-                            className={`flex-1 ${row.percent > 100 ? '[&>div]:bg-red-500' : ''}`}
-                          />
+                            <Progress
+                              value={Math.min(row.percent, 100)}
+                              className="flex-1"
+                              indicatorClassName={row.percent > 100 ? 'bg-red-500' : undefined}
+                            />
                           <span className="w-9 text-right text-xs font-bold text-muted-foreground">
                             {Math.round(row.percent)}%
                           </span>

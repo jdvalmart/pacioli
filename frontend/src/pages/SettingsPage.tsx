@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { AccountsSection } from '@/components/AccountsSection'
 import { CreditCardsSection } from '@/components/CreditCardsSection'
 import { SavingsSection } from '@/components/SavingsSection'
+import { SectionCard } from '@/components/SectionCard'
 import { CategoriesSection } from '@/pages/CategoriesPage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -141,19 +142,11 @@ function AssistantSettings() {
     onError: (error: Error) => toast.error(error.message),
   })
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
-            <Bot className="size-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-extrabold">Asistente</h2>
-            <p className="text-sm font-semibold text-muted-foreground">
-              Conexión con Ollama para el asistente financiero
-            </p>
-          </div>
-        </div>
+    <SectionCard
+      icon={Bot}
+      title="Asistente"
+      subtitle="Conexión con Ollama para el asistente financiero"
+      action={
         <Button
           variant="outline"
           onClick={() => testConnection.mutate()}
@@ -162,7 +155,8 @@ function AssistantSettings() {
           {testConnection.isPending && <Loader2 className="animate-spin" />}
           Probar conexión
         </Button>
-      </div>
+      }
+    >
       {config.isLoading ? (
         <div className="max-w-2xl space-y-2">
           <Skeleton className="h-9 w-full" />
@@ -171,13 +165,13 @@ function AssistantSettings() {
       ) : config.data ? (
         <AISettingsForm initial={config.data} onOpenChange={() => {}} />
       ) : null}
-    </section>
+    </SectionCard>
   )
 }
 
 export function SettingsPage() {
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-extrabold">Configuración</h1>
         <p className="text-sm font-semibold text-muted-foreground">
