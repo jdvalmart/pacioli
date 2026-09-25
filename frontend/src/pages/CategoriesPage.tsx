@@ -139,7 +139,7 @@ function CategoryFormBody({
                 key={c}
                 type="button"
                 onClick={() => setColor(c)}
-                className={`size-7 rounded-full border-2 ${
+                className={`size-7 rounded-full border ${
                   color === c ? 'border-foreground' : 'border-transparent'
                 }`}
                 style={{ backgroundColor: c }}
@@ -213,7 +213,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
   })
 
   return (
-    <div className="rounded-2xl border-2 border-border bg-card p-3 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+    <div className="rounded-2xl border border-border bg-card p-3 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
       <div className="flex items-center gap-2.5">
         <div
           className="flex size-9 shrink-0 items-center justify-center rounded-lg text-base text-white shadow-[0_2px_0_0_rgba(0,0,0,0.25)]"

@@ -265,7 +265,7 @@ function TransactionFormBody({
               key={value}
               type="button"
               onClick={() => handleKindChange(value)}
-              className={`flex flex-col items-center gap-1 rounded-xl border-2 px-2 py-2.5 text-xs font-bold transition-all ${
+              className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-bold transition-all ${
                 kind === value
                   ? activeClass
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
@@ -341,7 +341,7 @@ function TransactionFormBody({
             <div className="space-y-1.5">
               <Label>{kind === 'ahorro' ? 'Bolsillo destino' : 'Bolsillo origen'}</Label>
               {(savings.data ?? []).length === 0 ? (
-                <div className="rounded-xl border-2 border-dashed border-amber-400/60 bg-amber-500/10 p-3 text-sm font-semibold text-muted-foreground">
+                <div className="rounded-xl border border-dashed border-amber-400/60 bg-amber-500/10 p-3 text-sm font-semibold text-muted-foreground">
                   👝 Aún no tienes bolsillos ni inversiones. Crea uno en la sección Ahorro e
                   inversión del Dashboard.
                 </div>
@@ -364,7 +364,7 @@ function TransactionFormBody({
             <div className="space-y-1.5">
               <Label>{kind === 'ahorro' ? 'Cuenta origen' : 'Cuenta destino'}</Label>
               {!hasAccounts ? (
-                <div className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
+                <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
                   Aún no tienes cuentas. Crea una en el Dashboard.
                 </div>
               ) : (
@@ -429,7 +429,7 @@ function TransactionFormBody({
               <div className="space-y-1.5">
                 <Label>Tarjeta de crédito</Label>
                 {(creditCards.data ?? []).length === 0 ? (
-                  <div className="rounded-xl border-2 border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
                     💳 Aún no tienes tarjetas. Crea una en el Dashboard (sección Tarjetas
                     de crédito) para registrar gastos TC.
                   </div>
@@ -457,7 +457,7 @@ function TransactionFormBody({
               <div className="space-y-1.5">
                 <Label>{accountLabel}</Label>
                 {!hasAccounts ? (
-                  <div className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
                     Aún no tienes cuentas. Crea una en el Dashboard (billetera, banco,
                     ahorros…) para poder registrar movimientos.
                   </div>
@@ -590,7 +590,7 @@ function TransactionsTable({
   onDelete: (tx: Transaction) => void
 }) {
   return (
-    <div className="rounded-2xl border-2 border-border bg-card shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+    <div className="rounded-2xl border border-border bg-card shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
       <Table>
         <TableHeader>
           <TableRow>
@@ -776,7 +776,7 @@ export function TransactionsPage() {
               key={value}
               type="button"
               onClick={() => setKindFilter(value)}
-              className={`rounded-xl border-2 px-3 py-1.5 text-xs font-bold transition-colors ${
+              className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
                 active
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'

@@ -126,19 +126,19 @@ export function DashboardPage() {
               const totalRemaining = totalBudget - totalActual
               return (
                 <>
-                  <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+                  <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
                       Asignado
                     </p>
                     <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
                   </div>
-                  <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+                  <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
                       Gastado
                     </p>
                     <p className="text-lg font-black text-rose-600">{fmtCop(totalActual)}</p>
                   </div>
-                  <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+                  <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
                       Restante
                     </p>
@@ -256,7 +256,7 @@ export function DashboardPage() {
                   {chartData.map((entry) => (
                     <li
                       key={entry.name}
-                      className="flex items-center justify-between gap-3 rounded-xl border-2 border-border bg-background px-3 py-2"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2"
                     >
                       <span className="flex min-w-0 items-center gap-2.5 font-bold">
                         <span

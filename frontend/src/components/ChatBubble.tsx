@@ -70,7 +70,7 @@ export function ChatBubble() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-24 left-4 z-50 flex h-[30rem] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border-2 border-border bg-card shadow-[0_16px_50px_rgba(0,0,0,0.22)] md:left-[calc(var(--sidebar-w,15rem)+1rem)]">
+        <div className="fixed bottom-24 left-4 z-50 flex h-[30rem] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_16px_50px_rgba(0,0,0,0.22)] md:left-[calc(var(--sidebar-w,15rem)+1rem)]">
           <div className="flex items-center justify-between bg-primary px-4 py-3 text-primary-foreground">
             <div className="flex items-center gap-2.5">
               <Landmark className="size-5" />
@@ -135,7 +135,7 @@ export function ChatBubble() {
                       'max-w-[85%] rounded-2xl px-3.5 py-2 text-sm font-medium whitespace-pre-wrap shadow-sm',
                       message.role === 'user'
                         ? 'rounded-br-sm bg-primary text-primary-foreground'
-                        : 'rounded-bl-sm border-2 border-border bg-card',
+                        : 'rounded-bl-sm border border-border bg-card',
                     )}
                   >
                     {message.message}
@@ -145,7 +145,7 @@ export function ChatBubble() {
             )}
             {send.isPending && (
               <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border-2 border-border bg-card px-3.5 py-2 text-sm font-medium text-muted-foreground">
+                <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-border bg-card px-3.5 py-2 text-sm font-medium text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Pensando…
                 </div>
               </div>
@@ -153,7 +153,7 @@ export function ChatBubble() {
             <div ref={bottomRef} />
           </div>
 
-          <form onSubmit={handleSend} className="flex gap-2 border-t-2 border-border bg-card p-3">
+          <form onSubmit={handleSend} className="flex gap-2 border-t border-border bg-card p-3">
             <Input
               placeholder="Escribe tu pregunta…"
               value={question}

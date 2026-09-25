@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { ChevronLeft, ChevronRight, LayoutDashboard, PiggyBank, Plus, ReceiptText, ChartColumnBig, Settings, Loader2 } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, LayoutDashboard, PiggyBank, Plus, ReceiptText, ChartColumnBig, Settings, Loader2 } from 'lucide-react'
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ChatBubble } from '@/components/ChatBubble'
@@ -56,7 +56,10 @@ function NewTransactionFab() {
 }
 
 export default function App() {
-  const { month, shiftMonth } = useMonth()
+  const { month, shiftMonth, setMonth } = useMonth()
+  const today = new Date()
+  const isCurrentMonth =
+    month.month === today.getMonth() + 1 && month.year === today.getFullYear()
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('pacioli-sidebar') === 'collapsed',
   )
@@ -76,7 +79,7 @@ export default function App() {
     >
       <aside
         className={cn(
-          'relative hidden shrink-0 flex-col border-r-2 border-border transition-all duration-200 md:flex',
+          'relative hidden shrink-0 flex-col bg-sidebar transition-all duration-200 md:flex',
           collapsed ? 'w-20' : 'w-60',
         )}
       >
@@ -84,7 +87,7 @@ export default function App() {
           type="button"
           onClick={toggleSidebar}
           aria-label={collapsed ? 'Expandir menú' : 'Contraer menú'}
-          className="absolute top-6 -right-3 z-20 hidden size-6 items-center justify-center rounded-full border-2 border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground md:flex"
+          className="absolute top-6 -right-3 z-20 hidden size-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground md:flex"
         >
           {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
         </button>
@@ -122,7 +125,7 @@ export default function App() {
           ))}
         </nav>
         {!collapsed && (
-          <div className="border-t-2 border-border p-3">
+          <div className="border-t border-border p-3">
             <p className="px-3 text-xs font-semibold text-muted-foreground">
               Tus finanzas, en tus manos.
             </p>
@@ -131,29 +134,46 @@ export default function App() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="rounded-full"
-              onClick={() => shiftMonth(-1)}
-              aria-label="Mes anterior"
-            >
-              <ChevronLeft />
-            </Button>
-            <span className="w-36 text-center text-sm font-extrabold sm:w-44">
-              {monthLabel(month)}
-            </span>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="rounded-full"
-              onClick={() => shiftMonth(1)}
-              aria-label="Mes siguiente"
-            >
-              <ChevronRight />
-            </Button>
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-between bg-background/95 px-4 backdrop-blur sm:px-6">
+          <div className="flex items-center gap-2 md:absolute md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
+            <div className="flex items-center gap-0.5 rounded-full border border-border bg-card p-0.5 shadow-sm">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="rounded-full"
+                onClick={() => shiftMonth(-1)}
+                aria-label="Mes anterior"
+              >
+                <ChevronLeft />
+              </Button>
+              <div className="flex min-w-[9rem] items-center justify-center gap-2 px-2">
+                <CalendarDays className="size-4 text-muted-foreground" />
+                <span className="text-sm font-extrabold tracking-tight whitespace-nowrap">
+                  {monthLabel(month)}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="rounded-full"
+                onClick={() => shiftMonth(1)}
+                aria-label="Mes siguiente"
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+            {!isCurrentMonth && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  setMonth({ month: today.getMonth() + 1, year: today.getFullYear() })
+                }
+              >
+                Hoy
+              </Button>
+            )}
           </div>
           <nav className="flex gap-1 md:hidden">
             {NAV_ITEMS.map(({ to, label, icon: Icon }) => (

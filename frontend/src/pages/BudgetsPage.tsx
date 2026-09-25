@@ -239,7 +239,7 @@ function BudgetSetupDialog({
                 </p>
               </div>
 
-              <div className="rounded-2xl border-2 border-border bg-muted/40 p-4">
+              <div className="rounded-2xl border border-border bg-muted/40 p-4">
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div>
                     <p className="text-[10px] font-extrabold tracking-wide text-muted-foreground uppercase">
@@ -369,25 +369,25 @@ export function BudgetsPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+        <div className="rounded-xl border border-violet-300 bg-violet-50 p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
           <p className="text-[11px] font-extrabold uppercase tracking-wide text-violet-700">
             Presupuesto total
           </p>
           <p className="text-lg font-black text-violet-700">{fmtCop(planTotal)}</p>
         </div>
-        <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+        <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
           <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
             Asignado
           </p>
           <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
         </div>
-        <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+        <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
           <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
             Gastado
           </p>
           <p className="text-lg font-black text-rose-600">{fmtCop(totalActual)}</p>
         </div>
-        <div className="rounded-xl border-2 border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
+        <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
           <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
             Restante
           </p>
@@ -401,7 +401,7 @@ export function BudgetsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-3">
         <span
           className={`text-sm font-bold ${
             unassigned < 0

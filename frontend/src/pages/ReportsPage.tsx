@@ -49,7 +49,7 @@ function Kpi({
   const color =
     tone === 'income' ? 'text-emerald-600' : tone === 'expense' ? 'text-rose-600' : 'text-foreground'
   return (
-    <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
       <p className="text-xs font-bold text-muted-foreground">{label}</p>
       <p className={`mt-1 text-lg font-extrabold ${color}`}>{value}</p>
       {detail && <p className="text-[11px] font-semibold text-muted-foreground">{detail}</p>}
@@ -67,7 +67,7 @@ function Panel({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-[28rem] flex-col rounded-2xl border-2 border-border bg-card p-6 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+    <div className="flex h-[28rem] flex-col rounded-2xl border border-border bg-card p-6 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
       <h2 className="text-lg font-extrabold">{title}</h2>
       <p className="text-sm font-semibold text-muted-foreground">{subtitle}</p>
       <div className="mt-4 min-h-0 flex-1">{children}</div>
