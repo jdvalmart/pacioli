@@ -375,19 +375,20 @@ class TestAccounts:
         assert accounts[0]["icon"] == "💵"
         assert accounts[0]["balance"] == "200.00"
 
-    def test_starting_amount_counts_as_income(self, client: TestClient) -> None:
+    def test_starting_amount_is_an_opening_balance(self, client: TestClient) -> None:
         client.post(
             "/api/accounts",
             json={"name": "Ahorros", "type": "ahorros", "starting_amount": "500.00"},
         )
 
+        # The opening balance belongs to no month: no income, no movement.
         summary = client.get("/api/reports/summary?month=9&year=2026").json()
-        assert summary["total_income"] == "500.00"
+        assert summary["total_income"] == "0.00"
+        assert client.get("/api/transactions?month=9&year=2026").json() == []
 
-        transactions = client.get("/api/transactions?month=9&year=2026").json()
-        assert len(transactions) == 1
-        assert transactions[0]["description"] == "Saldo inicial: Ahorros"
-        assert transactions[0]["category_type"] == "income"
+        account = client.get("/api/accounts").json()[0]
+        assert account["starting"] == "500.00"
+        assert account["balance"] == "500.00"
 
     def test_account_balance_reflects_transactions(self, client: TestClient) -> None:
         account_id = client.post(
@@ -426,7 +427,7 @@ class TestAccounts:
 
         transactions = client.get("/api/transactions?month=9&year=2026").json()
         linked = [t for t in transactions if t["account_id"] == account_id]
-        assert len(linked) == 3  # starting amount + the two movements
+        assert len(linked) == 2  # the opening balance is not a movement
         assert all(t["account_name"] == "Nequi" for t in linked)
 
     def test_duplicate_account_name_conflict(self, client: TestClient) -> None:

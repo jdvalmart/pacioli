@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 def _default_data_dir() -> str:
@@ -189,9 +189,9 @@ class Budget:
 class Account:
     """A place where money lives (wallet, savings, bank...).
 
-    ``balance`` is always computed from the net (income minus expense)
-    of its linked transactions, including the "Saldo inicial" income
-    transaction created when the account was seeded with money.
+    ``starting`` is the opening balance that already existed when the
+    account was created; it belongs to no month. ``balance`` is that
+    opening amount plus the net of the account's linked transactions.
     """
 
     id: int | None
@@ -199,6 +199,7 @@ class Account:
     type: str  # 'efectivo' | 'digital' | 'ahorros' | 'banco'
     icon: str
     color: str
+    starting: Decimal | None = None
     balance: Decimal | None = None
 
 
@@ -251,6 +252,7 @@ class SavingsItem:
     scheduled_day: int | None = None
     scheduled_amount: Decimal | None = None
     source_account_id: int | None = None
+    opening: Decimal | None = None
     balance: Decimal | None = None
     invested: Decimal | None = None
 
@@ -957,6 +959,48 @@ def _migrate_v11_monthly_plan(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA user_version = 11")
 
 
+def _migrate_v12_opening_balances(conn: sqlite3.Connection) -> None:
+    """v11 -> v12: opening balances that belong to no month.
+
+    Money that already existed when an account or savings item was
+    created is stored on the row (accounts.starting_cents,
+    savings.opening_cents) instead of an income/ahorro transaction, so
+    it never shows up in a month's totals. Existing "Saldo inicial" and
+    "Depósito inicial" transactions are folded into these columns.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'starting_cents'"
+    )
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN starting_cents INTEGER NOT NULL DEFAULT 0")
+    cursor.execute("SELECT COUNT(*) FROM pragma_table_info('savings') WHERE name = 'opening_cents'")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE savings ADD COLUMN opening_cents INTEGER NOT NULL DEFAULT 0")
+
+    cursor.execute("""
+        UPDATE accounts SET starting_cents = COALESCE((
+            SELECT SUM(t.amount_cents) FROM transactions t
+            WHERE t.account_id = accounts.id AND t.kind = 'ingreso'
+              AND t.description = 'Saldo inicial: ' || accounts.name
+        ), 0)
+    """)
+    cursor.execute(
+        "DELETE FROM transactions WHERE kind = 'ingreso' AND description LIKE 'Saldo inicial: %'"
+    )
+    cursor.execute("""
+        UPDATE savings SET opening_cents = COALESCE((
+            SELECT SUM(t.amount_cents) FROM transactions t
+            WHERE t.savings_id = savings.id AND t.kind = 'ahorro'
+              AND t.description = 'Depósito inicial: ' || savings.name
+        ), 0)
+    """)
+    cursor.execute(
+        "DELETE FROM transactions WHERE kind = 'ahorro' AND description LIKE 'Depósito inicial: %'"
+    )
+    cursor.execute("PRAGMA user_version = 12")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -1079,6 +1123,8 @@ def init_db() -> None:
             _migrate_v10_savings(conn)
         if v < 11:
             _migrate_v11_monthly_plan(conn)
+        if v < 12:
+            _migrate_v12_opening_balances(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -1332,9 +1378,16 @@ def delete_transaction(trans_id: int) -> None:
 def ensure_recurring(month: int, year: int) -> int:
     """Materialize recurring templates for the given month.
 
+    Only months up to the current one are materialized: future months
+    have not happened yet, so creating their movements now would inflate
+    the current balances.
+
     Returns:
         Number of new transactions created.
     """
+    today = date.today()
+    if (year, month) > (today.year, today.month):
+        return 0
     last_day = calendar.monthrange(year, month)[1]
     created = 0
     with get_connection() as conn:
@@ -1511,6 +1564,7 @@ def _row_to_account(row: sqlite3.Row) -> Account:
         type=row["type"],
         icon=row["icon"],
         color=row["color"],
+        starting=_to_dec(row["starting_cents"]),
         balance=_to_dec(row["balance_cents"]),
     )
 
@@ -1518,17 +1572,16 @@ def _row_to_account(row: sqlite3.Row) -> Account:
 def get_accounts() -> list[Account]:
     """Return all accounts with their computed balance, oldest first.
 
-    Ingresos add to the account, gastos subtract and transfers move
-    money between two accounts. Savings movements (ahorro/retiro) are
-    allocations, not withdrawals: the money stays in the account
-    (e.g. a CDT is a product of the same bank), so they do not change
-    the balance. Gastos_tc never touch cash.
+    The balance starts from the account's opening amount and then adds
+    ingresos, subtracts gastos, moves transfers between two accounts and
+    treats savings movements (ahorro/retiro) as allocations that do not
+    change the cash. Gastos_tc never touch cash.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT a.*,
-                   COALESCE((
+                   a.starting_cents + COALESCE((
                        SELECT SUM(
                            CASE
                                WHEN t.kind = 'ingreso' THEN t.amount_cents
@@ -1558,48 +1611,52 @@ def add_account(
 ) -> int:
     """Create an account and return its id.
 
-    If ``starting_amount`` is positive, a linked income transaction
-    ("Saldo inicial: <name>") is created so the money counts as
-    income and as part of the account balance.
+    ``starting_amount`` is the opening balance: money that already
+    existed before using the app. It belongs to no month and is stored
+    on the account, not as a transaction.
     """
     default_icon, default_color = ACCOUNT_TYPE_DEFAULTS.get(acct_type, ("💵", "#10B981"))
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO accounts (name, type, icon, color)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO accounts (name, type, icon, color, starting_cents)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (name, acct_type, icon or default_icon, color or default_color),
+            (
+                name,
+                acct_type,
+                icon or default_icon,
+                color or default_color,
+                _to_cents(starting_amount),
+            ),
         )
-        account_id = int(cursor.lastrowid)
-
-        cents = _to_cents(starting_amount)
-        if cents > 0:
-            income_cat_id = _ensure_income_category(conn)
-            cursor.execute(
-                """
-                INSERT INTO transactions
-                    (date, amount_cents, category_id, description, is_recurring, recurring_day, subcategory_id, account_id, kind)
-                VALUES (?, ?, ?, ?, 0, NULL, NULL, ?, 'ingreso')
-                """,
-                (
-                    date.today().isoformat(),
-                    cents,
-                    income_cat_id,
-                    f"Saldo inicial: {name}",
-                    account_id,
-                ),
-            )
         conn.commit()
-        return account_id
+        return int(cursor.lastrowid)
 
 
-def update_account(account_id: int, name: str) -> None:
-    """Update an account's name."""
+def update_account(
+    account_id: int,
+    name: str,
+    acct_type: str | None = None,
+    starting_amount: Decimal | float | int | None = None,
+) -> None:
+    """Update an account's name, type and opening balance."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE accounts SET name = ? WHERE id = ?", (name, account_id))
+        if acct_type is not None:
+            icon, color = ACCOUNT_TYPE_DEFAULTS.get(acct_type, ("💵", "#10B981"))
+            cursor.execute(
+                "UPDATE accounts SET name = ?, type = ?, icon = ?, color = ? WHERE id = ?",
+                (name, acct_type, icon, color, account_id),
+            )
+        else:
+            cursor.execute("UPDATE accounts SET name = ? WHERE id = ?", (name, account_id))
+        if starting_amount is not None:
+            cursor.execute(
+                "UPDATE accounts SET starting_cents = ? WHERE id = ?",
+                (_to_cents(starting_amount), account_id),
+            )
         conn.commit()
 
 
@@ -1793,18 +1850,24 @@ def _row_to_savings(row: sqlite3.Row) -> SavingsItem:
             else None
         ),
         source_account_id=row["source_account_id"],
+        opening=_to_dec(row["opening_cents"]),
         balance=balance,
         invested=balance,
     )
 
 
 def get_savings() -> list[SavingsItem]:
-    """Return all savings items with their computed balance."""
+    """Return all savings items with their computed balance.
+
+    ``opening`` is money that already existed when the item was created
+    (e.g. an existing CDT) and belongs to no month; the balance is that
+    opening amount plus the net of ahorro minus retiro movements.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT s.*,
-                   COALESCE((
+                   s.opening_cents + COALESCE((
                        SELECT SUM(CASE WHEN t.kind = 'ahorro' THEN t.amount_cents
                                        WHEN t.kind = 'retiro' THEN -t.amount_cents
                                        ELSE 0 END)
@@ -1832,9 +1895,11 @@ def add_savings(
 ) -> int:
     """Create a savings item and return its id.
 
-    An optional initial deposit is recorded as an ahorro movement.
-    A bolsillo_programado also creates a recurring ahorro template
-    that materializes every month on the scheduled day.
+    ``initial_amount`` is the opening balance: money that already
+    existed before using the app (e.g. an existing CDT). It belongs to
+    no month and is stored on the item, not as an ahorro movement.
+    A bolsillo_programado also creates a recurring ahorro template that
+    materializes every month on the scheduled day.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -1842,8 +1907,8 @@ def add_savings(
             """
             INSERT INTO savings
                 (name, kind, target_cents, rate_bp, term_days, current_value_cents,
-                 scheduled_day, scheduled_amount_cents, source_account_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 scheduled_day, scheduled_amount_cents, source_account_id, opening_cents)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -1855,28 +1920,10 @@ def add_savings(
                 scheduled_day,
                 _to_cents(scheduled_amount) if scheduled_amount is not None else None,
                 source_account_id,
+                _to_cents(initial_amount) if initial_amount is not None else 0,
             ),
         )
         item_id = int(cursor.lastrowid)
-
-        if initial_amount is not None and initial_account_id is not None:
-            cents = _to_cents(initial_amount)
-            if cents > 0:
-                cursor.execute(
-                    """
-                    INSERT INTO transactions
-                        (date, amount_cents, category_id, description, is_recurring,
-                         recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id)
-                    VALUES (?, ?, NULL, ?, 0, NULL, NULL, ?, 'ahorro', NULL, NULL, ?)
-                    """,
-                    (
-                        date.today().isoformat(),
-                        cents,
-                        f"Depósito inicial: {name}",
-                        initial_account_id,
-                        item_id,
-                    ),
-                )
 
         if kind == "bolsillo_programado" and scheduled_day is not None:
             template_date = date(date.today().year, date.today().month, scheduled_day)
@@ -2034,6 +2081,12 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
             (start_date,),
         ).fetchone()
         carryover_dec = _to_dec(carryover["cents"])
+        # Opening balances belong to no month: they sit before all time
+        # so the accumulated balance still equals the sum of accounts.
+        opening = cursor.execute(
+            "SELECT COALESCE(SUM(starting_cents), 0) as cents FROM accounts"
+        ).fetchone()
+        carryover_dec += _to_dec(opening["cents"])
         balance = total_income - total_expense
 
         return MonthlySummary(

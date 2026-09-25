@@ -122,7 +122,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  updateAccount: (id: number, payload: { name: string }) =>
+  updateAccount: (
+    id: number,
+    payload: { name: string; type?: AccountType; starting_amount?: string },
+  ) =>
     request<{ message: string }>(`/accounts/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),

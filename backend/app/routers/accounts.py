@@ -21,6 +21,7 @@ def list_accounts() -> list[AccountOut]:
             type=a.type,
             icon=a.icon,
             color=a.color,
+            starting=a.starting or Decimal("0.00"),
             balance=a.balance or Decimal("0.00"),
         )
         for a in db.get_accounts()
@@ -29,7 +30,7 @@ def list_accounts() -> list[AccountOut]:
 
 @router.post("", response_model=CreatedOut, status_code=201)
 def create_account(payload: AccountIn) -> CreatedOut:
-    """Create an account, seeding it with an income transaction if money is provided."""
+    """Create an account with an optional opening balance."""
     try:
         account_id = db.add_account(
             name=payload.name,
@@ -47,8 +48,13 @@ def create_account(payload: AccountIn) -> CreatedOut:
 
 @router.put("/{account_id}", response_model=MessageOut)
 def update_account(account_id: int, payload: AccountUpdate) -> MessageOut:
-    """Update an account's name."""
-    db.update_account(account_id, payload.name)
+    """Update an account's name, type and opening balance."""
+    db.update_account(
+        account_id,
+        payload.name,
+        acct_type=payload.type,
+        starting_amount=payload.starting_amount,
+    )
     return MessageOut(message="Account updated")
 
 

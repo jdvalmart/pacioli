@@ -158,6 +158,20 @@ class TestRecurring:
         assert feb_transactions[0].generated_from == template_id
         assert feb_transactions[0].date == date(2026, 2, 15)
 
+    def test_recurring_skips_future_months(self, temp_db: str, sample_category: int) -> None:
+        add_transaction(
+            date(2026, 1, 15),
+            Decimal("1000.00"),
+            sample_category,
+            "Monthly rent",
+            is_recurring=True,
+            recurring_day=15,
+        )
+
+        created = ensure_recurring(12, 2099)
+        assert created == 0
+        assert get_transactions(12, 2099) == []
+
     def test_recurring_idempotency(self, temp_db: str, sample_category: int) -> None:
         add_transaction(
             date(2026, 1, 15),
@@ -436,7 +450,7 @@ class TestCarryover:
 class TestAccounts:
     """Tests for the accounts feature."""
 
-    def test_account_starting_amount_becomes_income_transaction(
+    def test_account_starting_amount_is_an_opening_balance(
         self, temp_db: str, sample_category: int
     ) -> None:
         income_cat = add_category("Ingreso test", "income")
@@ -458,12 +472,15 @@ class TestAccounts:
 
         accounts = get_accounts()
         assert len(accounts) == 1
-        # Starting 200 (income) + 1000 income - 300 expense = 900
+        # Opening 200 + 1000 income - 300 expense = 900
+        assert accounts[0].starting == Decimal("200.00")
         assert accounts[0].balance == Decimal("900.00")
 
-        # The starting money is a real transaction in Otros ingresos.
+        # The opening money belongs to no month, only the salary counts.
         summary = get_monthly_summary(9, 2026)
-        assert summary.total_income == Decimal("1200.00")
+        assert summary.total_income == Decimal("1000.00")
+        # It sits before all time as carryover.
+        assert summary.carryover == Decimal("200.00")
 
     def test_account_without_starting_amount(self, temp_db: str) -> None:
         account_id = add_account("Nequi", "digital", Decimal("0.00"))

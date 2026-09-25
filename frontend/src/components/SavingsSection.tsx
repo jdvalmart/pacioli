@@ -87,7 +87,6 @@ function SavingsFormBody({
     item?.source_account_id ? String(item.source_account_id) : '',
   )
   const [initialAmount, setInitialAmount] = useState('')
-  const [initialAccountId, setInitialAccountId] = useState('')
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -110,7 +109,6 @@ function SavingsFormBody({
         await api.createSavings({
           ...common,
           initial_amount: initialAmount ? normalizeAmount(initialAmount) : null,
-          initial_account_id: initialAccountId ? Number(initialAccountId) : null,
         })
       }
     },
@@ -134,7 +132,6 @@ function SavingsFormBody({
   }
 
   const days = Array.from({ length: 31 }, (_, i) => String(i + 1))
-  const hasAccounts = (accounts.data ?? []).length > 0
 
   return (
     <>
@@ -274,32 +271,19 @@ function SavingsFormBody({
           </div>
         )}
 
-        {!item && hasAccounts && (
-          <div className="grid grid-cols-2 gap-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="sv-init">Monto inicial (opcional)</Label>
-              <Input
-                id="sv-init"
-                placeholder="0"
-                value={initialAmount}
-                onChange={(e) => setInitialAmount(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Desde cuenta</Label>
-              <Select value={initialAccountId} onValueChange={(v) => setInitialAccountId(v ?? '')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin depósito" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(accounts.data ?? []).map((account) => (
-                    <SelectItem key={account.id} value={String(account.id)}>
-                      {account.icon} {account.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        {!item && (
+          <div className="space-y-1.5 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
+            <Label htmlFor="sv-init">Saldo inicial (opcional)</Label>
+            <Input
+              id="sv-init"
+              placeholder="0"
+              value={initialAmount}
+              onChange={(e) => setInitialAmount(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Dinero que ya tenías (por ejemplo un CDT existente). No cuenta en ningún mes,
+              solo en el saldo.
+            </p>
           </div>
         )}
 

@@ -1,10 +1,12 @@
 /**
  * Hook that reads and updates the selected month from the URL.
  * The month lives in the query string (?month=9&year=2026) so the
- * selection survives reloads and can be shared as a link.
+ * selection survives reloads and can be shared as a link. It is also
+ * mirrored in localStorage so it survives navigation between pages,
+ * which drops the query string.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 export interface Month {
@@ -13,13 +15,37 @@ export interface Month {
 }
 
 const now = new Date()
+const STORAGE_KEY = 'pacioli-month'
+
+function isValid(m: unknown): m is Month {
+  if (typeof m !== 'object' || m === null) return false
+  const { month, year } = m as Partial<Month>
+  return (
+    typeof month === 'number' &&
+    month >= 1 &&
+    month <= 12 &&
+    typeof year === 'number' &&
+    year >= 2000 &&
+    year <= 2100
+  )
+}
+
+function readSavedMonth(): Month | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return isValid(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
 
 function parseMonth(params: URLSearchParams): Month {
   const month = Number(params.get('month'))
   const year = Number(params.get('year'))
-  const validMonth = month >= 1 && month <= 12 ? month : now.getMonth() + 1
-  const validYear = year >= 2000 && year <= 2100 ? year : now.getFullYear()
-  return { month: validMonth, year: validYear }
+  if (isValid({ month, year })) return { month, year }
+  return readSavedMonth() ?? { month: now.getMonth() + 1, year: now.getFullYear() }
 }
 
 export function useMonth(): {
@@ -29,6 +55,15 @@ export function useMonth(): {
 } {
   const [searchParams, setSearchParams] = useSearchParams()
   const month = parseMonth(searchParams)
+  const { month: monthNumber, year } = month
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ month: monthNumber, year }))
+    } catch {
+      // ignore storage errors
+    }
+  }, [monthNumber, year])
 
   const setMonth = useCallback(
     (m: Month) => {

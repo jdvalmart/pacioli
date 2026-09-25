@@ -26,6 +26,7 @@ def list_savings() -> list[SavingsOut]:
             scheduled_day=s.scheduled_day,
             scheduled_amount=s.scheduled_amount,
             source_account_id=s.source_account_id,
+            opening=s.opening or Decimal("0.00"),
             balance=s.balance or Decimal("0.00"),
             invested=s.invested or Decimal("0.00"),
         )

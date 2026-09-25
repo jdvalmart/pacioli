@@ -118,9 +118,9 @@ class SavingsIn(BaseModel):
 
     Field relevance by kind: bolsillo uses target; bolsillo_programado
     uses target, scheduled_day, scheduled_amount and source_account_id;
-    cdt uses rate_bp and term_days; acciones uses current_value. The
-    optional initial deposit records an ahorro movement from
-    initial_account_id.
+    cdt uses rate_bp and term_days; acciones uses current_value.
+    ``initial_amount`` is the opening balance: money that already
+    existed (e.g. an existing CDT); it belongs to no month.
     """
 
     name: str = Field(min_length=1, max_length=100)
@@ -163,6 +163,7 @@ class SavingsOut(BaseModel):
     scheduled_day: int | None
     scheduled_amount: Money | None
     source_account_id: int | None
+    opening: Money
     balance: Money
     invested: Money
 
@@ -313,8 +314,8 @@ class ConnectionTestOut(BaseModel):
 class AccountIn(BaseModel):
     """Payload to create an account.
 
-    ``starting_amount`` becomes a linked income transaction so it
-    flows into income reports and the account balance.
+    ``starting_amount`` is the opening balance: money that already
+    existed before using the app. It belongs to no month.
     """
 
     name: str = Field(min_length=1, max_length=100)
@@ -325,9 +326,11 @@ class AccountIn(BaseModel):
 
 
 class AccountUpdate(BaseModel):
-    """Payload to update an account (type is immutable)."""
+    """Payload to update an account's name, type and opening balance."""
 
     name: str = Field(min_length=1, max_length=100)
+    type: Literal["efectivo", "digital", "ahorros", "banco"] | None = None
+    starting_amount: Money | None = None
 
 
 class AccountOut(BaseModel):
@@ -338,6 +341,7 @@ class AccountOut(BaseModel):
     type: str
     icon: str
     color: str
+    starting: Money
     balance: Money
 
 

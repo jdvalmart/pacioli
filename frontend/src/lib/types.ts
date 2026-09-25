@@ -83,6 +83,7 @@ export interface Account {
   type: AccountType
   icon: string
   color: string
+  starting: string
   balance: string
 }
 
@@ -111,6 +112,7 @@ export interface SavingsItem {
   scheduled_day: number | null
   scheduled_amount: string | null
   source_account_id: number | null
+  opening: string
   balance: string
   invested: string
 }

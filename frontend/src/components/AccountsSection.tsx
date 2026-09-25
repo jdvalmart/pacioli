@@ -74,18 +74,17 @@ function AccountFormBody({
   const queryClient = useQueryClient()
   const [name, setName] = useState(account?.name ?? '')
   const [type, setType] = useState<AccountType>(account?.type ?? 'efectivo')
-  const [startingAmount, setStartingAmount] = useState('')
+  const [startingAmount, setStartingAmount] = useState(
+    account?.starting ? String(Math.round(Number(account.starting))) : '',
+  )
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const starting = normalizeAmount(startingAmount || '0')
       if (account) {
-        await api.updateAccount(account.id, { name })
+        await api.updateAccount(account.id, { name, type, starting_amount: starting })
       } else {
-        await api.createAccount({
-          name,
-          type,
-          starting_amount: normalizeAmount(startingAmount || '0'),
-        })
+        await api.createAccount({ name, type, starting_amount: starting })
       }
     },
     onSuccess: () => {
@@ -122,40 +121,37 @@ function AccountFormBody({
             onChange={(e) => setName(e.target.value)}
           />
         </div>
-        {!account && (
-          <>
-            <div className="space-y-1.5">
-              <Label>Tipo</Label>
-              <Select
-                value={type}
-                onValueChange={(v) => setType((v ?? 'efectivo') as AccountType)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACCOUNT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.icon} {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="acc-start">Dinero inicial (opcional)</Label>
-              <Input
-                id="acc-start"
-                placeholder="0"
-                value={startingAmount}
-                onChange={(e) => setStartingAmount(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Se registra como ingreso de este mes en &quot;Otros ingresos&quot;.
-              </p>
-            </div>
-          </>
-        )}
+        <div className="space-y-1.5">
+          <Label>Tipo</Label>
+          <Select
+            value={type}
+            onValueChange={(v) => setType((v ?? 'efectivo') as AccountType)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCOUNT_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.icon} {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="acc-start">Saldo inicial</Label>
+          <Input
+            id="acc-start"
+            placeholder="0"
+            value={startingAmount}
+            onChange={(e) => setStartingAmount(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Dinero que ya tenías antes de usar la app. No cuenta en ningún mes, solo en el
+            saldo de la cuenta.
+          </p>
+        </div>
         <Button type="submit" className="w-full" disabled={mutation.isPending}>
           {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
@@ -263,6 +259,11 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
                 )}
               </div>
               <p className="mt-3 text-xl font-black">{fmtCopDecimals(account.balance)}</p>
+              {Number(account.starting) > 0 && (
+                <p className="text-xs font-bold text-muted-foreground">
+                  Incluye {fmtCopDecimals(account.starting)} de saldo inicial
+                </p>
+              )}
             </Card>
           ))
         )}
