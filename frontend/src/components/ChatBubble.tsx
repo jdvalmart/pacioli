@@ -70,7 +70,7 @@ export function ChatBubble() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-24 left-4 z-50 flex h-[30rem] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border-2 border-border bg-card shadow-[0_16px_50px_rgba(0,0,0,0.22)] md:left-64">
+        <div className="fixed bottom-24 left-4 z-50 flex h-[30rem] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border-2 border-border bg-card shadow-[0_16px_50px_rgba(0,0,0,0.22)] md:left-[calc(var(--sidebar-w,15rem)+1rem)]">
           <div className="flex items-center justify-between bg-primary px-4 py-3 text-primary-foreground">
             <div className="flex items-center gap-2.5">
               <Landmark className="size-5" />
@@ -170,7 +170,7 @@ export function ChatBubble() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-6 left-4 z-50 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_0_0_color-mix(in_oklch,var(--primary),black_18%)] transition-transform hover:scale-105 active:translate-y-0.5 md:left-64"
+        className="fixed bottom-6 left-4 z-50 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-1 ring-black/5 transition-all hover:scale-105 hover:shadow-xl active:scale-95 md:left-[calc(var(--sidebar-w,15rem)+1rem)]"
         aria-label={open ? 'Cerrar asistente' : 'Abrir asistente'}
       >
         {open ? <X className="size-6" /> : <MessageSquare className="size-6" />}

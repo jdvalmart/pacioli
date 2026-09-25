@@ -1,9 +1,11 @@
-import { lazy, Suspense } from 'react'
-import { ChevronLeft, ChevronRight, Landmark, LayoutDashboard, PiggyBank, Plus, ReceiptText, ChartColumnBig, Settings, Loader2 } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, PiggyBank, Plus, ReceiptText, ChartColumnBig, Settings, Loader2 } from 'lucide-react'
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ChatBubble } from '@/components/ChatBubble'
+import { Logo } from '@/components/Logo'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
+import { cn } from '@/lib/utils'
 
 // Pages load on demand so charts (Recharts) and other heavy
 // dependencies only ship when their route is actually visited.
@@ -45,7 +47,7 @@ function NewTransactionFab() {
     <button
       type="button"
       onClick={() => navigate('/transactions?new=1')}
-      className="fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_6px_0_0_#be123c] transition-transform hover:scale-105 active:translate-y-0.5"
+      className="fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105 hover:shadow-xl active:scale-95"
       aria-label="Nueva transacción"
     >
       <Plus className="size-6" />
@@ -55,41 +57,80 @@ function NewTransactionFab() {
 
 export default function App() {
   const { month, shiftMonth } = useMonth()
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem('pacioli-sidebar') === 'collapsed',
+  )
+
+  const toggleSidebar = () => {
+    setCollapsed((prev) => {
+      const next = !prev
+      localStorage.setItem('pacioli-sidebar', next ? 'collapsed' : 'expanded')
+      return next
+    })
+  }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-60 shrink-0 flex-col border-r-2 border-border md:flex">
-        <div className="flex items-center gap-2.5 px-5 py-6">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-primary shadow-[0_4px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
-            <Landmark className="size-5 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-black tracking-tight">Pacioli</span>
+    <div
+      className="flex h-screen overflow-hidden bg-background"
+      style={{ '--sidebar-w': collapsed ? '5rem' : '15rem' } as React.CSSProperties}
+    >
+      <aside
+        className={cn(
+          'relative hidden shrink-0 flex-col border-r-2 border-border transition-all duration-200 md:flex',
+          collapsed ? 'w-20' : 'w-60',
+        )}
+      >
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          aria-label={collapsed ? 'Expandir menú' : 'Contraer menú'}
+          className="absolute top-6 -right-3 z-20 hidden size-6 items-center justify-center rounded-full border-2 border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground md:flex"
+        >
+          {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
+        </button>
+        <div
+          className={cn(
+            'flex items-center gap-2.5 py-6',
+            collapsed ? 'justify-center px-2' : 'px-5',
+          )}
+        >
+          <Logo className="size-10 shrink-0 rounded-xl shadow-sm" />
+          {!collapsed && (
+            <span className="font-heading text-xl font-extrabold tracking-tight">Pacioli</span>
+          )}
         </div>
-        <nav className="flex flex-1 flex-col gap-1.5 px-3">
+        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3">
           {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
+              title={collapsed ? label : undefined}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition-all ${
+                cn(
+                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all',
+                  collapsed && 'justify-center px-0',
                   isActive
-                    ? 'border-[color-mix(in_oklch,var(--primary),black_18%)] bg-primary text-primary-foreground shadow-[0_4px_0_0_color-mix(in_oklch,var(--primary),black_18%)]'
-                    : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )
               }
             >
-              <Icon className="size-4.5" />
-              {label}
+              <Icon className="size-4.5 shrink-0" />
+              {!collapsed && label}
             </NavLink>
           ))}
         </nav>
-        <div className="border-t-2 border-border p-4 text-xs font-semibold text-muted-foreground">
-          Tus finanzas, en tus manos.
-        </div>
+        {!collapsed && (
+          <div className="border-t-2 border-border p-3">
+            <p className="px-3 text-xs font-semibold text-muted-foreground">
+              Tus finanzas, en tus manos.
+            </p>
+          </div>
+        )}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
           <div className="flex items-center gap-1">
             <Button
@@ -128,7 +169,7 @@ export default function App() {
           </nav>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
