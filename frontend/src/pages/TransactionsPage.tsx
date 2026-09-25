@@ -127,7 +127,10 @@ function TransactionFormBody({
   const queryClient = useQueryClient()
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
-  const creditCards = useQuery({ queryKey: ['creditCards'], queryFn: api.listCreditCards })
+  const creditCards = useQuery({
+    queryKey: ['creditCards'],
+    queryFn: () => api.listCreditCards(),
+  })
   const savings = useQuery({ queryKey: ['savings'], queryFn: api.listSavings })
 
   const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'gasto')

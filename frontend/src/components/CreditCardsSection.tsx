@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
 import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
@@ -42,6 +43,12 @@ const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 's
 function fmtDay(iso: string): string {
   const [, month, day] = iso.split('-').map(Number)
   return `${day} ${MONTHS_SHORT[month - 1]}`
+}
+
+function addOneDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`)
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
 }
 
 function CardForm({
@@ -340,8 +347,12 @@ function PayCardBody({
 }
 
 export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } = {}) {
+  const { month } = useMonth()
   const queryClient = useQueryClient()
-  const cards = useQuery({ queryKey: ['creditCards'], queryFn: api.listCreditCards })
+  const cards = useQuery({
+    queryKey: ['creditCards', month],
+    queryFn: () => api.listCreditCards(month.month, month.year),
+  })
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<CreditCard | null>(null)
   const [deleting, setDeleting] = useState<CreditCard | null>(null)
@@ -445,7 +456,7 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                   </p>
                   <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
                     <span>
-                      Ciclo {fmtDay(card.cycle_start)} → {fmtDay(card.cycle_end)}
+                      Ciclo {fmtDay(addOneDay(card.cycle_start))} → {fmtDay(card.cycle_end)}
                     </span>
                     <span>Pago {fmtDay(card.payment_date)}</span>
                   </div>

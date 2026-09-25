@@ -134,7 +134,10 @@ export const api = {
     request<{ message: string }>(`/accounts/${id}`, { method: 'DELETE' }),
 
   // Credit cards
-  listCreditCards: () => request<CreditCard[]>('/credit-cards'),
+  listCreditCards: (month?: number, year?: number) =>
+    request<CreditCard[]>(
+      month != null && year != null ? `/credit-cards?month=${month}&year=${year}` : '/credit-cards',
+    ),
   createCreditCard: (payload: {
     name: string
     limit: string

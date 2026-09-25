@@ -13,8 +13,24 @@ router = APIRouter(prefix="/credit-cards", tags=["credit-cards"])
 
 
 @router.get("", response_model=list[CreditCardOut])
-def list_cards() -> list[CreditCardOut]:
-    """List all credit cards with spending, payments, debt and available credit."""
+def list_cards(
+    month: int | None = None,
+    year: int | None = None,
+) -> list[CreditCardOut]:
+    """List all credit cards with spending, payments, debt and available credit.
+
+    When a month is supplied, the cycle shown corresponds to that month
+    (the purchase on Sep 15 with cutoff 5 is billed in October).
+    """
+    from fastapi import Query
+
+    ref = None
+    if month is not None and year is not None:
+        try:
+            ref = date(year, month, 15)
+        except ValueError:
+            ref = None
+    cards = db.get_credit_cards(today=ref)
     return [
         CreditCardOut(
             id=c.id or 0,
@@ -30,7 +46,7 @@ def list_cards() -> list[CreditCardOut]:
             cycle_end=c.cycle_end or date.today(),
             payment_date=c.payment_date or date.today(),
         )
-        for c in db.get_credit_cards()
+        for c in cards
     ]
 
 
