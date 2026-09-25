@@ -2,7 +2,6 @@ import { lazy, Suspense, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, LayoutDashboard, PiggyBank, Plus, ReceiptText, ChartColumnBig, Settings, Loader2 } from 'lucide-react'
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { ChatBubble } from '@/components/ChatBubble'
 import { Logo } from '@/components/Logo'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import { cn } from '@/lib/utils'
@@ -41,13 +40,17 @@ const NAV_ITEMS = [
   { to: '/settings', label: 'Configuración', icon: Settings },
 ]
 
-function NewTransactionFab() {
+function NewTransactionFab({ isLeft = false }: { isLeft?: boolean }) {
   const navigate = useNavigate()
   return (
     <button
       type="button"
       onClick={() => navigate('/transactions?new=1')}
-      className="fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105 hover:shadow-xl active:scale-95"
+      className={
+        isLeft
+          ? 'fixed bottom-6 left-4 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105 hover:shadow-xl active:scale-95 md:left-[calc(var(--sidebar-w,15rem)+1rem)]'
+          : 'fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105 hover:shadow-xl active:scale-95'
+      }
       aria-label="Nueva transacción"
     >
       <Plus className="size-6" />
@@ -202,8 +205,7 @@ export default function App() {
         </main>
       </div>
 
-      <ChatBubble />
-      <NewTransactionFab />
+      <NewTransactionFab isLeft />
     </div>
   )
 }
