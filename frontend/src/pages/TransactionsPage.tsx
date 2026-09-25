@@ -64,37 +64,37 @@ const KIND_OPTIONS: {
 }[] = [
   {
     value: 'ingreso',
-    label: 'Ingreso',
+    label: 'Income',
     icon: ArrowDownLeft,
     activeClass: 'bg-emerald-500 border-emerald-700 text-white shadow-[0_4px_0_0_#047857]',
   },
   {
     value: 'gasto',
-    label: 'Gasto',
+    label: 'Expense',
     icon: ArrowUpRight,
     activeClass: 'bg-rose-500 border-rose-700 text-white shadow-[0_4px_0_0_#be123c]',
   },
   {
     value: 'transferencia',
-    label: 'Transferencia',
+    label: 'Transfer',
     icon: ArrowLeftRight,
     activeClass: 'bg-blue-500 border-blue-700 text-white shadow-[0_4px_0_0_#1d4ed8]',
   },
   {
     value: 'gasto_tc',
-    label: 'Gasto TC',
+    label: 'Card Expense',
     icon: CreditCard,
     activeClass: 'bg-orange-500 border-orange-700 text-white shadow-[0_4px_0_0_#c2410c]',
   },
   {
     value: 'ahorro',
-    label: 'Ahorro',
+    label: 'Saving',
     icon: PiggyBank,
     activeClass: 'bg-amber-500 border-amber-700 text-white shadow-[0_4px_0_0_#b45309]',
   },
   {
     value: 'retiro',
-    label: 'Retiro',
+    label: 'Withdrawal',
     icon: HandCoins,
     activeClass: 'bg-teal-500 border-teal-700 text-white shadow-[0_4px_0_0_#0f766e]',
   },
@@ -187,7 +187,7 @@ function TransactionFormBody({
       }
     },
     onSuccess: () => {
-      toast.success(transaction ? 'Transacción actualizada' : 'Transacción creada')
+      toast.success(transaction ? 'Transaction updated' : 'Transaction created')
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['transactions'] })
       void queryClient.invalidateQueries({ queryKey: ['summary'] })
@@ -215,32 +215,32 @@ function TransactionFormBody({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     if (kind !== 'transferencia' && !isSavingsKind && !categoryId) {
-      toast.error('Selecciona una categoría')
+      toast.error('Select a category')
       return
     }
     if (kind === 'gasto_tc' && !cardId) {
-      toast.error('Selecciona la tarjeta de crédito')
+      toast.error('Select a credit card')
       return
     }
     if (isSavingsKind && !savingsId) {
-      toast.error('Selecciona el bolsillo o inversión')
+      toast.error('Select the pocket or investment')
       return
     }
     if (isSavingsKind && selectedSavingsLocked) {
-      toast.error(`Este ahorro está bloqueado hasta el ${selectedSavings?.matures_on}`)
+      toast.error(`This savings is locked until ${selectedSavings?.matures_on}`)
       return
     }
     if (needsAccount && !accountId) {
-      toast.error('Selecciona una cuenta — todo movimiento sale o entra a una cuenta')
+      toast.error('Select an account — every transaction comes from or goes to an account')
       return
     }
     if (needsTwoAccounts) {
       if (!accountId || !toAccountId) {
-        toast.error('Selecciona la cuenta de origen y la de destino')
+        toast.error('Select the source and destination accounts')
         return
       }
       if (accountId === toAccountId) {
-        toast.error('La cuenta de origen y destino deben ser diferentes')
+        toast.error('Source and destination accounts must be different')
         return
       }
     }
@@ -271,14 +271,14 @@ function TransactionFormBody({
     : 'none'
 
   const accountLabel =
-    kind === 'ingreso' ? 'Cuenta destino' : kind === 'gasto' ? 'Cuenta origen' : 'Cuenta'
+    kind === 'ingreso' ? 'Destination account' : kind === 'gasto' ? 'Source account' : 'Account'
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{transaction ? 'Editar transacción' : 'Nueva transacción'}</DialogTitle>
+        <DialogTitle>{transaction ? 'Edit transaction' : 'New transaction'}</DialogTitle>
         <DialogDescription>
-          {transaction ? 'Modifica los datos y guarda.' : 'Registra un movimiento del mes.'}
+          {transaction ? 'Update the details and save.' : 'Record a transaction for this month.'}
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -302,7 +302,7 @@ function TransactionFormBody({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="tx-date">Fecha</Label>
+            <Label htmlFor="tx-date">Date</Label>
             <Input
               id="tx-date"
               type="date"
@@ -312,7 +312,7 @@ function TransactionFormBody({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="tx-amount">Monto</Label>
+            <Label htmlFor="tx-amount">Amount</Label>
             <Input
               id="tx-amount"
               required
@@ -326,10 +326,10 @@ function TransactionFormBody({
         {kind === 'transferencia' ? (
           <>
             <div className="space-y-1.5">
-              <Label>Desde</Label>
+              <Label>From</Label>
               <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Cuenta de origen" />
+                  <SelectValue placeholder="Source account" />
                 </SelectTrigger>
                 <SelectContent>
                   {accountList.map((account) => (
@@ -341,10 +341,10 @@ function TransactionFormBody({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Hacia</Label>
+              <Label>To</Label>
               <Select value={toAccountId} onValueChange={(v) => setToAccountId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Cuenta de destino" />
+                  <SelectValue placeholder="Destination account" />
                 </SelectTrigger>
                 <SelectContent>
                   {accountList.map((account) => (
@@ -355,18 +355,18 @@ function TransactionFormBody({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Mover dinero entre tus cuentas no afecta ingresos ni gastos.
+                Moving money between your accounts doesn't affect income or expenses.
               </p>
             </div>
           </>
         ) : isSavingsKind ? (
           <>
             <div className="space-y-1.5">
-              <Label>{kind === 'ahorro' ? 'Bolsillo destino' : 'Bolsillo origen'}</Label>
+              <Label>{kind === 'ahorro' ? 'Destination pocket' : 'Source pocket'}</Label>
               {(savings.data ?? []).length > 0 && (
                 <Select value={savingsId} onValueChange={(v) => setSavingsId(v ?? '')}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona el bolsillo" />
+                    <SelectValue placeholder="Select the pocket" />
                   </SelectTrigger>
                   <SelectContent>
                     {(savings.data ?? []).map((item) => {
@@ -389,24 +389,24 @@ function TransactionFormBody({
                 className="w-full"
                 onClick={() => setSavingsFormOpen(true)}
               >
-                <Plus /> Crear bolsillo, CDT o acciones
+                <Plus /> Create pocket, CD or stocks
               </Button>
               {selectedSavingsLocked && (
                 <p className="text-xs font-bold text-amber-600">
-                  🔒 Bloqueado hasta el {selectedSavings?.matures_on} — no puedes mover dinero hasta el vencimiento.
+                  🔒 Locked until {selectedSavings?.matures_on} — you can't move money until maturity.
                 </p>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label>{kind === 'ahorro' ? 'Cuenta origen' : 'Cuenta destino'}</Label>
+              <Label>{kind === 'ahorro' ? 'Source account' : 'Destination account'}</Label>
               {!hasAccounts ? (
                 <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
-                  Aún no tienes cuentas. Crea una en el Dashboard.
+                  You don't have any accounts yet. Create one in the Dashboard.
                 </div>
               ) : (
                 <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona una cuenta" />
+                    <SelectValue placeholder="Select an account" />
                   </SelectTrigger>
                   <SelectContent>
                     {accountList.map((account) => (
@@ -420,21 +420,21 @@ function TransactionFormBody({
               <p className="text-xs text-muted-foreground">
                 {kind === 'ahorro'
                   ? savingsIsBolsillo
-                    ? 'Se asigna al bolsillo: el dinero sigue en tu cuenta, solo queda apartado.'
-                    : 'El dinero sale de tu cuenta hacia el ahorro (no cuenta como gasto).'
+                    ? 'Assigned to pocket: money stays in your account, just set aside.'
+                    : 'Money leaves your account to savings (not counted as an expense).'
                   : savingsIsBolsillo
-                    ? 'Se libera del bolsillo: el dinero sigue en tu cuenta.'
-                    : 'El dinero vuelve a tu cuenta.'}
+                    ? 'Released from pocket: money stays in your account.'
+                    : 'Money returns to your account.'}
               </p>
             </div>
           </>
         ) : (
           <>
             <div className="space-y-1.5">
-              <Label>Categoría</Label>
+              <Label>Category</Label>
               <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una categoría" />
+                  <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
                   {visibleCategories.map((cat) => (
@@ -448,13 +448,13 @@ function TransactionFormBody({
 
             {categoryId !== '' && kind !== 'gasto_tc' && (
               <div className="space-y-1.5">
-                <Label>Subcategoría (opcional)</Label>
+                <Label>Subcategory (optional)</Label>
                 <Select value={subValue} onValueChange={(v) => setSubcategoryId(v ?? 'none')}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Sin subcategoría" />
+                    <SelectValue placeholder="No subcategory" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Sin subcategoría</SelectItem>
+                    <SelectItem value="none">No subcategory</SelectItem>
                     {filteredSubcategories.map((sub) => (
                       <SelectItem key={sub.id} value={String(sub.id)}>
                         {sub.icon} {sub.name}
@@ -467,17 +467,17 @@ function TransactionFormBody({
 
             {kind === 'gasto_tc' ? (
               <div className="space-y-1.5">
-                <Label>Tarjeta de crédito</Label>
+                <Label>Credit card</Label>
                 {(creditCards.data ?? []).length === 0 ? (
                   <div className="rounded-xl border border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
-                    💳 Aún no tienes tarjetas. Crea una en el Dashboard (sección Tarjetas
-                    de crédito) para registrar gastos TC.
+                    💳 You don't have any cards yet. Create one in the Dashboard (Credit
+                    Cards section) to record card expenses.
                   </div>
                 ) : (
                   <>
                     <Select value={cardId} onValueChange={(v) => setCardId(v ?? '')}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecciona la tarjeta" />
+                        <SelectValue placeholder="Select the card" />
                       </SelectTrigger>
                       <SelectContent>
                         {(creditCards.data ?? []).map((card) => (
@@ -488,11 +488,11 @@ function TransactionFormBody({
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Se descuenta del cupo disponible de la tarjeta.
+                      Deducted from the card's available credit.
                     </p>
                     <div className="grid grid-cols-2 gap-3 pt-1">
                       <div className="space-y-1.5">
-                        <Label htmlFor="tx-installments">Cuotas</Label>
+                        <Label htmlFor="tx-installments">Installments</Label>
                         <Input
                           id="tx-installments"
                           type="number"
@@ -504,7 +504,7 @@ function TransactionFormBody({
                       </div>
                       {Number(installments) > 1 && (
                         <div className="space-y-1.5">
-                          <Label htmlFor="tx-interest">Interés total (%)</Label>
+                          <Label htmlFor="tx-interest">Total interest (%)</Label>
                           <Input
                             id="tx-interest"
                             type="number"
@@ -519,12 +519,12 @@ function TransactionFormBody({
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {Number(installments) > 1
-                        ? `Cuota: ${fmtCopDecimals(
+                        ? `Installment: ${fmtCopDecimals(
                             (Number(normalizeAmount(amount || '0')) *
                               (1 + Number(interest || '0') / 100)) /
                               (Number(installments) || 1),
-                          )} por mes`
-                        : 'A 1 cuota no se cobra interés.'}
+                          )} per month`
+                        : 'No interest charged for 1 installment.'}
                     </p>
                   </>
                 )}
@@ -534,14 +534,14 @@ function TransactionFormBody({
                 <Label>{accountLabel}</Label>
                 {!hasAccounts ? (
                   <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
-                    Aún no tienes cuentas. Crea una en el Dashboard (billetera, banco,
-                    ahorros…) para poder registrar movimientos.
+                    You don't have any accounts yet. Create one in the Dashboard (wallet,
+                    bank, savings…) to record transactions.
                   </div>
                 ) : (
                   <>
                     <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecciona una cuenta" />
+                        <SelectValue placeholder="Select an account" />
                       </SelectTrigger>
                       <SelectContent>
                         {accountList.map((account) => (
@@ -553,8 +553,8 @@ function TransactionFormBody({
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       {kind === 'ingreso'
-                        ? 'A qué cuenta entra el dinero.'
-                        : 'De qué cuenta sale el dinero.'}
+                        ? 'Which account the money goes into.'
+                        : 'Which account the money comes from.'}
                     </p>
                   </>
                 )}
@@ -564,10 +564,10 @@ function TransactionFormBody({
         )}
 
         <div className="space-y-1.5">
-          <Label htmlFor="tx-description">Descripción</Label>
+          <Label htmlFor="tx-description">Description</Label>
           <Input
             id="tx-description"
-            placeholder="Ej. Mercado semanal"
+            placeholder="E.g. Weekly groceries"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -580,11 +580,11 @@ function TransactionFormBody({
             checked={isRecurring}
             onChange={(e) => setIsRecurring(e.target.checked)}
           />
-          <Label htmlFor="tx-recurring">Es recurrente (arriendo, servicios, ahorro…)</Label>
+          <Label htmlFor="tx-recurring">Recurring (rent, utilities, savings…)</Label>
         </div>
         {isRecurring && (
           <div className="space-y-1.5">
-            <Label htmlFor="tx-day">Día del mes</Label>
+            <Label htmlFor="tx-day">Day of the month</Label>
             <Input
               id="tx-day"
               type="number"
@@ -594,7 +594,7 @@ function TransactionFormBody({
               onChange={(e) => setRecurringDay(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Se creará automáticamente cada mes en este día.
+              Will be created automatically each month on this day.
             </p>
           </div>
         )}
@@ -609,7 +609,7 @@ function TransactionFormBody({
             (kind === 'gasto_tc' && (creditCards.data ?? []).length === 0)
           }
         >
-          {mutation.isPending ? 'Guardando…' : 'Guardar'}
+          {mutation.isPending ? 'Saving…' : 'Save'}
         </Button>
       </form>
 
@@ -624,13 +624,13 @@ function TransactionFormBody({
 }
 
 const KIND_BADGES: Record<TransactionKind, { label: string; className: string }> = {
-  ingreso: { label: 'Ingreso', className: 'bg-emerald-100 text-emerald-700' },
-  gasto: { label: 'Gasto', className: 'bg-rose-100 text-rose-700' },
-  transferencia: { label: 'Transferencia', className: 'bg-blue-100 text-blue-700' },
-  gasto_tc: { label: 'Gasto TC', className: 'bg-orange-100 text-orange-700' },
-  pago_tc: { label: 'Pago TC', className: 'bg-violet-100 text-violet-700' },
-  ahorro: { label: 'Ahorro', className: 'bg-amber-100 text-amber-700' },
-  retiro: { label: 'Retiro', className: 'bg-teal-100 text-teal-700' },
+  ingreso: { label: 'Income', className: 'bg-emerald-100 text-emerald-700' },
+  gasto: { label: 'Expense', className: 'bg-rose-100 text-rose-700' },
+  transferencia: { label: 'Transfer', className: 'bg-blue-100 text-blue-700' },
+  gasto_tc: { label: 'Card Expense', className: 'bg-orange-100 text-orange-700' },
+  pago_tc: { label: 'Card Payment', className: 'bg-violet-100 text-violet-700' },
+  ahorro: { label: 'Saving', className: 'bg-amber-100 text-amber-700' },
+  retiro: { label: 'Withdrawal', className: 'bg-teal-100 text-teal-700' },
 }
 
 const amountClass = (tx: Transaction) =>
@@ -641,17 +641,17 @@ const amountClass = (tx: Transaction) =>
       : 'text-red-600'
 
 const KIND_LABELS: Record<TransactionKind, string> = {
-  ingreso: 'Ingreso',
-  gasto: 'Gasto',
-  transferencia: 'Transferencia',
-  gasto_tc: 'Gasto TC',
-  pago_tc: 'Pago TC',
-  ahorro: 'Ahorro',
-  retiro: 'Retiro',
+  ingreso: 'Income',
+  gasto: 'Expense',
+  transferencia: 'Transfer',
+  gasto_tc: 'Card Expense',
+  pago_tc: 'Card Payment',
+  ahorro: 'Saving',
+  retiro: 'Withdrawal',
 }
 
 const KIND_FILTERS: { value: TransactionKind | 'all'; label: string }[] = [
-  { value: 'all', label: 'Todos' },
+  { value: 'all', label: 'All' },
   { value: 'ingreso', label: KIND_LABELS.ingreso },
   { value: 'gasto', label: KIND_LABELS.gasto },
   { value: 'transferencia', label: KIND_LABELS.transferencia },
@@ -677,10 +677,10 @@ function TransactionsTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Movimiento</TableHead>
-            <TableHead>Detalle</TableHead>
-            <TableHead className="text-right">Monto</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Details</TableHead>
+            <TableHead className="text-right">Amount</TableHead>
             <TableHead className="w-24" />
           </TableRow>
         </TableHeader>
@@ -701,7 +701,7 @@ function TransactionsTable({
                 })}
                 {(tx.is_recurring || tx.generated_from) && (
                   <Badge variant="outline" className="ml-2">
-                    recurrente
+                    recurring
                   </Badge>
                 )}
               </TableCell>
@@ -727,11 +727,11 @@ function TransactionsTable({
                   {tx.kind === 'transferencia'
                     ? `${tx.account_icon} ${tx.account_name ?? '—'} → ${tx.to_account_icon} ${tx.to_account_name ?? '—'}`
                     : tx.kind === 'gasto_tc'
-                      ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}`
+                      ? `💳 ${tx.card_name ?? 'Credit card'}`
                       : tx.kind === 'pago_tc'
-                        ? `${tx.account_icon} ${tx.account_name ?? '—'} → 💳 ${tx.card_name ?? 'TC'}`
+                        ? `${tx.account_icon} ${tx.account_name ?? '—'} → 💳 ${tx.card_name ?? 'Card'}`
                         : tx.kind === 'ahorro' || tx.kind === 'retiro'
-                          ? `${tx.account_icon} ${tx.account_name ?? '—'} ⇄ 👝 ${tx.savings_name ?? 'Ahorro'}`
+                          ? `${tx.account_icon} ${tx.account_name ?? '—'} ⇄ 👝 ${tx.savings_name ?? 'Savings'}`
                           : tx.account_name
                             ? `${tx.account_icon} ${tx.account_name}`
                             : '—'}
@@ -807,7 +807,7 @@ export function TransactionsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteTransaction(id),
     onSuccess: () => {
-      toast.success('Transacción eliminada')
+      toast.success('Transaction deleted')
       setDeleting(null)
       void queryClient.invalidateQueries({ queryKey: ['transactions', month] })
       void queryClient.invalidateQueries({ queryKey: ['summary', month] })
@@ -837,13 +837,13 @@ export function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-extrabold">Transacciones</h1>
+          <h1 className="text-xl font-extrabold">Transactions</h1>
           <p className="text-sm font-semibold text-muted-foreground">
-            Todos los movimientos del mes
+            All transactions for the month
           </p>
         </div>
         <Button onClick={openCreate}>
-          <Plus /> Nueva transacción
+          <Plus /> New transaction
         </Button>
       </div>
 
@@ -877,15 +877,15 @@ export function TransactionsPage() {
           <section className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Wallet className="size-4 text-primary" />
-              <h2 className="text-base font-extrabold">Cuentas</h2>
+              <h2 className="text-base font-extrabold">Accounts</h2>
               <Badge variant="secondary">{accountTransactions.length}</Badge>
               <span className="text-xs font-semibold text-muted-foreground">
-                Ingresos, gastos, transferencias, ahorros y pagos TC
+                Income, expenses, transfers, savings and card payments
               </span>
             </div>
             <TransactionsTable
               rows={accountTransactions}
-              emptyMessage="No hay movimientos de cuentas este mes."
+              emptyMessage="No account transactions this month."
               onEdit={openEdit}
               onDelete={setDeleting}
             />
@@ -894,15 +894,15 @@ export function TransactionsPage() {
           <section className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <CreditCard className="size-4 text-orange-500" />
-              <h2 className="text-base font-extrabold">Tarjetas de crédito</h2>
+              <h2 className="text-base font-extrabold">Credit Cards</h2>
               <Badge variant="secondary">{cardTransactions.length}</Badge>
               <span className="text-xs font-semibold text-muted-foreground">
-                Compras con tarjeta (no descuentan de tus cuentas hasta que las pagues)
+                Card purchases (not deducted from your accounts until you pay them)
               </span>
             </div>
             <TransactionsTable
               rows={cardTransactions}
-              emptyMessage="No hay compras con tarjeta este mes."
+              emptyMessage="No card purchases this month."
               onEdit={openEdit}
               onDelete={setDeleting}
             />
@@ -914,12 +914,12 @@ export function TransactionsPage() {
             <h2 className="text-base font-extrabold">{KIND_LABELS[kindFilter]}</h2>
             <Badge variant="secondary">{filteredTransactions.length}</Badge>
             <span className="text-xs font-semibold text-muted-foreground">
-              Movimientos de tipo {KIND_LABELS[kindFilter].toLowerCase()}
+              Transactions of type {KIND_LABELS[kindFilter].toLowerCase()}
             </span>
           </div>
           <TransactionsTable
             rows={filteredTransactions}
-            emptyMessage={`No hay movimientos de tipo ${KIND_LABELS[kindFilter].toLowerCase()} este mes.`}
+            emptyMessage={`No transactions of type ${KIND_LABELS[kindFilter].toLowerCase()} this month.`}
             onEdit={openEdit}
             onDelete={setDeleting}
           />
@@ -935,19 +935,19 @@ export function TransactionsPage() {
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar transacción?</AlertDialogTitle>
+            <AlertDialogTitle>Delete transaction?</AlertDialogTitle>
             <AlertDialogDescription>
-              Se eliminará &quot;{deleting?.description || 'esta transacción'}&quot; de{' '}
-              {deleting ? fmtCopDecimals(deleting.amount) : ''}. Esta acción no se puede deshacer.
+              This will delete &quot;{deleting?.description || 'this transaction'}&quot; for{' '}
+              {deleting ? fmtCopDecimals(deleting.amount) : ''}. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleting && deleteMutation.mutate(deleting.id)}
               className="bg-red-600 hover:bg-red-700"
             >
-              Eliminar
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

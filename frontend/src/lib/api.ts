@@ -5,7 +5,6 @@
  */
 
 import type {
-  AIConfig,
   Account,
   AccountType,
   Budget,
@@ -13,9 +12,6 @@ import type {
   BudgetVsActual,
   Category,
   CategorySpending,
-  ChatMessage,
-  ChatReply,
-  ConnectionTest,
   CreditCard,
   MonthlySummary,
   SavingsItem,
@@ -209,21 +205,4 @@ export const api = {
     request<BudgetVsActual[]>(`/reports/budget-vs-actual${query(month, year)}`),
   exportCsvUrl: (month: number, year: number) => `${BASE}/reports/export${query(month, year)}`,
 
-  // Chat
-  chatHistory: (month: number, year: number) =>
-    request<ChatMessage[]>(`/chat${query(month, year)}`),
-  sendChat: (question: string, month: number, year: number) =>
-    request<ChatReply>('/chat', {
-      method: 'POST',
-      body: JSON.stringify({ question, month, year }),
-    }),
-  clearChat: (month: number, year: number) =>
-    request<{ message: string }>(`/chat${query(month, year)}`, { method: 'DELETE' }),
-
-  // AI configuration
-  getAIConfig: () => request<AIConfig>('/ai/config'),
-  updateAIConfig: (config: AIConfig) =>
-    request<{ message: string }>('/ai/config', { method: 'PUT', body: JSON.stringify(config) }),
-  testAIConnection: () =>
-    request<ConnectionTest>('/ai/test-connection', { method: 'POST' }),
 }

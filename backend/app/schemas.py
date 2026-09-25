@@ -290,35 +290,6 @@ class ChatReply(BaseModel):
     error: str | None = None
 
 
-class AIConfigOut(BaseModel):
-    """AI service configuration as returned by the API."""
-
-    model: str
-    url: str
-    timeout: int
-    temperature: float
-    max_tokens: int
-    think: str
-
-
-class AIConfigIn(BaseModel):
-    """Payload to update the AI service configuration."""
-
-    model: str = Field(min_length=1, max_length=200)
-    url: str = Field(min_length=1, max_length=500)
-    timeout: int = Field(ge=1, le=600)
-    temperature: float = Field(ge=0, le=2)
-    max_tokens: int = Field(ge=16, le=8192)
-    think: Literal["off", "low", "medium", "high"] = "low"
-
-
-class ConnectionTestOut(BaseModel):
-    """Result of a connection test against the AI service."""
-
-    success: bool
-    message: str
-
-
 class AccountIn(BaseModel):
     """Payload to create an account.
 

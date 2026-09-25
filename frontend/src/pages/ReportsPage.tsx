@@ -29,7 +29,7 @@ import { monthLabel, useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
 import { fmtCop } from '@/lib/money'
 
-const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 // Income/expense pair (blue + orange, colour-blind friendly).
 const INCOME_COLOR = '#3B82F6'
@@ -80,8 +80,8 @@ export function ReportsPage() {
   const monthly = yearly.data ?? []
   const chartData = monthly.map((s) => ({
     name: MONTH_SHORT[s.month - 1],
-    Ingresos: Number(s.total_income),
-    Gastos: Number(s.total_expense),
+    Income: Number(s.total_income),
+    Expenses: Number(s.total_expense),
   }))
   const balanceData = monthly.map((s) => ({
     name: MONTH_SHORT[s.month - 1],
@@ -109,13 +109,13 @@ export function ReportsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-extrabold">Reportes</h1>
+          <h1 className="text-xl font-extrabold">Reports</h1>
           <p className="text-sm font-semibold text-muted-foreground">
-            Análisis del año {month.year} · mes de {monthLabel(month)}
+            Year {month.year} analysis · month of {monthLabel(month)}
           </p>
         </div>
         <a href={api.exportCsvUrl(month.month, month.year)} download>
-          <Button variant="outline" size="icon-sm" aria-label="Exportar CSV del mes">
+          <Button variant="outline" size="icon-sm" aria-label="Export month CSV">
             <Download />
           </Button>
         </a>
@@ -123,34 +123,34 @@ export function ReportsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Ingresos del año"
+          title="Yearly income"
           value={fmtCop(totalIncome)}
           icon={ArrowDownLeft}
           tone="income"
         />
         <StatCard
-          title="Gastos del año"
+          title="Yearly expenses"
           value={fmtCop(totalExpense)}
           icon={ArrowUpRight}
           tone="expense"
         />
         <StatCard
-          title="Balance del año"
+          title="Yearly balance"
           value={fmtCop(totalBalance)}
           icon={Wallet}
           tone={totalBalance >= 0 ? 'income' : 'expense'}
         />
         <StatCard
-          title="Promedio de gasto"
+          title="Average spending"
           value={fmtCop(avgExpense)}
-          detail={activeMonths > 0 ? `por mes (${activeMonths} con movimientos)` : 'sin datos'}
+          detail={activeMonths > 0 ? `per month (${activeMonths} with transactions)` : 'no data'}
           icon={TrendingUp}
           tone="primary"
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title={`Ingresos vs gastos ${month.year}`} subtitle="El mes en curso aparece marcado">
+        <Panel title={`Income vs Expenses ${month.year}`} subtitle="Current month is highlighted">
           {yearly.isLoading ? (
             <Skeleton className="h-full w-full" />
           ) : (
@@ -167,13 +167,13 @@ export function ReportsPage() {
                   strokeDasharray="4 4"
                 />
                 <Bar
-                  dataKey="Ingresos"
+                  dataKey="Income"
                   fill={INCOME_COLOR}
                   radius={[4, 4, 0, 0]}
                   isAnimationActive={false}
                 />
                 <Bar
-                  dataKey="Gastos"
+                  dataKey="Expenses"
                   fill={EXPENSE_COLOR}
                   radius={[4, 4, 0, 0]}
                   isAnimationActive={false}
@@ -183,7 +183,7 @@ export function ReportsPage() {
           )}
         </Panel>
 
-        <Panel title={`Balance mensual ${month.year}`} subtitle="Ingresos menos gastos de cada mes">
+        <Panel title={`Monthly balance ${month.year}`} subtitle="Income minus expenses per month">
           {yearly.isLoading ? (
             <Skeleton className="h-full w-full" />
           ) : (
@@ -208,14 +208,14 @@ export function ReportsPage() {
         </Panel>
 
         <Panel
-          title="Gasto por categoría"
+          title="Spending by category"
           subtitle={`${monthLabel(month)} · total ${fmtCop(spendingTotal)}`}
         >
           {spending.isLoading ? (
             <Skeleton className="h-full w-full" />
           ) : spendingRows.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              No hay gastos este mes.
+              No expenses this month.
             </div>
           ) : (
             <div className="h-full space-y-3 overflow-y-auto pr-1">
@@ -251,19 +251,19 @@ export function ReportsPage() {
           )}
         </Panel>
 
-        <Panel title="Presupuesto vs real" subtitle={`Ejecución de ${monthLabel(month)}`}>
+        <Panel title="Budget vs Actual" subtitle={`Performance for ${monthLabel(month)}`}>
           {budgetRows.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              No hay presupuestos este mes.
+              No budgets this month.
             </div>
           ) : (
             <div className="h-full overflow-y-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead className="text-right">Gastado</TableHead>
-                    <TableHead className="w-28">Progreso</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="text-right">Spent</TableHead>
+                    <TableHead className="w-28">Progress</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -275,7 +275,7 @@ export function ReportsPage() {
                       <TableCell className="text-right align-top">
                         <div className="font-bold tabular-nums">{fmtCop(row.actual)}</div>
                         <div className="text-[11px] font-semibold text-muted-foreground tabular-nums">
-                          de {fmtCop(row.budget)}
+                          of {fmtCop(row.budget)}
                         </div>
                       </TableCell>
                       <TableCell>

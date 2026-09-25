@@ -18,10 +18,8 @@ from fastapi.responses import FileResponse
 from app.database import auto_backup, init_db
 from app.routers import (
     accounts,
-    ai,
     budgets,
     categories,
-    chat,
     credit_cards,
     reports,
     savings,
@@ -54,8 +52,6 @@ app.include_router(categories.router, prefix=api_prefix)
 app.include_router(transactions.router, prefix=api_prefix)
 app.include_router(budgets.router, prefix=api_prefix)
 app.include_router(reports.router, prefix=api_prefix)
-app.include_router(chat.router, prefix=api_prefix)
-app.include_router(ai.router, prefix=api_prefix)
 app.include_router(accounts.router, prefix=api_prefix)
 app.include_router(credit_cards.router, prefix=api_prefix)
 app.include_router(savings.router, prefix=api_prefix)

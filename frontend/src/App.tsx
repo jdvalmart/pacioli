@@ -34,10 +34,10 @@ function PageLoader() {
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/transactions', label: 'Transacciones', icon: ReceiptText },
-  { to: '/budgets', label: 'Presupuestos', icon: PiggyBank },
-  { to: '/reports', label: 'Reportes', icon: ChartColumnBig },
-  { to: '/settings', label: 'Configuración', icon: Settings },
+  { to: '/transactions', label: 'Transactions', icon: ReceiptText },
+  { to: '/budgets', label: 'Budgets', icon: PiggyBank },
+  { to: '/reports', label: 'Reports', icon: ChartColumnBig },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
 function NewTransactionFab({ isLeft = false }: { isLeft?: boolean }) {
@@ -51,7 +51,7 @@ function NewTransactionFab({ isLeft = false }: { isLeft?: boolean }) {
           ? 'fixed bottom-6 left-4 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105 hover:shadow-xl active:scale-95 md:left-[calc(var(--sidebar-w,15rem)+1rem)]'
           : 'fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105 hover:shadow-xl active:scale-95'
       }
-      aria-label="Nueva transacción"
+      aria-label="New transaction"
     >
       <Plus className="size-6" />
     </button>
@@ -89,7 +89,7 @@ export default function App() {
         <button
           type="button"
           onClick={toggleSidebar}
-          aria-label={collapsed ? 'Expandir menú' : 'Contraer menú'}
+          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
           className="absolute top-6 -right-3 z-20 hidden size-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground md:flex"
         >
           {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
@@ -130,7 +130,7 @@ export default function App() {
         {!collapsed && (
           <div className="border-t border-border p-3">
             <p className="px-3 text-xs font-semibold text-muted-foreground">
-              Tus finanzas, en tus manos.
+              Your finances, in your hands.
             </p>
           </div>
         )}
@@ -145,7 +145,7 @@ export default function App() {
                 size="icon-sm"
                 className="rounded-full"
                 onClick={() => shiftMonth(-1)}
-                aria-label="Mes anterior"
+                aria-label="Previous month"
               >
                 <ChevronLeft />
               </Button>
@@ -160,7 +160,7 @@ export default function App() {
                 size="icon-sm"
                 className="rounded-full"
                 onClick={() => shiftMonth(1)}
-                aria-label="Mes siguiente"
+                aria-label="Next month"
               >
                 <ChevronRight />
               </Button>
@@ -174,7 +174,7 @@ export default function App() {
                   setMonth({ month: today.getMonth() + 1, year: today.getFullYear() })
                 }
               >
-                Mes actual
+                Current month
               </Button>
             )}
           </div>

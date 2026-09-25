@@ -169,27 +169,6 @@ export interface BudgetVsActual {
   percent: number
 }
 
-export interface ChatMessage {
-  role: 'user' | 'ai'
-  message: string
-  created_at: string
-}
 
-export interface ChatReply {
-  answer: string
-  error: string | null
-}
 
-export interface AIConfig {
-  model: string
-  url: string
-  timeout: number
-  temperature: number
-  max_tokens: number
-  think: 'off' | 'low' | 'medium' | 'high'
-}
 
-export interface ConnectionTest {
-  success: boolean
-  message: string
-}

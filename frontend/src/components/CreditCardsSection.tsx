@@ -38,7 +38,7 @@ import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Account, CreditCard } from '@/lib/types'
 
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function fmtDay(iso: string): string {
   const [, month, day] = iso.split('-').map(Number)

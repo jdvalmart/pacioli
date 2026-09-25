@@ -42,27 +42,27 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-extrabold">Resumen</h1>
+      <h1 className="text-xl font-extrabold">Overview</h1>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
-          title="Ingresos"
+          title="Income"
           value={fmtCop(summary.data?.total_income ?? '0')}
           icon={ArrowDownLeft}
           tone="income"
         />
         <StatCard
-          title="Gastos"
+          title="Expenses"
           value={fmtCop(summary.data?.total_expense ?? '0')}
           icon={ArrowUpRight}
           tone="expense"
         />
         <StatCard
-          title="Balance acumulado"
+          title="Accumulated balance"
           value={fmtCop(summary.data?.accumulated_balance ?? '0')}
-          detail={`Este mes: ${fmtCop(summary.data?.balance ?? '0')}${
+          detail={`This month: ${fmtCop(summary.data?.balance ?? '0')}${
             Number(summary.data?.carryover ?? 0) !== 0
-              ? ` · Arrastrado: ${fmtCop(summary.data?.carryover ?? '0')}`
+              ? ` · Carried over: ${fmtCop(summary.data?.carryover ?? '0')}`
               : ''
           }`}
           icon={Wallet}
@@ -76,9 +76,9 @@ export function DashboardPage() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-extrabold">Presupuestos</h2>
+          <h2 className="text-lg font-extrabold">Budgets</h2>
           <p className="text-sm font-semibold text-muted-foreground">
-            Progreso de gasto por categoría
+            Spending progress by category
           </p>
         </div>
 
@@ -92,19 +92,19 @@ export function DashboardPage() {
                 <>
                   <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Asignado
+                      Budgeted
                     </p>
                     <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Gastado
+                      Spent
                     </p>
                     <p className="text-lg font-black text-rose-600">{fmtCop(totalActual)}</p>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Restante
+                      Remaining
                     </p>
                     <p
                       className={`text-lg font-black ${
@@ -129,7 +129,7 @@ export function DashboardPage() {
             </>
           ) : budgetCards.length === 0 ? (
             <Card className="col-span-full p-6 text-center text-sm font-semibold text-muted-foreground">
-              Sin presupuestos este mes. Defínelos en la pestaña Presupuestos.
+              No budgets this month. Set them up in the Budgets tab.
             </Card>
           ) : (
             budgetCards.map((row) => {
@@ -146,7 +146,7 @@ export function DashboardPage() {
                     <div>
                       <CardTitle className="text-sm leading-tight">{row.name}</CardTitle>
                       <p className="text-xs font-bold text-muted-foreground">
-                        {Math.round(row.percent)}% usado
+                        {Math.round(row.percent)}% used
                       </p>
                     </div>
                   </div>
@@ -154,7 +154,7 @@ export function DashboardPage() {
                   <div className="mt-3 space-y-1.5">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-bold text-muted-foreground">
-                        Gastado {fmtCop(row.actual)}
+                        Spent {fmtCop(row.actual)}
                       </span>
                       <span className="font-black">{fmtCop(row.budget)}</span>
                     </div>
@@ -168,8 +168,8 @@ export function DashboardPage() {
                       }`}
                     >
                       {over
-                        ? `Sobrepasado por ${fmtCopDecimals(row.remaining.replace('-', ''))}`
-                        : `Restante ${fmtCopDecimals(row.remaining)}`}
+                        ? `Over by ${fmtCopDecimals(row.remaining.replace('-', ''))}`
+                        : `Remaining ${fmtCopDecimals(row.remaining)}`}
                     </p>
                   </div>
                 </Card>
@@ -183,15 +183,15 @@ export function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Gasto por categoría</CardTitle>
-          <CardDescription>Distribución del gasto del mes</CardDescription>
+          <CardTitle>Spending by category</CardTitle>
+          <CardDescription>Monthly spending breakdown</CardDescription>
         </CardHeader>
         <CardContent>
           {spending.isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : chartData.length === 0 ? (
             <p className="py-20 text-center text-sm text-muted-foreground">
-              No hay gastos este mes todavía.
+              No expenses yet this month.
             </p>
           ) : (
             <div className="grid gap-6 lg:grid-cols-2">

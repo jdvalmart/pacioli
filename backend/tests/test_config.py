@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import AIConfig, AppConfig, ConfigManager
+from app.config import AppConfig, ConfigManager
 
 
 class TestConfigManager:
@@ -26,40 +26,15 @@ class TestConfigManager:
     def test_default_config_creation(self, config_manager: ConfigManager) -> None:
         config = config_manager.config
         assert isinstance(config, AppConfig)
-        assert isinstance(config.ai, AIConfig)
-        assert config.ai.model == "qwen2.5:3b"
-        assert config.ai.timeout == 120
         assert config.theme == "dark"
 
     def test_save_and_load_config(self, config_manager: ConfigManager) -> None:
-        config_manager.config.ai.model = "test-model"
-        config_manager.config.ai.timeout = 60
         config_manager.config.theme = "light"
 
         config_manager.save_config()
 
         new_manager = ConfigManager()
-        assert new_manager.config.ai.model == "test-model"
-        assert new_manager.config.ai.timeout == 60
         assert new_manager.config.theme == "light"
-
-    def test_set_ai_config(self, config_manager: ConfigManager) -> None:
-        new_ai_config = AIConfig(
-            model="llama2",
-            url="http://custom:11434/api/generate",
-            timeout=45,
-            temperature=0.5,
-            max_tokens=500,
-        )
-
-        config_manager.set_ai_config(new_ai_config)
-
-        loaded_config = config_manager.get_ai_config()
-        assert loaded_config.model == "llama2"
-        assert loaded_config.url == "http://custom:11434/api/generate"
-        assert loaded_config.timeout == 45
-        assert loaded_config.temperature == 0.5
-        assert loaded_config.max_tokens == 500
 
     def test_set_theme(self, config_manager: ConfigManager) -> None:
         config_manager.set_theme("light")
@@ -79,20 +54,10 @@ class TestConfigManager:
         config_manager.config_file.write_text("invalid json{{{")
 
         new_manager = ConfigManager()
-        assert new_manager.config.ai.model == "qwen2.5:3b"
-
-    def test_ai_config_defaults(self) -> None:
-        config = AIConfig()
-        assert config.model == "qwen2.5:3b"
-        assert config.url == "http://localhost:11434/api/generate"
-        assert config.timeout == 120
-        assert config.temperature == 0.5
-        assert config.max_tokens == 1024
-        assert config.think == "low"
+        assert new_manager.config.theme == "dark"
 
     def test_app_config_defaults(self) -> None:
         config = AppConfig()
-        assert isinstance(config.ai, AIConfig)
         assert config.theme == "dark"
         assert config.language == "es"
 
@@ -102,8 +67,8 @@ class TestConfigManager:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(temp_config_dir))
 
         manager1 = ConfigManager()
-        manager1.config.ai.model = "persistent-model"
+        manager1.config.theme = "light"
         manager1.save_config()
 
         manager2 = ConfigManager()
-        assert manager2.config.ai.model == "persistent-model"
+        assert manager2.config.theme == "light"
