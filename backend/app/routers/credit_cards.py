@@ -1,6 +1,7 @@
 """Credit card endpoints."""
 
 import sqlite3
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
@@ -21,10 +22,13 @@ def list_cards() -> list[CreditCardOut]:
             limit=c.limit,
             cutoff_day=c.cutoff_day,
             payment_day=c.payment_day,
-            spent=c.spent or Decimal("0.00"),
-            paid=c.paid or Decimal("0.00"),
+            pending=c.pending or Decimal("0.00"),
             debt=c.debt or Decimal("0.00"),
-            available=c.available or c.limit,
+            outstanding=c.outstanding or Decimal("0.00"),
+            available=c.available if c.available is not None else c.limit,
+            cycle_start=c.cycle_start or date.today(),
+            cycle_end=c.cycle_end or date.today(),
+            payment_date=c.payment_date or date.today(),
         )
         for c in db.get_credit_cards()
     ]

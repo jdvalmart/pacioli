@@ -56,6 +56,8 @@ export interface Transaction {
   to_account_icon: string | null
   card_id: number | null
   card_name: string | null
+  installments: number
+  interest_bp: number
   savings_id: number | null
   savings_name: string | null
 }
@@ -69,6 +71,8 @@ export interface TransactionInput {
   to_account_id: number | null
   card_id?: number | null
   savings_id?: number | null
+  installments?: number
+  interest_bp?: number
   description?: string
   is_recurring?: boolean
   recurring_day?: number | null
@@ -93,10 +97,13 @@ export interface CreditCard {
   limit: string
   cutoff_day: number
   payment_day: number
-  spent: string
-  paid: string
+  pending: string
   debt: string
+  outstanding: string
   available: string
+  cycle_start: string
+  cycle_end: string
+  payment_date: string
 }
 
 export type SavingsKind = 'bolsillo' | 'bolsillo_programado' | 'cdt' | 'acciones'

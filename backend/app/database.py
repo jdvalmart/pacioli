@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def _default_data_dir() -> str:
@@ -116,6 +116,11 @@ def _to_dec(cents: int | None) -> Decimal:
     return (Decimal(cents or 0) / 100).quantize(Decimal("0.01"))
 
 
+def _q(value: Decimal) -> Decimal:
+    """Round a money value to two decimals."""
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 @dataclass
 class Category:
     """Expense or income category."""
@@ -170,6 +175,8 @@ class Transaction:
     to_account_icon: str | None = None
     card_id: int | None = None  # Credit card for gasto_tc
     card_name: str | None = None
+    installments: int = 1  # Cuotas for a gasto_tc purchase
+    interest_bp: int = 0  # Total interest for the plan, in basis points
     savings_id: int | None = None  # Savings/investment item for ahorro/retiro
     savings_name: str | None = None
 
@@ -215,9 +222,11 @@ ACCOUNT_TYPE_DEFAULTS = {
 class CreditCard:
     """A credit card with a spending limit and billing cycle days.
 
-    ``spent`` and ``paid`` are the current month's totals; ``debt`` is
-    the net of the closed billing cycle (only payable after the cutoff
-    day) and ``available`` is the remaining credit.
+    The open cycle runs from the last cutoff to the next one; its
+    purchases (``pending``) are billed at ``cycle_end`` and due on
+    ``payment_date``. ``debt`` is what is already billed and due now,
+    ``outstanding`` is every unpaid purchase and ``available`` is the
+    remaining credit (limit minus the outstanding balance).
     """
 
     id: int | None
@@ -225,10 +234,13 @@ class CreditCard:
     limit: Decimal
     cutoff_day: int
     payment_day: int
-    spent: Decimal | None = None
-    paid: Decimal | None = None
+    pending: Decimal | None = None
     debt: Decimal | None = None
+    outstanding: Decimal | None = None
     available: Decimal | None = None
+    cycle_start: date | None = None
+    cycle_end: date | None = None
+    payment_date: date | None = None
 
 
 @dataclass
@@ -1001,6 +1013,29 @@ def _migrate_v12_opening_balances(conn: sqlite3.Connection) -> None:
     cursor.execute("PRAGMA user_version = 12")
 
 
+def _migrate_v13_installments(conn: sqlite3.Connection) -> None:
+    """v12 -> v13: installment purchases on credit cards.
+
+    A gasto_tc can be paid in ``installments`` cuotas with a total
+    interest (``interest_bp``). One installment is due per billing cycle
+    until the purchase is covered.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'installments'"
+    )
+    if cursor.fetchone()[0] == 0:
+        cursor.execute(
+            "ALTER TABLE transactions ADD COLUMN installments INTEGER NOT NULL DEFAULT 1"
+        )
+    cursor.execute(
+        "SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'interest_bp'"
+    )
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE transactions ADD COLUMN interest_bp INTEGER NOT NULL DEFAULT 0")
+    cursor.execute("PRAGMA user_version = 13")
+
+
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Insert default categories and subcategories (idempotent)."""
     cursor = conn.cursor()
@@ -1125,6 +1160,8 @@ def init_db() -> None:
             _migrate_v11_monthly_plan(conn)
         if v < 12:
             _migrate_v12_opening_balances(conn)
+        if v < 13:
+            _migrate_v13_installments(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -1284,6 +1321,8 @@ def add_transaction(
     to_account_id: int | None = None,
     card_id: int | None = None,
     savings_id: int | None = None,
+    installments: int = 1,
+    interest_bp: int = 0,
 ) -> int:
     """Create a transaction and return its id."""
     with get_connection() as conn:
@@ -1292,8 +1331,9 @@ def add_transaction(
             """
             INSERT INTO transactions
                 (date, amount_cents, category_id, description, is_recurring,
-                 recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id,
+                 installments, interest_bp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 date_val.isoformat(),
@@ -1308,6 +1348,8 @@ def add_transaction(
                 to_account_id,
                 card_id,
                 savings_id,
+                installments,
+                interest_bp,
             ),
         )
         conn.commit()
@@ -1328,6 +1370,8 @@ def update_transaction(
     to_account_id: int | None = None,
     card_id: int | None = None,
     savings_id: int | None = None,
+    installments: int = 1,
+    interest_bp: int = 0,
 ) -> None:
     """Update an existing transaction."""
     with get_connection() as conn:
@@ -1337,7 +1381,8 @@ def update_transaction(
             UPDATE transactions
             SET date = ?, amount_cents = ?, category_id = ?, description = ?,
                 is_recurring = ?, recurring_day = ?, subcategory_id = ?,
-                account_id = ?, kind = ?, to_account_id = ?, card_id = ?, savings_id = ?
+                account_id = ?, kind = ?, to_account_id = ?, card_id = ?, savings_id = ?,
+                installments = ?, interest_bp = ?
             WHERE id = ?
         """,
             (
@@ -1353,6 +1398,8 @@ def update_transaction(
                 to_account_id,
                 card_id,
                 savings_id,
+                installments,
+                interest_bp,
                 trans_id,
             ),
         )
@@ -1674,103 +1721,135 @@ def delete_account(account_id: int) -> None:
 # gasto_tc transactions linked to it.
 
 
-def _closed_cycle_window(cutoff_day: int, today: date) -> tuple[date, date] | None:
-    """Return the (start, end] dates of the closed billing cycle.
+def _days_in(year: int, month: int) -> int:
+    return calendar.monthrange(year, month)[1]
 
-    The cycle runs from the previous cutoff (exclusive) to the current
-    cutoff (inclusive). None means the cycle is still open (today is
-    before this month's cutoff day).
+
+def _cutoff_in(year: int, month: int, cutoff_day: int) -> date:
+    """The cutoff date within a month, clamped to its last day."""
+    return date(year, month, min(cutoff_day, _days_in(year, month)))
+
+
+def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
+    index = year * 12 + (month - 1) + delta
+    return index // 12, index % 12 + 1
+
+
+def _last_cutoff(cutoff_day: int, today: date) -> date:
+    """Most recent cutoff on or before today (start of the open cycle)."""
+    this = _cutoff_in(today.year, today.month, cutoff_day)
+    if today >= this:
+        return this
+    prev_year, prev_month = _shift_month(today.year, today.month, -1)
+    return _cutoff_in(prev_year, prev_month, cutoff_day)
+
+
+def _next_cutoff(cutoff_day: int, today: date) -> date:
+    """First cutoff strictly after today (closes the open cycle)."""
+    this = _cutoff_in(today.year, today.month, cutoff_day)
+    if today < this:
+        return this
+    next_year, next_month = _shift_month(today.year, today.month, 1)
+    return _cutoff_in(next_year, next_month, cutoff_day)
+
+
+def _payment_for_cutoff(cutoff: date, payment_day: int) -> date:
+    """Payment date for the statement that closes on ``cutoff``.
+
+    Falls on ``payment_day`` of the cutoff's month, or the following
+    month when that day is earlier than the cutoff itself.
     """
-    current_days = calendar.monthrange(today.year, today.month)[1]
-    cutoff_this = date(today.year, today.month, min(cutoff_day, current_days))
-    if today < cutoff_this:
-        return None
-    if today.month == 1:
-        prev_year, prev_month = today.year - 1, 12
-    else:
-        prev_year, prev_month = today.year, today.month - 1
-    prev_days = calendar.monthrange(prev_year, prev_month)[1]
-    prev_cutoff = date(prev_year, prev_month, min(cutoff_day, prev_days))
-    return (prev_cutoff, cutoff_this)
+    payment = _cutoff_in(cutoff.year, cutoff.month, payment_day)
+    if payment < cutoff:
+        next_year, next_month = _shift_month(cutoff.year, cutoff.month, 1)
+        payment = _cutoff_in(next_year, next_month, payment_day)
+    return payment
 
 
-def _card_debt(conn: sqlite3.Connection, card_id: int, cutoff_day: int, today: date) -> Decimal:
-    """Return the net debt of a card in its closed cycle.
+def _cycle_ordinal(cutoff_day: int, day: date) -> int:
+    """Index (year*12 + month) of the cutoff that closes ``day``'s cycle."""
+    end = _cutoff_in(day.year, day.month, cutoff_day)
+    if day > end:
+        next_year, next_month = _shift_month(day.year, day.month, 1)
+        end = _cutoff_in(next_year, next_month, cutoff_day)
+    return end.year * 12 + (end.month - 1)
 
-    Spending belongs to the cycle that just closed (previous cutoff,
-    current cutoff]; payments made after the current cutoff reduce
-    that cycle's debt.
-    """
-    window = _closed_cycle_window(cutoff_day, today)
-    if window is None:
-        return Decimal("0.00")
-    prev_cutoff, cutoff_this = window
-    row = conn.execute(
-        """
-        SELECT COALESCE(SUM(
-            CASE WHEN kind = 'gasto_tc' AND date > ? AND date <= ? THEN amount_cents
-                 WHEN kind = 'pago_tc' AND date > ? THEN -amount_cents
-                 ELSE 0 END
-        ), 0) as cents
-        FROM transactions
-        WHERE card_id = ? AND kind IN ('gasto_tc', 'pago_tc')
-    """,
-        (
-            prev_cutoff.isoformat(),
-            cutoff_this.isoformat(),
-            cutoff_this.isoformat(),
-            card_id,
-        ),
-    ).fetchone()
-    return _to_dec(row["cents"])
+
+def _gross(amount_cents: int, interest_bp: int) -> Decimal:
+    """Purchase total with its plan interest applied."""
+    return _to_dec(amount_cents) * (Decimal(10000 + interest_bp) / Decimal(10000))
 
 
 def _row_to_card(row: sqlite3.Row, conn: sqlite3.Connection, today: date) -> CreditCard:
     limit = _to_dec(row["limit_cents"])
-    spent = _to_dec(row["spent_cents"])
-    paid = _to_dec(row["paid_cents"])
-    debt = _card_debt(conn, row["id"], row["cutoff_day"], today)
+    cutoff_day = row["cutoff_day"]
+    payment_day = row["payment_day"]
+    card_id = row["id"]
+
+    cycle_start = _last_cutoff(cutoff_day, today)
+    cycle_end = _next_cutoff(cutoff_day, today)
+    payment_date = _payment_for_cutoff(cycle_end, payment_day)
+    today_ordinal = _cycle_ordinal(cutoff_day, today)
+
+    purchases = conn.execute(
+        "SELECT date, amount_cents, installments, interest_bp FROM transactions "
+        "WHERE card_id = ? AND kind = 'gasto_tc'",
+        (card_id,),
+    ).fetchall()
+
+    def charges_in(ordinal: int) -> Decimal:
+        """Installments billed in a given billing cycle."""
+        total = Decimal("0.00")
+        for r in purchases:
+            installments = r["installments"] or 1
+            gross = _gross(r["amount_cents"], r["interest_bp"] or 0)
+            start = _cycle_ordinal(cutoff_day, date.fromisoformat(r["date"]))
+            if start <= ordinal <= start + installments - 1:
+                total += gross / installments
+        return _q(total)
+
+    payments = _to_dec(
+        conn.execute(
+            "SELECT COALESCE(SUM(amount_cents), 0) as cents FROM transactions "
+            "WHERE card_id = ? AND kind = 'pago_tc'",
+            (card_id,),
+        ).fetchone()["cents"]
+    )
+
+    outstanding = (
+        sum(
+            (_gross(r["amount_cents"], r["interest_bp"] or 0) for r in purchases),
+            Decimal("0.00"),
+        )
+        - payments
+    )
+    outstanding = max(outstanding, Decimal("0.00"))
+
+    pending = min(charges_in(today_ordinal), outstanding)
+    debt = max(charges_in(today_ordinal - 1) - payments, Decimal("0.00"))
+
     return CreditCard(
-        id=row["id"],
+        id=card_id,
         name=row["name"],
         limit=limit,
-        cutoff_day=row["cutoff_day"],
-        payment_day=row["payment_day"],
-        spent=spent,
-        paid=paid,
+        cutoff_day=cutoff_day,
+        payment_day=payment_day,
+        pending=pending,
         debt=debt,
-        available=limit - spent + paid,
+        outstanding=outstanding,
+        available=limit - outstanding,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+        payment_date=payment_date,
     )
 
 
 def get_credit_cards(today: date | None = None) -> list[CreditCard]:
-    """Return all credit cards with spending, payments, debt and available credit."""
+    """Return all credit cards with their cycle, pending and outstanding amounts."""
     today = today or date.today()
     with get_connection() as conn:
         cursor = conn.cursor()
-        start_date, end_date = _month_window(today.month, today.year)
-        cursor.execute(
-            """
-            SELECT cc.*,
-                   COALESCE((
-                       SELECT SUM(t.amount_cents)
-                       FROM transactions t
-                       WHERE t.card_id = cc.id
-                         AND t.kind = 'gasto_tc'
-                         AND t.date >= ? AND t.date < ?
-                   ), 0) as spent_cents,
-                   COALESCE((
-                       SELECT SUM(t.amount_cents)
-                       FROM transactions t
-                       WHERE t.card_id = cc.id
-                         AND t.kind = 'pago_tc'
-                         AND t.date >= ? AND t.date < ?
-                   ), 0) as paid_cents
-            FROM credit_cards cc
-            ORDER BY cc.created_at, cc.id
-        """,
-            (start_date, end_date, start_date, end_date),
-        )
+        cursor.execute("SELECT * FROM credit_cards ORDER BY created_at, id")
         return [_row_to_card(row, conn, today) for row in cursor.fetchall()]
 
 

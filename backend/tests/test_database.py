@@ -624,11 +624,11 @@ class TestMigrationV7:
 class TestCreditCards:
     """Tests for the credit cards feature."""
 
-    def test_available_credit_from_month_spending(self, temp_db: str, sample_category: int) -> None:
+    def test_available_credit_from_open_cycle(self, temp_db: str, sample_category: int) -> None:
         card_id = add_credit_card("Visa Bancolombia", Decimal("5000000.00"), 15, 30)
 
         add_transaction(
-            date(2026, 9, 5),
+            date(2026, 9, 20),
             Decimal("300000.00"),
             sample_category,
             "Mercado TC",
@@ -637,20 +637,26 @@ class TestCreditCards:
         )
         # A gasto_tc on another card (or without card) must not affect this one.
         add_transaction(
-            date(2026, 9, 6),
+            date(2026, 9, 21),
             Decimal("999.00"),
             sample_category,
             "Other",
             kind="gasto_tc",
         )
 
-        cards = get_credit_cards()
+        today = date(2026, 9, 24)  # after the cutoff (day 15)
+        cards = get_credit_cards(today=today)
         assert len(cards) == 1
         assert cards[0].limit == Decimal("5000000.00")
-        assert cards[0].spent == Decimal("300000.00")
+        assert cards[0].pending == Decimal("300000.00")
+        assert cards[0].outstanding == Decimal("300000.00")
         assert cards[0].available == Decimal("4700000.00")
+        # The open cycle runs from the last cutoff (set 15) to the next one.
+        assert cards[0].cycle_start == date(2026, 9, 15)
+        assert cards[0].cycle_end == date(2026, 10, 15)
+        assert cards[0].payment_date == date(2026, 10, 30)
 
-    def test_spending_isolated_per_month(self, temp_db: str, sample_category: int) -> None:
+    def test_outstanding_spans_cycles(self, temp_db: str, sample_category: int) -> None:
         card_id = add_credit_card("Mastercard", Decimal("1000000.00"), 15, 30)
 
         add_transaction(
@@ -670,9 +676,11 @@ class TestCreditCards:
             card_id=card_id,
         )
 
-        cards = get_credit_cards()
-        assert cards[0].spent == Decimal("100000.00")
-        assert cards[0].available == Decimal("900000.00")
+        today = date(2026, 9, 24)
+        cards = get_credit_cards(today=today)
+        assert cards[0].pending == Decimal("100000.00")
+        assert cards[0].outstanding == Decimal("500000.00")
+        assert cards[0].available == Decimal("500000.00")
 
     def test_update_and_delete_card(self, temp_db: str) -> None:
         card_id = add_credit_card("Visa", Decimal("1000000.00"), 10, 25)
@@ -724,9 +732,9 @@ class TestCardPayments:
 
         today = date(2026, 9, 20)  # after the cutoff (day 15)
         cards = get_credit_cards(today=today)
-        assert cards[0].spent == Decimal("400000.00")
-        assert cards[0].paid == Decimal("400000.00")
+        assert cards[0].pending == Decimal("0.00")
         assert cards[0].debt == Decimal("0.00")
+        assert cards[0].outstanding == Decimal("0.00")
         assert cards[0].available == Decimal("1000000.00")
 
         accounts = {a.name: a for a in get_accounts()}

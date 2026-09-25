@@ -36,6 +36,13 @@ import { api } from '@/lib/api'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Account, CreditCard } from '@/lib/types'
 
+const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+function fmtDay(iso: string): string {
+  const [, month, day] = iso.split('-').map(Number)
+  return `${day} ${MONTHS_SHORT[month - 1]}`
+}
+
 function CardForm({
   open,
   onOpenChange,
@@ -199,9 +206,9 @@ function PayCardBody({
   const queryClient = useQueryClient()
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
   const [accountId, setAccountId] = useState('')
-  const [amount, setAmount] = useState(card.debt)
+  const [amount, setAmount] = useState(card.outstanding)
 
-  const debt = Number(card.debt)
+  const outstanding = Number(card.outstanding)
   const selectedAccount: Account | undefined = (accounts.data ?? []).find(
     (a) => String(a.id) === accountId,
   )
@@ -253,9 +260,12 @@ function PayCardBody({
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="rounded-xl bg-orange-500/10 p-3 text-center">
           <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
-            Deuda del ciclo
+            Deuda total
           </p>
-          <p className="text-2xl font-black text-orange-600">{fmtCopDecimals(card.debt)}</p>
+          <p className="text-2xl font-black text-orange-600">{fmtCopDecimals(card.outstanding)}</p>
+          <p className="text-xs font-bold text-muted-foreground">
+            Cuota del mes: {fmtCopDecimals(card.pending)}
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -293,17 +303,19 @@ function PayCardBody({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setAmount(card.debt)}
+              className="flex-1"
+              onClick={() => setAmount(String(Math.round(Number(card.pending))))}
             >
-              Deuda completa
+              Cuota del mes
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setAmount(String(Math.round(debt / 2)))}
+              className="flex-1"
+              onClick={() => setAmount(card.outstanding)}
             >
-              Pagar la mitad
+              Deuda total
             </Button>
           </div>
         </div>
@@ -315,7 +327,7 @@ function PayCardBody({
             mutation.isPending ||
             !accountId ||
             amountNum <= 0 ||
-            amountNum > debt ||
+            amountNum > outstanding ||
             (!!selectedAccount && balance < amountNum)
           }
         >
@@ -387,9 +399,9 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
             .sort((a, b) => Number(b.available) - Number(a.available))
             .map((card) => {
             const limit = Number(card.limit)
-            const spent = Number(card.spent)
-            const percent = limit > 0 ? (spent / limit) * 100 : 0
-            const over = spent > limit
+            const outstanding = Number(card.outstanding)
+            const percent = limit > 0 ? (outstanding / limit) * 100 : 0
+            const over = outstanding > limit
             return (
               <Card key={card.id} className="p-4">
                 <div className="flex items-start justify-between">
@@ -425,9 +437,7 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
 
                 <div className="mt-4 space-y-1.5">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-bold text-muted-foreground">
-                      Gastado {fmtCopDecimals(card.spent)}
-                    </span>
+                    <span className="font-bold text-muted-foreground">Cupo disponible</span>
                     <span className={`font-black ${over ? 'text-red-600' : ''}`}>
                       {fmtCopDecimals(card.available)}
                     </span>
@@ -437,22 +447,32 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                     className={over ? '[&>div]:bg-red-500' : '[&>div]:bg-orange-500'}
                   />
                   <p className="text-xs font-bold text-muted-foreground">
-                    Cupo disponible de {fmtCopDecimals(card.limit)}
+                    de {fmtCopDecimals(card.limit)}
                   </p>
+                  <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
+                    <span>
+                      Ciclo {fmtDay(card.cycle_start)} → {fmtDay(card.cycle_end)}
+                    </span>
+                    <span>Pago {fmtDay(card.payment_date)}</span>
+                  </div>
                   <div className="flex items-center justify-between pt-1">
-                    <span className="text-xs font-bold text-muted-foreground">
-                      {Number(card.debt) > 0
-                        ? `Debes ${fmtCopDecimals(card.debt)} (paga antes del día ${card.payment_day})`
-                        : 'Al día en este ciclo ✓'}
+                    <span className="text-xs font-bold">
+                      <span className="text-muted-foreground">Por facturar </span>
+                      {fmtCopDecimals(card.pending)}
                     </span>
                     <Button
                       size="sm"
-                      disabled={Number(card.debt) <= 0}
+                      disabled={outstanding <= 0}
                       onClick={() => setPaying(card)}
                     >
                       <Wallet /> Pagar
                     </Button>
                   </div>
+                  {outstanding > 0 && (
+                    <p className="text-xs font-bold text-orange-600">
+                      Deuda total: {fmtCopDecimals(card.outstanding)}
+                    </p>
+                  )}
                 </div>
               </Card>
             )

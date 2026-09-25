@@ -80,6 +80,8 @@ class TransactionIn(BaseModel):
     is_recurring: bool = False
     recurring_day: int | None = Field(default=None, ge=1, le=31)
     subcategory_id: int | None = None
+    installments: int = Field(default=1, ge=1, le=60)
+    interest_bp: int = Field(default=0, ge=0, le=100000)
 
 
 class TransactionOut(BaseModel):
@@ -109,6 +111,8 @@ class TransactionOut(BaseModel):
     to_account_icon: str | None
     card_id: int | None
     card_name: str | None
+    installments: int
+    interest_bp: int
     savings_id: int | None
     savings_name: str | None
 
@@ -357,9 +361,10 @@ class CreditCardIn(BaseModel):
 class CreditCardOut(BaseModel):
     """Credit card as returned by the API.
 
-    ``spent`` and ``paid`` are the current month's totals, ``debt`` is
-    the net of the closed billing cycle and ``available`` is the
-    remaining credit (limit minus net spending).
+    ``pending`` is the open cycle's spending (billed at ``cycle_end``
+    and due on ``payment_date``), ``debt`` is what is already billed and
+    due now, ``outstanding`` is every unpaid purchase and ``available``
+    is the remaining credit.
     """
 
     id: int
@@ -367,10 +372,13 @@ class CreditCardOut(BaseModel):
     limit: Money
     cutoff_day: int
     payment_day: int
-    spent: Money
-    paid: Money
+    pending: Money
     debt: Money
+    outstanding: Money
     available: Money
+    cycle_start: date
+    cycle_end: date
+    payment_date: date
 
 
 class CreatedOut(BaseModel):

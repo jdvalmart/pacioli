@@ -476,7 +476,8 @@ class TestCreditCards:
         assert cards[0]["name"] == "Visa Bancolombia"
         assert cards[0]["limit"] == "5000000.00"
         assert cards[0]["available"] == "5000000.00"
-        assert cards[0]["spent"] == "0.00"
+        assert cards[0]["pending"] == "0.00"
+        assert cards[0]["outstanding"] == "0.00"
 
     def test_available_credit_reflects_tc_spending(self, client: TestClient) -> None:
         card_id = client.post(
@@ -490,7 +491,7 @@ class TestCreditCards:
         client.post(
             "/api/transactions",
             json={
-                "date": "2026-09-10",
+                "date": "2026-09-15",
                 "amount": "250000.00",
                 "kind": "gasto_tc",
                 "category_id": expense_cat,
@@ -499,7 +500,8 @@ class TestCreditCards:
         )
 
         cards = client.get("/api/credit-cards").json()
-        assert cards[0]["spent"] == "250000.00"
+        assert cards[0]["pending"] == "250000.00"
+        assert cards[0]["outstanding"] == "250000.00"
         assert cards[0]["available"] == "750000.00"
 
         transactions = client.get("/api/transactions?month=9&year=2026").json()
@@ -590,7 +592,7 @@ class TestCardPayments:
 
         cards = client.get("/api/credit-cards").json()
         assert cards[0]["debt"] == "0.00"
-        assert cards[0]["paid"] == "400000.00"
+        assert cards[0]["outstanding"] == "0.00"
 
         accounts = client.get("/api/accounts").json()
         assert accounts[0]["balance"] == "2600000.00"
@@ -641,13 +643,13 @@ class TestCardPayments:
         assert response.status_code == 400
         assert "Insufficient balance" in response.json()["detail"]
 
-    def test_payment_rejected_before_cutoff(self, client: TestClient, monkeypatch) -> None:
+    def test_payment_without_debt_rejected(self, client: TestClient, monkeypatch) -> None:
         from datetime import date as _date
 
         class FakeDate:
             @staticmethod
             def today() -> _date:
-                return _date(2026, 9, 10)  # before the cutoff (day 15)
+                return _date(2026, 9, 10)
 
         monkeypatch.setattr("app.routers.transactions.date", FakeDate)
 
@@ -671,7 +673,7 @@ class TestCardPayments:
             },
         )
         assert response.status_code == 400
-        assert "after the cutoff" in response.json()["detail"]
+        assert "Nothing to pay" in response.json()["detail"]
 
     def test_payment_exceeding_debt_rejected(self, client: TestClient, monkeypatch) -> None:
         from datetime import date as _date
@@ -717,7 +719,7 @@ class TestCardPayments:
             },
         )
         assert response.status_code == 400
-        assert "exceeds the current debt" in response.json()["detail"]
+        assert "outstanding balance" in response.json()["detail"]
 
 
 class TestSavings:

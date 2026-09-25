@@ -147,6 +147,10 @@ function TransactionFormBody({
     transaction?.to_account_id ? String(transaction.to_account_id) : '',
   )
   const [cardId, setCardId] = useState(transaction?.card_id ? String(transaction.card_id) : '')
+  const [installments, setInstallments] = useState(String(transaction?.installments ?? 1))
+  const [interest, setInterest] = useState(
+    transaction?.interest_bp ? String(transaction.interest_bp / 100) : '',
+  )
   const [savingsId, setSavingsId] = useState(
     transaction?.savings_id ? String(transaction.savings_id) : '',
   )
@@ -236,6 +240,11 @@ function TransactionFormBody({
       to_account_id: kind === 'transferencia' ? Number(toAccountId) : null,
       card_id: kind === 'gasto_tc' ? Number(cardId) : null,
       savings_id: isSavingsKind ? Number(savingsId) : null,
+      installments: kind === 'gasto_tc' ? Number(installments) || 1 : 1,
+      interest_bp:
+        kind === 'gasto_tc' && Number(installments) > 1
+          ? Math.round(Number(interest || '0') * 100)
+          : 0,
       description,
       is_recurring: isRecurring,
       recurring_day: isRecurring ? Number(recurringDay) : null,
@@ -449,6 +458,42 @@ function TransactionFormBody({
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       Se descuenta del cupo disponible de la tarjeta.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="tx-installments">Cuotas</Label>
+                        <Input
+                          id="tx-installments"
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={installments}
+                          onChange={(e) => setInstallments(e.target.value)}
+                        />
+                      </div>
+                      {Number(installments) > 1 && (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="tx-interest">Interés total (%)</Label>
+                          <Input
+                            id="tx-interest"
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            placeholder="0"
+                            value={interest}
+                            onChange={(e) => setInterest(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {Number(installments) > 1
+                        ? `Cuota: ${fmtCopDecimals(
+                            (Number(normalizeAmount(amount || '0')) *
+                              (1 + Number(interest || '0') / 100)) /
+                              (Number(installments) || 1),
+                          )} por mes`
+                        : 'A 1 cuota no se cobra interés.'}
                     </p>
                   </>
                 )}

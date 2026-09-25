@@ -41,18 +41,13 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
         card = cards.get(payload.card_id)
         if card is None:
             raise HTTPException(status_code=400, detail="Credit card does not exist")
-        if _today().day < card.cutoff_day:
-            raise HTTPException(
-                status_code=400,
-                detail=f"The card can only be paid after the cutoff (day {card.cutoff_day})",
-            )
-        debt = card.debt or Decimal("0.00")
-        if debt <= 0:
+        outstanding = card.outstanding or Decimal("0.00")
+        if outstanding <= 0:
             raise HTTPException(status_code=400, detail="Nothing to pay on this card")
-        if payload.amount > debt:
+        if payload.amount > outstanding:
             raise HTTPException(
                 status_code=400,
-                detail=f"The amount exceeds the current debt ({debt})",
+                detail=f"The amount exceeds the outstanding balance ({outstanding})",
             )
         accounts = {a.id: a for a in db.get_accounts()}
         source = accounts.get(payload.account_id)
@@ -132,6 +127,8 @@ def create_transaction(payload: TransactionIn) -> CreatedOut:
             to_account_id=payload.to_account_id,
             card_id=payload.card_id,
             savings_id=payload.savings_id,
+            installments=payload.installments,
+            interest_bp=payload.interest_bp,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(
@@ -159,6 +156,8 @@ def update_transaction(trans_id: int, payload: TransactionIn) -> MessageOut:
             to_account_id=payload.to_account_id,
             card_id=payload.card_id,
             savings_id=payload.savings_id,
+            installments=payload.installments,
+            interest_bp=payload.interest_bp,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(
