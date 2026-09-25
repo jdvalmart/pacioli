@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Pencil, Plus, Trash2, TrendingUp } from 'lucide-react'
+import { Pencil, PiggyBank, Plus, Trash2, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -333,12 +333,17 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-extrabold">Ahorro e inversión</h2>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Bolsillos, ahorros programados, CDTs y acciones
-            {(items.data ?? []).length > 0 && ` · total ${fmtCopDecimals(total)}`}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
+            <PiggyBank className="size-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-extrabold">Ahorro e inversión</h2>
+            <p className="text-sm font-semibold text-muted-foreground">
+              Bolsillos, ahorros programados, CDTs y acciones
+              {(items.data ?? []).length > 0 && ` · total ${fmtCopDecimals(total)}`}
+            </p>
+          </div>
         </div>
         {!readOnly && (
           <Button

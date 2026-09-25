@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { SlidersHorizontal } from 'lucide-react'
+import { ArrowUpRight, PieChart, PiggyBank, SlidersHorizontal, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
+import { StatCard } from '@/components/StatCard'
 import {
   Dialog,
   DialogContent,
@@ -368,37 +369,16 @@ export function BudgetsPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-violet-300 bg-violet-50 p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
-          <p className="text-[11px] font-extrabold uppercase tracking-wide text-violet-700">
-            Presupuesto total
-          </p>
-          <p className="text-lg font-black text-violet-700">{fmtCop(planTotal)}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
-          <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-            Asignado
-          </p>
-          <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
-          <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-            Gastado
-          </p>
-          <p className="text-lg font-black text-rose-600">{fmtCop(totalActual)}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
-          <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-            Restante
-          </p>
-          <p
-            className={`text-lg font-black ${
-              totalRemaining < 0 ? 'text-rose-600' : 'text-emerald-600'
-            }`}
-          >
-            {fmtCop(totalRemaining)}
-          </p>
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Presupuesto total" value={fmtCop(planTotal)} icon={Wallet} tone="primary" />
+        <StatCard title="Asignado" value={fmtCop(totalBudget)} icon={PieChart} tone="neutral" />
+        <StatCard title="Gastado" value={fmtCop(totalActual)} icon={ArrowUpRight} tone="expense" />
+        <StatCard
+          title="Restante"
+          value={fmtCop(totalRemaining)}
+          icon={PiggyBank}
+          tone={totalRemaining < 0 ? 'expense' : 'income'}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-3">

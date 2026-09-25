@@ -7,46 +7,10 @@ import { useMonth } from '@/hooks/useMonth'
 import { AccountsSection } from '@/components/AccountsSection'
 import { CreditCardsSection } from '@/components/CreditCardsSection'
 import { SavingsSection } from '@/components/SavingsSection'
+import { StatCard } from '@/components/StatCard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
-
-function SummaryCard({
-  title,
-  value,
-  detail,
-  icon: Icon,
-  tone,
-}: {
-  title: string
-  value: string
-  detail?: string
-  icon: typeof Wallet
-  tone: 'income' | 'expense' | 'neutral'
-}) {
-  const circleClass =
-    tone === 'income'
-      ? 'bg-emerald-500 shadow-[0_4px_0_0_#059669]'
-      : tone === 'expense'
-        ? 'bg-rose-500 shadow-[0_4px_0_0_#e11d48]'
-        : 'bg-primary shadow-[0_4px_0_0_color-mix(in_oklch,var(--primary),black_18%)]'
-  return (
-    <Card className="flex-row items-center gap-4 p-5">
-      <div
-        className={`flex size-14 shrink-0 items-center justify-center rounded-2xl text-white ${circleClass}`}
-      >
-        <Icon className="size-7" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
-          {title}
-        </p>
-        <p className="truncate text-2xl font-black">{value}</p>
-        {detail && <p className="text-xs font-bold text-muted-foreground">{detail}</p>}
-      </div>
-    </Card>
-  )
-}
 
 export function DashboardPage() {
   const { month } = useMonth()
@@ -81,19 +45,19 @@ export function DashboardPage() {
       <h1 className="text-xl font-extrabold">Resumen</h1>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <SummaryCard
+        <StatCard
           title="Ingresos"
           value={fmtCop(summary.data?.total_income ?? '0')}
           icon={ArrowDownLeft}
           tone="income"
         />
-        <SummaryCard
+        <StatCard
           title="Gastos"
           value={fmtCop(summary.data?.total_expense ?? '0')}
           icon={ArrowUpRight}
           tone="expense"
         />
-        <SummaryCard
+        <StatCard
           title="Balance acumulado"
           value={fmtCop(summary.data?.accumulated_balance ?? '0')}
           detail={`Este mes: ${fmtCop(summary.data?.balance ?? '0')}${
@@ -102,7 +66,7 @@ export function DashboardPage() {
               : ''
           }`}
           icon={Wallet}
-          tone="neutral"
+          tone="primary"
         />
       </div>
 

@@ -171,7 +171,7 @@ export default function App() {
                   setMonth({ month: today.getMonth() + 1, year: today.getFullYear() })
                 }
               >
-                Hoy
+                Mes actual
               </Button>
             )}
           </div>

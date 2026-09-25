@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Download } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Download, TrendingUp, Wallet } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import { StatCard } from '@/components/StatCard'
 import {
   Table,
   TableBody,
@@ -35,26 +36,12 @@ const INCOME_COLOR = '#10B981'
 const EXPENSE_COLOR = '#F43F5E'
 const BALANCE_COLOR = '#F59E0B'
 
-function Kpi({
-  label,
-  value,
-  tone = 'neutral',
-  detail,
-}: {
-  label: string
-  value: string
-  tone?: 'neutral' | 'income' | 'expense'
-  detail?: string
-}) {
-  const color =
-    tone === 'income' ? 'text-emerald-600' : tone === 'expense' ? 'text-rose-600' : 'text-foreground'
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-      <p className="text-xs font-bold text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-lg font-extrabold ${color}`}>{value}</p>
-      {detail && <p className="text-[11px] font-semibold text-muted-foreground">{detail}</p>}
-    </div>
-  )
+// Compact axis labels so they fit the half-width panels.
+function fmtAxis(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1).replace('.', ',')}M`
+  if (abs >= 1_000) return `$${Math.round(value / 1_000)}k`
+  return `$${value}`
 }
 
 function Panel({
@@ -135,17 +122,30 @@ export function ReportsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Ingresos del año" value={fmtCop(totalIncome)} tone="income" />
-        <Kpi label="Gastos del año" value={fmtCop(totalExpense)} tone="expense" />
-        <Kpi
-          label="Balance del año"
+        <StatCard
+          title="Ingresos del año"
+          value={fmtCop(totalIncome)}
+          icon={ArrowDownLeft}
+          tone="income"
+        />
+        <StatCard
+          title="Gastos del año"
+          value={fmtCop(totalExpense)}
+          icon={ArrowUpRight}
+          tone="expense"
+        />
+        <StatCard
+          title="Balance del año"
           value={fmtCop(totalBalance)}
+          icon={Wallet}
           tone={totalBalance >= 0 ? 'income' : 'expense'}
         />
-        <Kpi
-          label="Promedio de gasto"
+        <StatCard
+          title="Promedio de gasto"
           value={fmtCop(avgExpense)}
           detail={activeMonths > 0 ? `por mes (${activeMonths} con movimientos)` : 'sin datos'}
+          icon={TrendingUp}
+          tone="primary"
         />
       </div>
 
@@ -158,7 +158,7 @@ export function ReportsPage() {
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="name" />
-                <YAxis tickFormatter={(v: number) => fmtCop(v)} width={80} />
+                <YAxis tickFormatter={fmtAxis} width={56} />
                 <Tooltip formatter={(value) => fmtCop(Number(value))} />
                 <Legend />
                 <ReferenceLine
@@ -191,7 +191,7 @@ export function ReportsPage() {
               <LineChart data={balanceData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="name" />
-                <YAxis tickFormatter={(v: number) => fmtCop(v)} width={80} />
+                <YAxis tickFormatter={fmtAxis} width={56} />
                 <Tooltip formatter={(value) => fmtCop(Number(value))} />
                 <ReferenceLine y={0} stroke="#94a3b8" />
                 <Line

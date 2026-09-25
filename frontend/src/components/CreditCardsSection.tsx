@@ -347,11 +347,16 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-extrabold">Tarjetas de crédito</h2>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Cupo disponible según tus gastos TC del mes
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
+            <CreditCardIcon className="size-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-extrabold">Tarjetas de crédito</h2>
+            <p className="text-sm font-semibold text-muted-foreground">
+              Cupo disponible según tus gastos TC del mes
+            </p>
+          </div>
         </div>
         {!readOnly && (
           <Button

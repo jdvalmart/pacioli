@@ -44,19 +44,6 @@ function AISettingsForm({
     },
     onError: (error: Error) => toast.error(error.message),
   })
-
-  const testConnection = useMutation({
-    mutationFn: api.testAIConnection,
-    onSuccess: (result) => {
-      if (result.success) {
-        toast.success(result.message)
-      } else {
-        toast.error(result.message)
-      }
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
-
   const handleSave = () => {
     save.mutate({
       model,
@@ -131,16 +118,8 @@ function AISettingsForm({
           Solo aplica a modelos con razonamiento (Qwen3, DeepSeek-R1).
         </p>
       </div>
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          onClick={() => testConnection.mutate()}
-          disabled={testConnection.isPending}
-        >
-          {testConnection.isPending && <Loader2 className="animate-spin" />}
-          Probar conexión
-        </Button>
-        <Button className="flex-1" onClick={handleSave} disabled={save.isPending}>
+      <div className="flex justify-end">
+        <Button className="min-w-40" onClick={handleSave} disabled={save.isPending}>
           {save.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
       </div>
@@ -150,18 +129,39 @@ function AISettingsForm({
 
 function AssistantSettings() {
   const config = useQuery({ queryKey: ['aiConfig'], queryFn: api.getAIConfig })
+  const testConnection = useMutation({
+    mutationFn: api.testAIConnection,
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
   return (
     <section className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
-          <Bot className="size-5" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
+            <Bot className="size-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-extrabold">Asistente</h2>
+            <p className="text-sm font-semibold text-muted-foreground">
+              Conexión con Ollama para el asistente financiero
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg font-extrabold">Asistente</h2>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Conexión con Ollama para el asistente financiero
-          </p>
-        </div>
+        <Button
+          variant="outline"
+          onClick={() => testConnection.mutate()}
+          disabled={testConnection.isPending}
+        >
+          {testConnection.isPending && <Loader2 className="animate-spin" />}
+          Probar conexión
+        </Button>
       </div>
       {config.isLoading ? (
         <div className="max-w-2xl space-y-2">
