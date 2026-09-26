@@ -47,7 +47,31 @@ _db_path: str | None = None
 
 
 def _is_postgres() -> bool:
+    # Tests isolate on temp SQLite files via set_db_path(); never use Postgres there.
+    if _db_path is not None:
+        return False
     return os.getenv("DATABASE_URL", "").startswith("postgres")
+
+
+def _has_column(conn, table: str, column: str) -> bool:  # type: ignore[no-untyped-def]
+    """Check whether a column exists (SQLite and Postgres)."""
+    cursor = conn.cursor()
+    if _is_postgres():
+        cursor.execute(
+            _adapt_sql(
+                "SELECT COUNT(*) FROM information_schema.columns "
+                "WHERE table_name = ? AND column_name = ?"
+            ),
+            (table, column),
+        )
+    else:
+        cursor.execute(
+            f"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'"
+        )
+    row = cursor.fetchone()
+    if isinstance(row, dict):
+        return int(next(iter(row.values()))) > 0
+    return int(row[0]) > 0
 
 
 def _adapt_sql(sql: str) -> str:
@@ -56,7 +80,21 @@ def _adapt_sql(sql: str) -> str:
 
 def _ddl(sql: str) -> str:
     if _is_postgres():
-        return sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        # Money columns hold cents: a 39M CDT is 3.9B cents, over int4 range.
+        for col in (
+            "amount_cents",
+            "target_cents",
+            "current_value_cents",
+            "dividends_cents",
+            "opening_cents",
+            "scheduled_amount_cents",
+            "starting_cents",
+            "limit_cents",
+            "total_cents",
+        ):
+            sql = sql.replace(f"{col} INTEGER", f"{col} BIGINT")
+        return sql
     return sql
 
 
@@ -127,39 +165,53 @@ def get_backup_dir() -> str:
     return d
 
 
+class _PGCursorWrapper:  # type: ignore[no-redef]
+    def __init__(self, cur: Any) -> None:  # type: ignore[no-untyped-def]
+        self._cur = cur
+
+    def execute(self, sql: str, params: Any = ()) -> Any:  # type: ignore[no-untyped-def]
+        return self._cur.execute(_adapt_sql(sql), params)
+
+    def __getattr__(self, name: str) -> Any:  # type: ignore[no-untyped-def]
+        return getattr(self._cur, name)
+
+
+class _PGConnWrapper:  # type: ignore[no-redef]
+    def __init__(self, conn: Any) -> None:  # type: ignore[no-untyped-def]
+        self._conn = conn
+
+    def cursor(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[no-untyped-def]
+        return _PGCursorWrapper(self._conn.cursor(*args, **kwargs))
+
+    def execute(self, sql: str, params: Any = ()) -> Any:  # type: ignore[no-untyped-def]
+        return self._conn.execute(_adapt_sql(sql), params)
+
+    def commit(self) -> None:
+        self._conn.commit()  # type: ignore[no-untyped-call]
+
+    def close(self) -> None:
+        self._conn.close()  # type: ignore[no-untyped-call]
+
+    def __getattr__(self, name: str) -> Any:  # type: ignore[no-untyped-def]
+        return getattr(self._conn, name)
+
+
 @contextmanager
-def get_connection():
+def get_connection():  # type: ignore[no-untyped-def]
     """Yield a configured connection (SQLite or Postgres via DATABASE_URL)."""
     if _is_postgres():
         import psycopg
         from psycopg.rows import dict_row
 
-        conn = psycopg.connect(os.getenv("DATABASE_URL"), row_factory=dict_row)
-        # Adapt ? placeholders to %s for psycopg
-        orig_execute = conn.execute  # type: ignore[attr-defined]
-
-        def _exec(sql: str, params: Any = ()) -> Any:  # type: ignore[no-untyped-def]
-            return orig_execute(_adapt_sql(sql), params)
-
-        conn.execute = _exec  # type: ignore[method-assign]
-        orig_cursor = conn.cursor
-
-        def _cursor(*args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
-            cur = orig_cursor(*args, **kwargs)
-            orig_cur_exec = cur.execute
-
-            def _cur_exec(sql: str, params: Any = ()) -> Any:  # type: ignore[no-untyped-def]
-                return orig_cur_exec(_adapt_sql(sql), params)
-
-            cur.execute = _cur_exec  # type: ignore[method-assign]
-            return cur
-
-        conn.cursor = _cursor  # type: ignore[method-assign]
+        database_url = os.getenv("DATABASE_URL")
+        assert database_url is not None
+        conn: Any = psycopg.connect(database_url, row_factory=dict_row)
+        wrapped = _PGConnWrapper(conn)
         try:
-            yield conn  # type: ignore[misc]
-            conn.commit()
+            yield wrapped  # type: ignore[misc]
+            wrapped.commit()
         finally:
-            conn.close()
+            wrapped.close()
     else:
         conn = sqlite3.connect(get_db_path())
         conn.row_factory = sqlite3.Row
@@ -396,7 +448,7 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
     """v0 -> v1: historical schema (idempotent on existing databases)."""
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -404,9 +456,9 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
             color TEXT DEFAULT '#3B82F6',
             icon TEXT DEFAULT '📁'
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -417,9 +469,9 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
             recurring_day INTEGER,
             FOREIGN KEY (category_id) REFERENCES categories(id)
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS budgets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id INTEGER NOT NULL,
@@ -429,9 +481,9 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (category_id) REFERENCES categories(id),
             UNIQUE(category_id, month, year)
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS subcategories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id INTEGER NOT NULL,
@@ -440,9 +492,9 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
             UNIQUE(category_id, name)
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             role TEXT NOT NULL CHECK(role IN ('user', 'ai')),
@@ -451,18 +503,18 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
             year INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS ai_learnings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             topic TEXT NOT NULL,
             correction TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS desc_learnings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT NOT NULL,
@@ -471,12 +523,9 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
             user_description TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """))
 
-    cursor.execute("""
-        SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'subcategory_id'
-    """)
-    if cursor.fetchone()[0] == 0:
+    if not _has_column(conn, "transactions", "subcategory_id"):
         cursor.execute("""
             ALTER TABLE transactions ADD COLUMN subcategory_id INTEGER
             REFERENCES subcategories(id)
@@ -488,7 +537,7 @@ def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
     )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_budgets_month_year ON budgets(month, year)")
 
-    cursor.execute("PRAGMA user_version = 1")
+    _set_version(conn, 1)
 
 
 def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
@@ -499,9 +548,10 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
     referential integrity at the end.
     """
     cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = OFF")
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = OFF")
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE transactions_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -513,7 +563,7 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
             subcategory_id INTEGER REFERENCES subcategories(id),
             generated_from INTEGER REFERENCES transactions(id) ON DELETE SET NULL
         )
-    """)
+    """))
     cursor.execute("""
         INSERT INTO transactions_new
             (id, date, amount_cents, category_id, description,
@@ -525,7 +575,7 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
     cursor.execute("DROP TABLE transactions")
     cursor.execute("ALTER TABLE transactions_new RENAME TO transactions")
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE budgets_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id INTEGER NOT NULL REFERENCES categories(id),
@@ -534,7 +584,7 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
             amount_cents INTEGER NOT NULL,
             UNIQUE(category_id, month, year)
         )
-    """)
+    """))
     cursor.execute("""
         INSERT INTO budgets_new (id, category_id, month, year, amount_cents)
         SELECT id, category_id, month, year, CAST(ROUND(amount * 100) AS INTEGER)
@@ -543,7 +593,7 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
     cursor.execute("DROP TABLE budgets")
     cursor.execute("ALTER TABLE budgets_new RENAME TO budgets")
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS recurring_materialized (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             template_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
@@ -552,7 +602,7 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(template_id, month, year)
         )
-    """)
+    """))
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
     cursor.execute(
@@ -569,8 +619,9 @@ def _migrate_v2_cents(conn: sqlite3.Connection) -> None:
             f"Migration to v2: {len(violations)} FK violations: {violations[:5]}"
         )
 
-    cursor.execute("PRAGMA user_version = 2")
-    cursor.execute("PRAGMA foreign_keys = ON")
+    _set_version(conn, 2)
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_v3_subcategory_dedup(conn: sqlite3.Connection) -> None:
@@ -588,7 +639,8 @@ def _migrate_v3_subcategory_dedup(conn: sqlite3.Connection) -> None:
     constraint.
     """
     cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = OFF")
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = OFF")
 
     duplicates = cursor.execute("""
         SELECT category_id, name, GROUP_CONCAT(id) as ids
@@ -608,7 +660,7 @@ def _migrate_v3_subcategory_dedup(conn: sqlite3.Connection) -> None:
             )
             cursor.execute("DELETE FROM subcategories WHERE id = ?", (dup,))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE subcategories_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id INTEGER NOT NULL,
@@ -617,7 +669,7 @@ def _migrate_v3_subcategory_dedup(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
             UNIQUE(category_id, name)
         )
-    """)
+    """))
     cursor.execute(
         "INSERT INTO subcategories_new (id, category_id, name, icon) "
         "SELECT id, category_id, name, icon FROM subcategories"
@@ -631,8 +683,9 @@ def _migrate_v3_subcategory_dedup(conn: sqlite3.Connection) -> None:
             f"Migration to v3: {len(violations)} FK violations: {violations[:5]}"
         )
 
-    cursor.execute("PRAGMA user_version = 3")
-    cursor.execute("PRAGMA foreign_keys = ON")
+    _set_version(conn, 3)
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_v4_budget_constraint(conn: sqlite3.Connection) -> None:
@@ -644,7 +697,8 @@ def _migrate_v4_budget_constraint(conn: sqlite3.Connection) -> None:
     each duplicate group and rebuilds the table with the constraint.
     """
     cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = OFF")
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = OFF")
 
     # Last write wins: keep only the highest id per (category, month, year).
     cursor.execute("""
@@ -654,7 +708,7 @@ def _migrate_v4_budget_constraint(conn: sqlite3.Connection) -> None:
         )
     """)
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE budgets_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id INTEGER NOT NULL REFERENCES categories(id),
@@ -663,7 +717,7 @@ def _migrate_v4_budget_constraint(conn: sqlite3.Connection) -> None:
             amount_cents INTEGER NOT NULL,
             UNIQUE(category_id, month, year)
         )
-    """)
+    """))
     cursor.execute(
         "INSERT INTO budgets_new (id, category_id, month, year, amount_cents) "
         "SELECT id, category_id, month, year, amount_cents FROM budgets"
@@ -677,8 +731,9 @@ def _migrate_v4_budget_constraint(conn: sqlite3.Connection) -> None:
             f"Migration to v4: {len(violations)} FK violations: {violations[:5]}"
         )
 
-    cursor.execute("PRAGMA user_version = 4")
-    cursor.execute("PRAGMA foreign_keys = ON")
+    _set_version(conn, 4)
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_v5_accounts(conn: sqlite3.Connection) -> None:
@@ -690,7 +745,7 @@ def _migrate_v5_accounts(conn: sqlite3.Connection) -> None:
     """
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -700,18 +755,15 @@ def _migrate_v5_accounts(conn: sqlite3.Connection) -> None:
             initial_balance_cents INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """))
 
-    cursor.execute("""
-        SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'account_id'
-    """)
-    if cursor.fetchone()[0] == 0:
+    if not _has_column(conn, "transactions", "account_id"):
         cursor.execute("""
             ALTER TABLE transactions ADD COLUMN account_id INTEGER
             REFERENCES accounts(id) ON DELETE SET NULL
         """)
 
-    cursor.execute("PRAGMA user_version = 5")
+    _set_version(conn, 5)
 
 
 def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
@@ -724,25 +776,23 @@ def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
     is removed.
     """
     cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = OFF")
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = OFF")
 
     income_cat = cursor.execute(
         "SELECT id FROM categories WHERE type = 'income' AND name = 'Otros ingresos'"
     ).fetchone()
     if income_cat is None:
-        cursor.execute(
-            "INSERT INTO categories (name, type, color, icon) "
-            "VALUES ('Otros ingresos', 'income', '#065F46', '💵')"
+        income_cat_id = _insert_get_id(
+            cursor,
+            _ddl("INSERT INTO categories (name, type, color, icon) VALUES ('Otros ingresos', 'income', '#065F46', '💵')"),
+            (),
         )
-        assert cursor.lastrowid is not None
-        income_cat_id = cursor.lastrowid
     else:
         income_cat_id = income_cat["id"]
 
     rows = []
-    has_initial_column = cursor.execute(
-        "SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'initial_balance_cents'"
-    ).fetchone()[0]
+    has_initial_column = _has_column(conn, "accounts", "initial_balance_cents")
     if has_initial_column:
         rows = cursor.execute(
             "SELECT id, name, initial_balance_cents, created_at FROM accounts "
@@ -765,7 +815,7 @@ def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
             ),
         )
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE accounts_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -774,7 +824,7 @@ def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
             color TEXT NOT NULL DEFAULT '#10B981',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """))
     cursor.execute(
         "INSERT INTO accounts_new (id, name, type, icon, color, created_at) "
         "SELECT id, name, type, icon, color, created_at FROM accounts"
@@ -788,8 +838,9 @@ def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
             f"Migration to v6: {len(violations)} FK violations: {violations[:5]}"
         )
 
-    cursor.execute("PRAGMA user_version = 6")
-    cursor.execute("PRAGMA foreign_keys = ON")
+    _set_version(conn, 6)
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_v7_transaction_kinds(conn: sqlite3.Connection) -> None:
@@ -804,13 +855,14 @@ def _migrate_v7_transaction_kinds(conn: sqlite3.Connection) -> None:
     type.
     """
     cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = OFF")
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = OFF")
 
     # Safe against interrupted previous runs: a crash mid-rebuild can
     # leave the staging table behind.
     cursor.execute("DROP TABLE IF EXISTS transactions_new")
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE transactions_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -826,7 +878,7 @@ def _migrate_v7_transaction_kinds(conn: sqlite3.Connection) -> None:
             subcategory_id INTEGER REFERENCES subcategories(id),
             generated_from INTEGER REFERENCES transactions(id) ON DELETE SET NULL
         )
-    """)
+    """))
     # Some desktop-era transaction tables lack generated_from; treat
     # the column as optional and copy NULL when it does not exist.
     source_columns = {
@@ -862,8 +914,9 @@ def _migrate_v7_transaction_kinds(conn: sqlite3.Connection) -> None:
             f"Migration to v7: {len(violations)} FK violations: {violations[:5]}"
         )
 
-    cursor.execute("PRAGMA user_version = 7")
-    cursor.execute("PRAGMA foreign_keys = ON")
+    _set_version(conn, 7)
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_v8_credit_cards(conn: sqlite3.Connection) -> None:
@@ -876,7 +929,7 @@ def _migrate_v8_credit_cards(conn: sqlite3.Connection) -> None:
     """
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS credit_cards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -885,18 +938,15 @@ def _migrate_v8_credit_cards(conn: sqlite3.Connection) -> None:
             payment_day INTEGER NOT NULL CHECK(payment_day BETWEEN 1 AND 31),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """))
 
-    cursor.execute("""
-        SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'card_id'
-    """)
-    if cursor.fetchone()[0] == 0:
+    if not _has_column(conn, "transactions", "card_id"):
         cursor.execute("""
             ALTER TABLE transactions ADD COLUMN card_id INTEGER
             REFERENCES credit_cards(id) ON DELETE SET NULL
         """)
 
-    cursor.execute("PRAGMA user_version = 8")
+    _set_version(conn, 8)
 
 
 def _migrate_v9_payment_kind(conn: sqlite3.Connection) -> None:
@@ -907,11 +957,12 @@ def _migrate_v9_payment_kind(conn: sqlite3.Connection) -> None:
     an account and reduce the card's debt.
     """
     cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = OFF")
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = OFF")
 
     cursor.execute("DROP TABLE IF EXISTS transactions_new")
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE transactions_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -928,7 +979,7 @@ def _migrate_v9_payment_kind(conn: sqlite3.Connection) -> None:
             generated_from INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
             card_id INTEGER REFERENCES credit_cards(id) ON DELETE SET NULL
         )
-    """)
+    """))
     cursor.execute("""
         INSERT INTO transactions_new
             (id, date, amount_cents, category_id, account_id, to_account_id, kind,
@@ -954,8 +1005,9 @@ def _migrate_v9_payment_kind(conn: sqlite3.Connection) -> None:
             f"Migration to v9: {len(violations)} FK violations: {violations[:5]}"
         )
 
-    cursor.execute("PRAGMA user_version = 9")
-    cursor.execute("PRAGMA foreign_keys = ON")
+    _set_version(conn, 9)
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_v10_savings(conn: sqlite3.Connection) -> None:
@@ -967,9 +1019,10 @@ def _migrate_v10_savings(conn: sqlite3.Connection) -> None:
     -> account), which never count as income or expense.
     """
     cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = OFF")
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = OFF")
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS savings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -983,11 +1036,11 @@ def _migrate_v10_savings(conn: sqlite3.Connection) -> None:
             source_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """))
 
     cursor.execute("DROP TABLE IF EXISTS transactions_new")
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE transactions_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -1006,7 +1059,7 @@ def _migrate_v10_savings(conn: sqlite3.Connection) -> None:
             card_id INTEGER REFERENCES credit_cards(id) ON DELETE SET NULL,
             savings_id INTEGER REFERENCES savings(id) ON DELETE SET NULL
         )
-    """)
+    """))
     cursor.execute("""
         INSERT INTO transactions_new
             (id, date, amount_cents, category_id, account_id, to_account_id, kind,
@@ -1034,8 +1087,9 @@ def _migrate_v10_savings(conn: sqlite3.Connection) -> None:
             f"Migration to v10: {len(violations)} FK violations: {violations[:5]}"
         )
 
-    cursor.execute("PRAGMA user_version = 10")
-    cursor.execute("PRAGMA foreign_keys = ON")
+    _set_version(conn, 10)
+    if not _is_postgres():
+        cursor.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_v11_monthly_plan(conn: sqlite3.Connection) -> None:
@@ -1045,7 +1099,7 @@ def _migrate_v11_monthly_plan(conn: sqlite3.Connection) -> None:
     budgets only keep their own amounts, so the chosen total lives in
     ``monthly_plans`` and is returned to the form.
     """
-    conn.execute("""
+    conn.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS monthly_plans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
@@ -1053,8 +1107,8 @@ def _migrate_v11_monthly_plan(conn: sqlite3.Connection) -> None:
             total_cents INTEGER NOT NULL,
             UNIQUE(month, year)
         )
-    """)
-    conn.execute("PRAGMA user_version = 11")
+    """))
+    _set_version(conn, 11)
 
 
 def _migrate_v12_opening_balances(conn: sqlite3.Connection) -> None:
@@ -1067,13 +1121,9 @@ def _migrate_v12_opening_balances(conn: sqlite3.Connection) -> None:
     "Depósito inicial" transactions are folded into these columns.
     """
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'starting_cents'"
-    )
-    if cursor.fetchone()[0] == 0:
+    if not _has_column(conn, "accounts", "starting_cents"):
         cursor.execute("ALTER TABLE accounts ADD COLUMN starting_cents INTEGER NOT NULL DEFAULT 0")
-    cursor.execute("SELECT COUNT(*) FROM pragma_table_info('savings') WHERE name = 'opening_cents'")
-    if cursor.fetchone()[0] == 0:
+    if not _has_column(conn, "savings", "opening_cents"):
         cursor.execute("ALTER TABLE savings ADD COLUMN opening_cents INTEGER NOT NULL DEFAULT 0")
 
     cursor.execute("""
@@ -1096,7 +1146,7 @@ def _migrate_v12_opening_balances(conn: sqlite3.Connection) -> None:
     cursor.execute(
         "DELETE FROM transactions WHERE kind = 'ahorro' AND description LIKE 'Depósito inicial: %'"
     )
-    cursor.execute("PRAGMA user_version = 12")
+    _set_version(conn, 12)
 
 
 def _migrate_v13_installments(conn: sqlite3.Connection) -> None:
@@ -1107,19 +1157,19 @@ def _migrate_v13_installments(conn: sqlite3.Connection) -> None:
     until the purchase is covered.
     """
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'installments'"
-    )
-    if cursor.fetchone()[0] == 0:
-        cursor.execute(
-            "ALTER TABLE transactions ADD COLUMN installments INTEGER NOT NULL DEFAULT 1"
-        )
-    cursor.execute(
-        "SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'interest_bp'"
-    )
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("ALTER TABLE transactions ADD COLUMN interest_bp INTEGER NOT NULL DEFAULT 0")
-    cursor.execute("PRAGMA user_version = 13")
+    if _is_postgres():
+        cursor.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS installments INTEGER NOT NULL DEFAULT 1")
+        cursor.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS interest_bp INTEGER NOT NULL DEFAULT 0")
+    else:
+        has_inst = _has_column(conn, "transactions", "installments")
+        if not has_inst:
+            cursor.execute(
+                "ALTER TABLE transactions ADD COLUMN installments INTEGER NOT NULL DEFAULT 1"
+            )
+        has_int = _has_column(conn, "transactions", "interest_bp")
+        if not has_int:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN interest_bp INTEGER NOT NULL DEFAULT 0")
+    _set_version(conn, 13)
 
 
 def _migrate_v14_savings_dividends(conn: sqlite3.Connection) -> None:
@@ -1129,10 +1179,137 @@ def _migrate_v14_savings_dividends(conn: sqlite3.Connection) -> None:
     item so the return can combine price growth and dividends.
     """
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM pragma_table_info('savings') WHERE name = 'dividends_cents'")
-    if cursor.fetchone()[0] == 0:
+    if _is_postgres():
+        cursor.execute("ALTER TABLE savings ADD COLUMN IF NOT EXISTS dividends_cents INTEGER NOT NULL DEFAULT 0")
+    elif not _has_column(conn, "savings", "dividends_cents"):
         cursor.execute("ALTER TABLE savings ADD COLUMN dividends_cents INTEGER NOT NULL DEFAULT 0")
-    cursor.execute("PRAGMA user_version = 14")
+    _set_version(conn, 14)
+
+
+def _create_postgres_schema(conn) -> None:  # type: ignore[no-untyped-def]
+    """Create the final schema on a fresh Postgres database.
+
+    SQLite installs walk the v0->v14 migration chain; on a brand-new
+    Postgres there is no legacy data to preserve, so create the final
+    tables in dependency order instead.
+    """
+    ddl = [
+        """
+        CREATE TABLE IF NOT EXISTS categories (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
+            color TEXT DEFAULT '#3B82F6',
+            icon TEXT DEFAULT '📁'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS subcategories (
+            id SERIAL PRIMARY KEY,
+            category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            icon TEXT DEFAULT '📁',
+            UNIQUE(category_id, name)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS accounts (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL CHECK(type IN ('efectivo', 'digital', 'ahorros', 'banco')),
+            icon TEXT NOT NULL DEFAULT '💵',
+            color TEXT NOT NULL DEFAULT '#10B981',
+            starting_cents INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS budgets (
+            id SERIAL PRIMARY KEY,
+            category_id INTEGER NOT NULL REFERENCES categories(id),
+            month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+            year INTEGER NOT NULL,
+            amount_cents INTEGER NOT NULL,
+            UNIQUE(category_id, month, year)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS savings (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            kind TEXT NOT NULL CHECK(kind IN ('bolsillo', 'bolsillo_programado', 'cdt', 'acciones')),
+            target_cents INTEGER,
+            rate_bp INTEGER,
+            term_days INTEGER,
+            current_value_cents INTEGER,
+            dividends_cents INTEGER NOT NULL DEFAULT 0,
+            scheduled_day INTEGER,
+            scheduled_amount_cents INTEGER,
+            source_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            opening_cents INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS credit_cards (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            limit_cents INTEGER NOT NULL,
+            cutoff_day INTEGER NOT NULL CHECK(cutoff_day BETWEEN 1 AND 31),
+            payment_day INTEGER NOT NULL CHECK(payment_day BETWEEN 1 AND 31),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS transactions (
+            id SERIAL PRIMARY KEY,
+            date TEXT NOT NULL,
+            amount_cents INTEGER NOT NULL,
+            category_id INTEGER REFERENCES categories(id),
+            account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            to_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+            kind TEXT NOT NULL DEFAULT 'gasto'
+                CHECK(kind IN ('ingreso', 'gasto', 'transferencia', 'gasto_tc', 'pago_tc',
+                               'ahorro', 'retiro')),
+            description TEXT DEFAULT '',
+            is_recurring INTEGER DEFAULT 0,
+            recurring_day INTEGER,
+            subcategory_id INTEGER REFERENCES subcategories(id),
+            generated_from INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+            card_id INTEGER,
+            savings_id INTEGER REFERENCES savings(id) ON DELETE SET NULL,
+            installments INTEGER NOT NULL DEFAULT 1,
+            interest_bp INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS monthly_plans (
+            id SERIAL PRIMARY KEY,
+            month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+            year INTEGER NOT NULL,
+            total_cents INTEGER NOT NULL,
+            UNIQUE(month, year)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS recurring_materialized (
+            id SERIAL PRIMARY KEY,
+            template_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+            month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+            year INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(template_id, month, year)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_generated ON transactions(generated_from)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_month_year ON budgets(month, year)",
+    ]
+    # transactions REFERENCES savings, so savings must exist before
+    # the transactions FK is validated only on write; order above is fine.
+    for statement in ddl:
+        conn.execute(_ddl(statement))
 
 
 def _seed_defaults(conn: sqlite3.Connection) -> None:
@@ -1156,10 +1333,18 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
     ]
 
     for name, cat_type, color, icon in default_categories:
-        cursor.execute(
-            "INSERT OR IGNORE INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)",
-            (name, cat_type, color, icon),
-        )
+        if _is_postgres():
+            cursor.execute(
+                _adapt_sql(
+                    "INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING"
+                ),
+                (name, cat_type, color, icon),
+            )
+        else:
+            cursor.execute(
+                "INSERT OR IGNORE INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)",
+                (name, cat_type, color, icon),
+            )
 
     default_subcategories = [
         (
@@ -1220,14 +1405,22 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
         ),
     ]
     for cat_name, subs in default_subcategories:
-        cursor.execute("SELECT id FROM categories WHERE name = ?", (cat_name,))
+        cursor.execute(_adapt_sql("SELECT id FROM categories WHERE name = ?"), (cat_name,))
         row = cursor.fetchone()
         if row:
             for sub_name, sub_icon in subs:
-                cursor.execute(
-                    "INSERT OR IGNORE INTO subcategories (category_id, name, icon) VALUES (?, ?, ?)",
-                    (row["id"], sub_name, sub_icon),
-                )
+                if _is_postgres():
+                    cursor.execute(
+                        _adapt_sql(
+                            "INSERT INTO subcategories (category_id, name, icon) VALUES (?, ?, ?) ON CONFLICT DO NOTHING"
+                        ),
+                        (row["id"], sub_name, sub_icon),
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO subcategories (category_id, name, icon) VALUES (?, ?, ?)",
+                        (row["id"], sub_name, sub_icon),
+                    )
 
 
 def init_db() -> None:
@@ -1236,6 +1429,15 @@ def init_db() -> None:
         _import_legacy_db()
     with get_connection() as conn:
         v = _get_version(conn)
+        if _is_postgres() and v == 0:
+            # Fresh Postgres: build the final schema directly instead of
+            # replaying 14 SQLite-specific table rebuilds (no legacy data).
+            _create_postgres_schema(conn)
+            conn.commit()
+            _seed_defaults(conn)
+            conn.commit()
+            _set_version(conn, SCHEMA_VERSION)
+            return
         if v < 1:
             _migrate_v1_baseline(conn)
         if v < 2:
@@ -1692,12 +1894,11 @@ def _ensure_income_category(conn: sqlite3.Connection) -> int:
     if row:
         return int(row["id"])
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO categories (name, type, color, icon) "
-        "VALUES ('Otros ingresos', 'income', '#065F46', '💵')"
+    return _insert_get_id(
+        cursor,
+        _ddl("INSERT INTO categories (name, type, color, icon) VALUES ('Otros ingresos', 'income', '#065F46', '💵')"),
+        (),
     )
-    assert cursor.lastrowid is not None
-    return cursor.lastrowid
 
 
 def _row_to_account(row: sqlite3.Row) -> Account:
@@ -2094,13 +2295,14 @@ def add_savings(
     from_account = initial_account_id is not None and cents > 0
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        item_id = _insert_get_id(
+            cursor,
+            _ddl("""
             INSERT INTO savings
                 (name, kind, target_cents, rate_bp, term_days, current_value_cents,
                  dividends_cents, scheduled_day, scheduled_amount_cents, source_account_id, opening_cents)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+            """),
             (
                 name,
                 kind,
@@ -2115,7 +2317,6 @@ def add_savings(
                 0 if from_account else cents,
             ),
         )
-        item_id = int(cursor.lastrowid)
 
         if from_account:
             cursor.execute(
@@ -2387,129 +2588,6 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
                 }
             )
         return result
-
-
-# ── Chat history ──────────────────────────────────────────────
-
-
-def save_chat_message(role: str, message: str, month: int, year: int) -> None:
-    """Persist a chat message for a month."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO chat_history (role, message, month, year) VALUES (?, ?, ?, ?)",
-            (role, message, month, year),
-        )
-        conn.commit()
-
-
-def get_chat_history(month: int, year: int, limit: int = 50) -> list[dict[str, Any]]:
-    """Return the most recent chat messages of a month, oldest first."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT role, message, created_at FROM chat_history "
-            "WHERE month = ? AND year = ? ORDER BY created_at DESC, id DESC LIMIT ?",
-            (month, year, limit),
-        )
-        return [dict(row) for row in reversed(cursor.fetchall())]
-
-
-def clear_chat_history(month: int, year: int) -> None:
-    """Delete all chat messages of a month."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM chat_history WHERE month = ? AND year = ?", (month, year))
-        conn.commit()
-
-
-# ── AI learnings ──────────────────────────────────────────────
-
-
-def save_learning(topic: str, correction: str) -> None:
-    """Persist a user correction for the AI assistant."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO ai_learnings (topic, correction) VALUES (?, ?)",
-            (topic, correction),
-        )
-        conn.commit()
-
-
-def get_learnings(limit: int = 20) -> list[dict[str, Any]]:
-    """Return the most recent AI learnings."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT topic, correction, created_at FROM ai_learnings "
-            "ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        )
-        return [dict(row) for row in cursor.fetchall()]
-
-
-def get_recent_chat_context(month: int, year: int, turns: int = 10) -> str:
-    """Build a prompt-ready string with the recent chat of a month."""
-    history = get_chat_history(month, year, limit=turns)
-    if not history:
-        return ""
-    lines = []
-    for h in history:
-        tag = "Usuario" if h["role"] == "user" else "IA"
-        lines.append(f"{tag}: {h['message']}")
-    return "\n".join(lines)
-
-
-def get_learnings_context() -> str:
-    """Build a prompt-ready string with the stored learnings."""
-    learnings = get_learnings(limit=15)
-    if not learnings:
-        return ""
-    lines = ["Aprendizajes del usuario (correcciones previas):"]
-    for item in learnings:
-        lines.append(f"- [{item['topic']}] {item['correction']}")
-    return "\n".join(lines)
-
-
-# ── Description learnings ─────────────────────────────────────
-
-
-def save_desc_learning(category: str, subcategory: str, ai_desc: str, user_desc: str) -> None:
-    """Persist a description correction made by the user."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO desc_learnings (category, subcategory, ai_description, user_description) "
-            "VALUES (?, ?, ?, ?)",
-            (category, subcategory or "", ai_desc, user_desc),
-        )
-        conn.commit()
-
-
-def get_desc_learnings(category: str, limit: int = 5) -> list[dict[str, Any]]:
-    """Return the most recent description learnings for a category."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT ai_description, user_description FROM desc_learnings "
-            "WHERE category = ? ORDER BY created_at DESC LIMIT ?",
-            (category, limit),
-        )
-        return [dict(row) for row in cursor.fetchall()]
-
-
-def get_desc_learnings_context(category: str) -> str:
-    """Build a prompt-ready string with description learnings."""
-    learnings = get_desc_learnings(category, limit=5)
-    if not learnings:
-        return ""
-    lines = [f"Correciones previas de descripciones en '{category}':"]
-    for item in learnings:
-        lines.append(
-            f'  IA dijo: "{item["ai_description"]}" → Usuario corrigió: "{item["user_description"]}"'
-        )
-    return "\n".join(lines)
 
 
 # ── CSV export ────────────────────────────────────────────────

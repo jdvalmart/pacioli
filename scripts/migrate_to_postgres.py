@@ -2,12 +2,14 @@
 """Migrate the local SQLite DB to the Postgres instance in DATABASE_URL.
 
 Usage:
-  DATABASE_URL=postgresql://pacioli:pacioli@localhost:5432/pacioli python scripts/migrate_to_postgres.py
+  DATABASE_URL=postgresql://pacioli:pacioli@localhost:5433/pacioli python scripts/migrate_to_postgres.py
 """
 
 import os
 import sqlite3
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 import psycopg
 from psycopg.rows import dict_row
@@ -18,7 +20,11 @@ DST_URL = os.getenv("DATABASE_URL")
 
 if not DST_URL or not DST_URL.startswith("postgres"):
     print("Set DATABASE_URL, e.g.:", file=sys.stderr)
-    print("  DATABASE_URL=postgresql://pacioli:pacioli@localhost:5432/pacioli python scripts/migrate_to_postgres.py", file=sys.stderr)
+    print(
+        "  DATABASE_URL=postgresql://pacioli:pacioli@localhost:5433/pacioli"
+        " python scripts/migrate_to_postgres.py",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 if not os.path.exists(SRC):
@@ -27,7 +33,9 @@ if not os.path.exists(SRC):
 
 # Ensure the Postgres schema exists (run the app's migrations once)
 print("→ Inicializando esquema en Postgres...")
-os.system(f"DATABASE_URL={DST_URL} python -c 'import app.database; app.database.init_db()'")
+from app.database import init_db  # noqa: E402
+
+init_db()
 
 src = sqlite3.connect(SRC)
 src.row_factory = sqlite3.Row
@@ -37,10 +45,10 @@ dst = psycopg.connect(DST_URL, row_factory=dict_row)
 # Tables in dependency order (parents first)
 TABLES = [
     "categories",
-    "subcategories",
     "accounts",
     "credit_cards",
     "savings",
+    "subcategories",
     "transactions",
     "budgets",
     "monthly_plans",
@@ -50,8 +58,10 @@ TABLES = [
 
 # Wipe Postgres tables first (keep schema)
 with dst.cursor() as cur:
-    cur.execute("TRUNCATE transactions, recurring_materialized, budgets, monthly_plans, savings, credit_cards, subcategories, categories, accounts RESTART IDENTITY CASCADE")
-    # Also clear version table to re-seed from SQLite's version
+    cur.execute(
+        "TRUNCATE transactions, recurring_materialized, budgets, monthly_plans,"
+        " savings, credit_cards, subcategories, categories RESTART IDENTITY CASCADE"
+    )
     try:
         cur.execute("DELETE FROM pacioli_schema_version")
     except Exception:
@@ -74,14 +84,25 @@ for table in TABLES:
     with dst.cursor() as cur:
         for r in rows:
             vals = [r[c] for c in cols]
-            cur.execute(f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) ON CONFLICT DO NOTHING", vals)
+            cur.execute(
+                f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
+                vals,
+            )
+    dst.commit()
+    # Re-sync the SERIAL sequence after explicit-id inserts
+    with dst.cursor() as cur:
+        cur.execute(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), (SELECT MAX(id) FROM {table}))")
     dst.commit()
 
 # Copy the SQLite user_version into Postgres
 try:
     v = src.execute("PRAGMA user_version").fetchone()[0]
     with dst.cursor() as cur:
-        cur.execute("INSERT INTO pacioli_schema_version (id, version) VALUES (1, %s) ON CONFLICT (id) DO UPDATE SET version=%s", (v, v))
+        cur.execute(
+            "INSERT INTO pacioli_schema_version (id, version) VALUES (1, %s) "
+            "ON CONFLICT (id) DO UPDATE SET version=%s",
+            (v, v),
+        )
     dst.commit()
     print(f"→ versión del esquema: {v}")
 except Exception as e:
