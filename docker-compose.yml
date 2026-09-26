@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pacioli
+      POSTGRES_PASSWORD: pacioli
+      POSTGRES_DB: pacioli
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pacioli"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+volumes:
+  pgdata:

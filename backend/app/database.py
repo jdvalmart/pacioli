@@ -46,6 +46,59 @@ DEFAULT_DB_PATH = os.path.join(_default_data_dir(), "pacioli.db")
 _db_path: str | None = None
 
 
+def _is_postgres() -> bool:
+    return os.getenv("DATABASE_URL", "").startswith("postgres")
+
+
+def _adapt_sql(sql: str) -> str:
+    return sql.replace("?", "%s") if _is_postgres() else sql
+
+
+def _ddl(sql: str) -> str:
+    if _is_postgres():
+        return sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+    return sql
+
+
+def _get_version(conn) -> int:  # type: ignore[no-untyped-def]
+    if _is_postgres():
+        try:
+            conn.execute(_adapt_sql("CREATE TABLE IF NOT EXISTS pacioli_schema_version (id INT PRIMARY KEY, version INT NOT NULL)"))
+            row = conn.execute(_adapt_sql("SELECT version FROM pacioli_schema_version WHERE id = 1")).fetchone()
+            if row is None:
+                return 0
+            if isinstance(row, dict):
+                return int(row["version"])
+            return int(row[0])
+        except Exception:
+            return 0
+    return int(conn.execute("PRAGMA user_version").fetchone()[0])
+
+
+def _set_version(conn, version: int) -> None:  # type: ignore[no-untyped-def]
+    if _is_postgres():
+        conn.execute(
+            _adapt_sql(
+                "INSERT INTO pacioli_schema_version (id, version) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET version = ?"
+            ),
+            (version, version),
+        )
+    else:
+        conn.execute(f"PRAGMA user_version = {version}")
+
+
+def _insert_get_id(cursor, sql: str, params) -> int:  # type: ignore[no-untyped-def]
+    if _is_postgres():
+        sql = sql.rstrip().rstrip(";") + " RETURNING id"
+        cursor.execute(_adapt_sql(sql), params)
+        row = cursor.fetchone()
+        if isinstance(row, dict):
+            return int(row["id"])
+        return int(row[0])
+    cursor.execute(sql, params)
+    return int(cursor.lastrowid)
+
+
 def set_db_path(path: str | Path | None) -> None:
     """Override the database location.
 
@@ -76,15 +129,46 @@ def get_backup_dir() -> str:
 
 @contextmanager
 def get_connection():
-    """Yield a configured sqlite3 connection (WAL, foreign keys on)."""
-    conn = sqlite3.connect(get_db_path())
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield conn
-    finally:
-        conn.close()
+    """Yield a configured connection (SQLite or Postgres via DATABASE_URL)."""
+    if _is_postgres():
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(os.getenv("DATABASE_URL"), row_factory=dict_row)
+        # Adapt ? placeholders to %s for psycopg
+        orig_execute = conn.execute  # type: ignore[attr-defined]
+
+        def _exec(sql: str, params: Any = ()) -> Any:  # type: ignore[no-untyped-def]
+            return orig_execute(_adapt_sql(sql), params)
+
+        conn.execute = _exec  # type: ignore[method-assign]
+        orig_cursor = conn.cursor
+
+        def _cursor(*args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
+            cur = orig_cursor(*args, **kwargs)
+            orig_cur_exec = cur.execute
+
+            def _cur_exec(sql: str, params: Any = ()) -> Any:  # type: ignore[no-untyped-def]
+                return orig_cur_exec(_adapt_sql(sql), params)
+
+            cur.execute = _cur_exec  # type: ignore[method-assign]
+            return cur
+
+        conn.cursor = _cursor  # type: ignore[method-assign]
+        try:
+            yield conn  # type: ignore[misc]
+            conn.commit()
+        finally:
+            conn.close()
+    else:
+        conn = sqlite3.connect(get_db_path())
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA foreign_keys = ON")
+        try:
+            yield conn
+        finally:
+            conn.close()
 
 
 def _import_legacy_db() -> bool:
@@ -304,8 +388,8 @@ class MonthlySummary:
 # path as an old one: v0 -> v1 (baseline) -> v2 (cents).
 
 
-def _user_version(conn: sqlite3.Connection) -> int:
-    return int(conn.execute("PRAGMA user_version").fetchone()[0])
+def _user_version(conn) -> int:  # type: ignore[no-untyped-def]
+    return _get_version(conn)
 
 
 def _migrate_v1_baseline(conn: sqlite3.Connection) -> None:
@@ -1148,9 +1232,10 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
 
 def init_db() -> None:
     """Import legacy data if needed, apply migrations and seeds."""
-    _import_legacy_db()
+    if not _is_postgres():
+        _import_legacy_db()
     with get_connection() as conn:
-        v = _user_version(conn)
+        v = _get_version(conn)
         if v < 1:
             _migrate_v1_baseline(conn)
         if v < 2:
@@ -1202,12 +1287,10 @@ def add_category(name: str, cat_type: str, color: str = "#3B82F6", icon: str = "
     """Create a category and return its id."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)",
-            (name, cat_type, color, icon),
-        )
+        sql = _ddl("INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)")
+        new_id = _insert_get_id(cursor, sql, (name, cat_type, color, icon))
         conn.commit()
-        return int(cursor.lastrowid)
+        return new_id
 
 
 def update_category(cat_id: int, name: str, color: str, icon: str) -> None:
@@ -1259,12 +1342,10 @@ def add_subcategory(category_id: int, name: str, icon: str = "📁") -> int:
     """Create a subcategory and return its id."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO subcategories (category_id, name, icon) VALUES (?, ?, ?)",
-            (category_id, name, icon),
-        )
+        sql = _ddl("INSERT INTO subcategories (category_id, name, icon) VALUES (?, ?, ?)")
+        new_id = _insert_get_id(cursor, sql, (category_id, name, icon))
         conn.commit()
-        return int(cursor.lastrowid)
+        return new_id
 
 
 def delete_subcategory(sub_id: int) -> None:
@@ -1344,15 +1425,14 @@ def add_transaction(
     """Create a transaction and return its id."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        sql = _ddl("""
             INSERT INTO transactions
                 (date, amount_cents, category_id, description, is_recurring,
                  recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id,
                  installments, interest_bp)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
+        """)
+        new_id = _insert_get_id(cursor, sql, (
                 date_val.isoformat(),
                 _to_cents(amount),
                 category_id,
@@ -1367,10 +1447,9 @@ def add_transaction(
                 savings_id,
                 installments,
                 interest_bp,
-            ),
-        )
+            ))
         conn.commit()
-        return int(cursor.lastrowid)
+        return new_id
 
 
 def update_transaction(
@@ -1689,11 +1768,13 @@ def add_account(
     default_icon, default_color = ACCOUNT_TYPE_DEFAULTS.get(acct_type, ("💵", "#10B981"))
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        sql = _ddl("""
             INSERT INTO accounts (name, type, icon, color, starting_cents)
             VALUES (?, ?, ?, ?, ?)
-            """,
+            """)
+        new_id = _insert_get_id(
+            cursor,
+            sql,
             (
                 name,
                 acct_type,
@@ -1703,7 +1784,7 @@ def add_account(
             ),
         )
         conn.commit()
-        return int(cursor.lastrowid)
+        return new_id
 
 
 def update_account(
@@ -1886,15 +1967,13 @@ def add_credit_card(
     """Create a credit card and return its id."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        sql = _ddl("""
             INSERT INTO credit_cards (name, limit_cents, cutoff_day, payment_day)
             VALUES (?, ?, ?, ?)
-            """,
-            (name, _to_cents(limit), cutoff_day, payment_day),
-        )
+            """)
+        new_id = _insert_get_id(cursor, sql, (name, _to_cents(limit), cutoff_day, payment_day))
         conn.commit()
-        return int(cursor.lastrowid)
+        return new_id
 
 
 def update_credit_card(
@@ -2524,6 +2603,8 @@ def auto_backup(keep: int = BACKUP_KEEP) -> str | None:
     Returns:
         The path of the created backup, or None if one already exists.
     """
+    if _is_postgres():
+        return None
     if not os.path.exists(get_db_path()):
         return None
     today = date.today()

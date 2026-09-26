@@ -139,6 +139,24 @@ backend/.venv/bin/uvicorn app.main:app --app-dir backend --port 8000
   - **Resumen mensual:** `total_expense = gasto + pago_tc` (cuota de tarjeta no es gasto hasta pagarla). `gasto_tc` solo afecta cupo y ciclo, no caja.
   - **Tarjeta:** ciclo `6 sep → 5 oct` (exclusivo/inclusivo), `pending` = cuotas del ciclo actual, `outstanding` = Σ totales con interés − pagos, `available = limit − outstanding`.
 
+### 🐘 PostgreSQL (opcional)
+
+SQLite es el valor por defecto (ideal porque “no va a crecer mucho”). Para verlo en Postgres desde VS Code sin perder SQLite:
+
+```bash
+# 1) Levantá Postgres local (requiere Docker)
+docker compose up -d  # usa docker-compose.yml (pacioli:pacioli@localhost:5432/pacioli)
+
+# 2) Migra tu SQLite actual a Postgres
+DATABASE_URL=postgresql://pacioli:pacioli@localhost:5432/pacioli python scripts/migrate_to_postgres.py
+
+# 3) Iniciá la app contra Postgres
+DATABASE_URL=postgresql://pacioli:pacioli@localhost:5432/pacioli ./dev.sh
+# o: DATABASE_URL=... backend/.venv/bin/uvicorn app.main:app --app-dir backend --port 8000
+```
+
+En **VS Code**: instalá **PostgreSQL** (`cweijan.vscode-postgresql-client2`), `Ctrl+Shift+P` → **PostgreSQL: Add Connection** → pegá el `DATABASE_URL`. Sin `DATABASE_URL` la app sigue usando SQLite.
+
 ---
 
 ## 🔌 API (`/api`)
