@@ -42,27 +42,27 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-extrabold">Overview</h1>
+      <h1 className="text-xl font-extrabold">Resumen</h1>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
-          title="Income"
+          title="Ingresos"
           value={fmtCop(summary.data?.total_income ?? '0')}
           icon={ArrowDownLeft}
           tone="income"
         />
         <StatCard
-          title="Expenses"
+          title="Gastos"
           value={fmtCop(summary.data?.total_expense ?? '0')}
           icon={ArrowUpRight}
           tone="expense"
         />
         <StatCard
-          title="Accumulated balance"
+          title="Balance acumulado"
           value={fmtCop(summary.data?.accumulated_balance ?? '0')}
-          detail={`This month: ${fmtCop(summary.data?.balance ?? '0')}${
+          detail={`Este mes: ${fmtCop(summary.data?.balance ?? '0')}${
             Number(summary.data?.carryover ?? 0) !== 0
-              ? ` · Carried over: ${fmtCop(summary.data?.carryover ?? '0')}`
+              ? ` · Arrastre: ${fmtCop(summary.data?.carryover ?? '0')}`
               : ''
           }`}
           icon={Wallet}
@@ -76,9 +76,9 @@ export function DashboardPage() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-extrabold">Budgets</h2>
+          <h2 className="text-lg font-extrabold">Presupuestos</h2>
           <p className="text-sm font-semibold text-muted-foreground">
-            Spending progress by category
+            Avance del gasto por categoría
           </p>
         </div>
 
@@ -87,31 +87,31 @@ export function DashboardPage() {
             {(() => {
               const totalBudget = budgetCards.reduce((sum, row) => sum + Number(row.budget), 0)
               const totalActual = budgetCards.reduce((sum, row) => sum + Number(row.actual), 0)
-              const totalRemaining = totalBudget - totalActual
+              const totalRestante = totalBudget - totalActual
               return (
                 <>
                   <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Budgeted
+                      Presupuestado
                     </p>
                     <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Spent
+                      Gastado
                     </p>
                     <p className="text-lg font-black text-rose-600">{fmtCop(totalActual)}</p>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Remaining
+                      Restante
                     </p>
                     <p
                       className={`text-lg font-black ${
-                        totalRemaining < 0 ? 'text-rose-600' : 'text-emerald-600'
+                        totalRestante < 0 ? 'text-rose-600' : 'text-emerald-600'
                       }`}
                     >
-                      {fmtCop(totalRemaining)}
+                      {fmtCop(totalRestante)}
                     </p>
                   </div>
                 </>
@@ -129,7 +129,7 @@ export function DashboardPage() {
             </>
           ) : budgetCards.length === 0 ? (
             <Card className="col-span-full p-6 text-center text-sm font-semibold text-muted-foreground">
-              No budgets this month. Set them up in the Budgets tab.
+              Sin presupuestos este mes. Configúralos en la pestaña Presupuestos.
             </Card>
           ) : (
             budgetCards.map((row) => {
@@ -146,7 +146,7 @@ export function DashboardPage() {
                     <div>
                       <CardTitle className="text-sm leading-tight">{row.name}</CardTitle>
                       <p className="text-xs font-bold text-muted-foreground">
-                        {Math.round(row.percent)}% used
+                        {Math.round(row.percent)}% usado
                       </p>
                     </div>
                   </div>
@@ -154,7 +154,7 @@ export function DashboardPage() {
                   <div className="mt-3 space-y-1.5">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-bold text-muted-foreground">
-                        Spent {fmtCop(row.actual)}
+                        Gastado {fmtCop(row.actual)}
                       </span>
                       <span className="font-black">{fmtCop(row.budget)}</span>
                     </div>
@@ -168,8 +168,8 @@ export function DashboardPage() {
                       }`}
                     >
                       {over
-                        ? `Over by ${fmtCopDecimals(row.remaining.replace('-', ''))}`
-                        : `Remaining ${fmtCopDecimals(row.remaining)}`}
+                        ? `Te pasaste ${fmtCopDecimals(row.remaining.replace('-', ''))}`
+                        : `Restante ${fmtCopDecimals(row.remaining)}`}
                     </p>
                   </div>
                 </Card>
@@ -183,15 +183,15 @@ export function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Spending by category</CardTitle>
-          <CardDescription>Monthly spending breakdown</CardDescription>
+          <CardTitle>Gasto por categoría</CardTitle>
+          <CardDescription>Desglose mensual del gasto</CardDescription>
         </CardHeader>
         <CardContent>
           {spending.isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : chartData.length === 0 ? (
             <p className="py-20 text-center text-sm text-muted-foreground">
-              No expenses yet this month.
+              Aún no hay gastos este mes.
             </p>
           ) : (
             <div className="grid gap-6 lg:grid-cols-2">

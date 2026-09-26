@@ -37,10 +37,10 @@ import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Account, AccountType } from '@/lib/types'
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; icon: string }[] = [
-  { value: 'efectivo', label: 'Cash wallet', icon: '💵' },
-  { value: 'digital', label: 'Digital wallet', icon: '📱' },
-  { value: 'ahorros', label: 'Savings account', icon: '🐷' },
-  { value: 'banco', label: 'Bank account', icon: '🏦' },
+  { value: 'efectivo', label: 'Billetera efectivo', icon: '💵' },
+  { value: 'digital', label: 'Billetera digital', icon: '📱' },
+  { value: 'ahorros', label: 'Cuenta de ahorros', icon: '🐷' },
+  { value: 'banco', label: 'Cuenta bancaria', icon: '🏦' },
 ]
 
 function typeLabel(type: AccountType): string {
@@ -89,7 +89,7 @@ function AccountFormBody({
       }
     },
     onSuccess: () => {
-      toast.success(account ? 'Account updated' : 'Account created')
+      toast.success(account ? 'Cuenta actualizada' : 'Cuenta creada')
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['accounts'] })
       void queryClient.invalidateQueries({ queryKey: ['transactions'] })
@@ -106,24 +106,24 @@ function AccountFormBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{account ? 'Edit account' : 'New account'}</DialogTitle>
+        <DialogTitle>{account ? 'Editar cuenta' : 'Nueva cuenta'}</DialogTitle>
         <DialogDescription>
-          Balance is calculated only from transactions assigned to it.
+          El saldo se calcula solo con los movimientos asignados a esta cuenta.
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="acc-name">Name</Label>
+          <Label htmlFor="acc-name">Nombre</Label>
           <Input
             id="acc-name"
             required
-            placeholder="E.g. Wallet, Nequi, Savings"
+            placeholder="Ej. Billetera, Nequi, Ahorros"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </div>
         <div className="space-y-1.5">
-          <Label>Type</Label>
+          <Label>Tipo</Label>
           <Select
             value={type}
             onValueChange={(v) => setType((v ?? 'efectivo') as AccountType)}
@@ -141,7 +141,7 @@ function AccountFormBody({
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="acc-start">Starting balance</Label>
+          <Label htmlFor="acc-start">Saldo inicial</Label>
           <Input
             id="acc-start"
             placeholder="0"
@@ -149,12 +149,12 @@ function AccountFormBody({
             onChange={(e) => setStartingAmount(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            Money you already had before using the app. Not counted in any month, only in the
-            account balance.
+            Dinero que ya tenías antes de usar la app. No cuenta en ningún mes, solo en el
+            saldo de la cuenta.
           </p>
         </div>
         <Button type="submit" className="w-full" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Saving…' : 'Save'}
+          {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
       </form>
     </>
@@ -171,7 +171,7 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteAccount(id),
     onSuccess: () => {
-      toast.success('Account deleted — its transactions are now unassigned')
+      toast.success('Cuenta eliminada — sus movimientos quedaron sin cuenta')
       setDeleting(null)
       void queryClient.invalidateQueries({ queryKey: ['accounts'] })
     },
@@ -184,15 +184,15 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
     <>
       <SectionCard
         icon={Wallet}
-        title="Accounts"
-        subtitle={`Where your money is${
+        title="Cuentas"
+        subtitle={`Dónde está tu dinero${
           (accounts.data ?? []).length > 0 ? ` · total ${fmtCopDecimals(total)}` : ''
         }`}
         action={
           !readOnly ? (
             <Button
               size="icon"
-              aria-label="New account"
+              aria-label="Nueva cuenta"
               onClick={() => {
                 setEditing(null)
                 setFormOpen(true)
@@ -212,8 +212,8 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
           </>
         ) : accounts.data?.length === 0 ? (
           <Card className="col-span-full p-6 text-center text-sm font-semibold text-muted-foreground">
-            You don't have any accounts yet. Create a cash wallet, digital wallet or savings
-            account to track how much you have and where.
+            Todavía no tenés cuentas. Creá una billetera de efectivo, digital o de ahorros para
+            saber cuánto tenés y dónde.
           </Card>
         ) : (
           [...(accounts.data ?? [])]
@@ -256,7 +256,7 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
               <p className="mt-3 text-xl font-black">{fmtCopDecimals(account.balance)}</p>
               {Number(account.starting) > 0 && (
                 <p className="text-xs font-bold text-muted-foreground">
-                  Includes {fmtCopDecimals(account.starting)} starting balance
+                  Incluye {fmtCopDecimals(account.starting)} de saldo inicial
                 </p>
               )}
             </Card>
@@ -270,19 +270,19 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete account?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar cuenta?</AlertDialogTitle>
             <AlertDialogDescription>
-              &quot;{deleting?.name}&quot; will be deleted. Its transactions won't be deleted, just
-              left unassigned.
+              Se eliminará &quot;{deleting?.name}&quot;. Sus movimientos no se borran, solo quedan
+              sin cuenta.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleting && deleteMutation.mutate(deleting.id)}
               className="bg-red-600 hover:bg-red-700"
             >
-              Delete
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

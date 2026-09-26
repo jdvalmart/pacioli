@@ -91,7 +91,7 @@ function CategoryFormBody({
       }
     },
     onSuccess: () => {
-      toast.success(category ? 'Category updated' : 'Category created')
+      toast.success(category ? 'Categoría actualizada' : 'Categoría creada')
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['categories'] })
     },
@@ -106,28 +106,28 @@ function CategoryFormBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{category ? 'Edit category' : 'New category'}</DialogTitle>
+        <DialogTitle>{category ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle>
         <DialogDescription>
           {category
-            ? 'Type cannot be changed once created.'
-            : 'Organize your transactions into categories.'}
+            ? 'El tipo no se puede cambiar después de crearla.'
+            : 'Organizá tus movimientos en categorías.'}
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="cat-name">Name</Label>
+          <Label htmlFor="cat-name">Nombre</Label>
           <Input id="cat-name" required value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         {!category && (
           <div className="space-y-1.5">
-            <Label>Type</Label>
+            <Label>Tipo</Label>
             <Select value={type} onValueChange={(v) => setType((v ?? 'expense') as CategoryType)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="expense">Expense</SelectItem>
-                <SelectItem value="income">Income</SelectItem>
+                <SelectItem value="expense">Gasto</SelectItem>
+                <SelectItem value="income">Ingreso</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -149,7 +149,7 @@ function CategoryFormBody({
           </div>
         </div>
         <div className="space-y-1.5">
-          <Label>Icon</Label>
+          <Label>Icono</Label>
           <div className="flex flex-wrap gap-1">
             {ICONS.map((i) => (
               <button
@@ -166,7 +166,7 @@ function CategoryFormBody({
           </div>
         </div>
         <Button type="submit" className="w-full" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Saving…' : 'Save'}
+          {mutation.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
       </form>
     </>
@@ -188,7 +188,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
   const addSub = useMutation({
     mutationFn: () => api.createSubcategory(category.id, { name: newSub, icon: '📁' }),
     onSuccess: () => {
-      toast.success('Subcategory created')
+      toast.success('Subcategoría creada')
       setNewSub('')
       void queryClient.invalidateQueries({ queryKey: ['subcategories', category.id] })
     },
@@ -198,7 +198,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
   const deleteSub = useMutation({
     mutationFn: (id: number) => api.deleteSubcategory(id),
     onSuccess: () => {
-      toast.success('Subcategory deleted')
+      toast.success('Subcategoría eliminada')
       void queryClient.invalidateQueries({ queryKey: ['subcategories', category.id] })
     },
     onError: (error: Error) => toast.error(error.message),
@@ -207,7 +207,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
   const deleteCat = useMutation({
     mutationFn: () => api.deleteCategory(category.id),
     onSuccess: () => {
-      toast.success('Category deleted')
+      toast.success('Categoría eliminada')
       void queryClient.invalidateQueries({ queryKey: ['categories'] })
     },
     onError: (error: Error) => toast.error(error.message),
@@ -225,7 +225,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{category.name}</p>
           <p className="truncate text-xs font-bold text-muted-foreground">
-            {total > 0 ? `This month: ${fmtCopDecimals(total)}` : 'No transactions'}
+            {total > 0 ? `Este mes: ${fmtCopDecimals(total)}` : 'Sin movimientos'}
           </p>
         </div>
         <Button variant="ghost" size="icon-xs" onClick={() => setEditing(true)}>
@@ -243,7 +243,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
             <button
               onClick={() => setSubToDelete(sub.id)}
               className="ml-0.5 text-muted-foreground hover:text-red-500"
-              aria-label={`Delete ${sub.name}`}
+              aria-label={`Eliminar ${sub.name}`}
             >
               <X className="size-3" />
             </button>
@@ -258,7 +258,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
         >
           <Input
             className="h-7 w-24 text-xs"
-            placeholder="New sub…"
+            placeholder="Nueva sub…"
             value={newSub}
             onChange={(e) => setNewSub(e.target.value)}
           />
@@ -273,19 +273,19 @@ function CategoryRow({ category, total }: { category: Category; total: number })
       <AlertDialog open={deleting} onOpenChange={setDeleting}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete category?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
             <AlertDialogDescription>
-              {category.name} will be deleted. Cannot delete if it has transactions or
-              budgets.
+              Se eliminará {category.name}. No se puede eliminar si tiene movimientos o
+              presupuestos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteCat.mutate()}
               className="bg-red-600 hover:bg-red-700"
             >
-              Delete
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -294,18 +294,18 @@ function CategoryRow({ category, total }: { category: Category; total: number })
       <AlertDialog open={subToDelete !== null} onOpenChange={(open) => !open && setSubToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete subcategory?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar subcategoría?</AlertDialogTitle>
             <AlertDialogDescription>
-              Transactions using it will be left without a subcategory.
+              Los movimientos que la usen quedarán sin subcategoría.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => subToDelete && deleteSub.mutate(subToDelete)}
               className="bg-red-600 hover:bg-red-700"
             >
-              Delete
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -347,8 +347,8 @@ export function CategoriesSection() {
     <>
       <SectionCard
         icon={Tags}
-        title="Categories"
-        subtitle={`Organize your ${monthLabel(month)} transactions with categories and subcategories`}
+        title="Categorías"
+        subtitle={`Organizá los movimientos de ${monthLabel(month)} con categorías y subcategorías`}
         action={
           <Button
             onClick={() => {
@@ -356,14 +356,14 @@ export function CategoriesSection() {
               setFormOpen(true)
             }}
           >
-            <Plus /> New category
+            <Plus /> Nueva categoría
           </Button>
         }
       >
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-emerald-600">Income</CardTitle>
+            <CardTitle className="text-emerald-600">Ingresos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -379,14 +379,14 @@ export function CategoriesSection() {
                 setFormOpen(true)
               }}
             >
-              <Plus /> Add income
+              <Plus /> Agregar ingreso
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-red-600">Expenses</CardTitle>
+            <CardTitle className="text-red-600">Gastos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -402,7 +402,7 @@ export function CategoriesSection() {
                 setFormOpen(true)
               }}
             >
-              <Plus /> Add expense
+              <Plus /> Agregar gasto
             </Button>
           </CardContent>
         </Card>

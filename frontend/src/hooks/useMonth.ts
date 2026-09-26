@@ -84,20 +84,22 @@ export function useMonth(): {
 }
 
 const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
 ]
 
 export function monthLabel(m: Month): string {
-  return `${MONTH_NAMES[m.month - 1]} ${m.year}`
+  const name = MONTH_NAMES[m.month - 1]
+  const label = name.charAt(0).toUpperCase() + name.slice(1)
+  return `${label} ${m.year}`
 }

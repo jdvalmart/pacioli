@@ -187,7 +187,7 @@ function BudgetSetupDialog({
       map[String(b.category_id)] = fmtInput(b.amount)
     }
     setAmounts(map)
-    toast.success("Last month's budget copied")
+    toast.success('Presupuesto del mes copiado')
   }
 
   const mutation = useMutation({
@@ -209,7 +209,7 @@ function BudgetSetupDialog({
       })
     },
     onSuccess: () => {
-      toast.success('Budget saved')
+      toast.success('Presupuesto guardado')
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['budgets', month] })
       void queryClient.invalidateQueries({ queryKey: ['budgetVsActual', month] })
@@ -224,19 +224,19 @@ function BudgetSetupDialog({
         {open && (
           <>
             <DialogHeader>
-              <DialogTitle>Set budget</DialogTitle>
+              <DialogTitle>Definir presupuesto</DialogTitle>
               <DialogDescription>
-                Plan your spending for {monthLabel(month)}: split your total budget across
-                categories.
+                Planificá tu gasto en {monthLabel(month)}: repartí tu presupuesto total entre
+                categorías.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-5">
               <div className="space-y-1.5">
-                <Label htmlFor="budget-total">My total budget</Label>
+                <Label htmlFor="budget-total">Mi presupuesto total</Label>
                 <MoneyInput id="budget-total" value={total} onChange={setTotal} placeholder="3.000.000" />
                 <p className="text-xs font-semibold text-muted-foreground">
-                  By default we use your income for the month: {fmtCop(Number(summary.data?.total_income ?? 0))}
+                  Por defecto usamos el ingreso del mes: {fmtCop(Number(summary.data?.total_income ?? 0))}
                 </p>
               </div>
 
@@ -244,13 +244,13 @@ function BudgetSetupDialog({
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div>
                     <p className="text-[10px] font-extrabold tracking-wide text-muted-foreground uppercase">
-                      Allocated
+                      Asignado
                     </p>
                     <p className="text-sm font-black">{fmtCop(assigned)}</p>
                   </div>
                   <div>
                     <p className="text-[10px] font-extrabold tracking-wide text-muted-foreground uppercase">
-                      Unallocated
+                      Sin asignar
                     </p>
                     <p
                       className={cn(
@@ -273,20 +273,20 @@ function BudgetSetupDialog({
                 />
                 {pending < 0 && (
                   <p className="mt-2 text-xs font-bold text-rose-600">
-                    Over by {fmtCopDecimals(Math.abs(pending))}
+                    Te pasaste {fmtCopDecimals(Math.abs(pending))}
                   </p>
                 )}
               </div>
 
               {hasPreviousBudgets && (
                 <Button type="button" variant="outline" className="w-full" onClick={copyPrevious}>
-                  📋 Copy last month's budget
+                  📋 Copiar presupuesto del mes pasado
                 </Button>
               )}
 
               <div className="space-y-3">
                 <p className="text-[11px] font-extrabold tracking-wide text-muted-foreground uppercase">
-                  Categories
+                  Categorías
                 </p>
                 {orderedCategories.map((cat) => (
                   <CategoryField
@@ -305,7 +305,7 @@ function BudgetSetupDialog({
                 disabled={mutation.isPending}
                 onClick={() => mutation.mutate()}
               >
-                {mutation.isPending ? 'Saving…' : 'Save budget'}
+                {mutation.isPending ? 'Guardando…' : 'Guardar presupuesto'}
               </Button>
             </div>
           </>
@@ -360,22 +360,22 @@ export function BudgetsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-extrabold">Budgets</h1>
+          <h1 className="text-xl font-extrabold">Presupuestos</h1>
           <p className="text-sm font-semibold text-muted-foreground">
-            Set how much you can spend per category in {monthLabel(month)}
+            Definí cuánto podés gastar por categoría en {monthLabel(month)}
           </p>
         </div>
         <Button onClick={() => setSetupOpen(true)}>
-          <SlidersHorizontal /> Set budget
+          <SlidersHorizontal /> Definir presupuesto
         </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total budget" value={fmtCop(planTotal)} icon={Wallet} tone="primary" />
-        <StatCard title="Allocated" value={fmtCop(totalBudget)} icon={PieChart} tone="neutral" />
-        <StatCard title="Spent" value={fmtCop(totalActual)} icon={ArrowUpRight} tone="expense" />
+        <StatCard title="Presupuesto total" value={fmtCop(planTotal)} icon={Wallet} tone="primary" />
+        <StatCard title="Asignado" value={fmtCop(totalBudget)} icon={PieChart} tone="neutral" />
+        <StatCard title="Gastado" value={fmtCop(totalActual)} icon={ArrowUpRight} tone="expense" />
         <StatCard
-          title="Remaining"
+          title="Restante"
           value={fmtCop(totalRemaining)}
           icon={PiggyBank}
           tone={totalRemaining < 0 ? 'expense' : 'income'}
@@ -393,14 +393,14 @@ export function BudgetsPage() {
           }`}
         >
           {unassigned > 0
-            ? `Unallocated: ${fmtCop(unassigned)} (remaining to distribute across categories)`
+            ? `Sin asignar: ${fmtCop(unassigned)} (resta repartir entre categorías)`
             : unassigned < 0
-              ? `Over total budget by ${fmtCop(Math.abs(unassigned))}`
-              : 'All budget allocated ✓'}
+              ? `Te pasaste ${fmtCop(Math.abs(unassigned))} del presupuesto total`
+              : 'Presupuesto totalmente asignado ✓'}
         </span>
         {unbudgeted > 0 && (
           <span className="text-sm font-bold text-muted-foreground">
-            Spent without budget: <span className="text-rose-600">{fmtCop(unbudgeted)}</span>
+            Gastado sin presupuesto: <span className="text-rose-600">{fmtCop(unbudgeted)}</span>
           </span>
         )}
       </div>
@@ -441,8 +441,8 @@ export function BudgetsPage() {
                     <CardTitle className="text-sm leading-tight">{category.name}</CardTitle>
                     <p className="text-xs font-bold text-muted-foreground">
                       {hasBudget
-                        ? `Spent ${fmtCop(actual)} of ${fmtCop(current)}`
-                        : 'No budget assigned'}
+                        ? `Gastado ${fmtCop(actual)} de ${fmtCop(current)}`
+                        : 'Sin presupuesto asignado'}
                     </p>
                   </div>
                 </div>
@@ -459,8 +459,8 @@ export function BudgetsPage() {
                       }`}
                     >
                       {over
-                        ? `Over by ${fmtCopDecimals(Math.abs(remaining))}`
-                        : `Remaining ${fmtCopDecimals(remaining)}`}
+                        ? `Te pasaste ${fmtCopDecimals(Math.abs(remaining))}`
+                        : `Restan ${fmtCopDecimals(remaining)}`}
                     </p>
                   </div>
                 )}
