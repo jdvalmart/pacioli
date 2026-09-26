@@ -2,9 +2,9 @@
 
 > *Fray Luca Pacioli (c. 1445–1517) formalizó la partida doble.* Pacioli, la app, lleva esa idea a tus finanzas diarias: cada movimiento tiene su contrapartida y cada peso tiene su lugar.
 
-Pacioli es una app web de finanzas personales para **presupuestar, registrar y entender** tu dinero mes a mes. 100% local (SQLite).
+Pacioli es una app web de finanzas personales para **presupuestar, registrar y entender** tu dinero mes a mes. 100% local: **SQLite por defecto** y **PostgreSQL en contenedor** cuando se activa con `DATABASE_URL`.
 
-![Stack](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLite-blue) ![Frontend](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite%206-61DAFB) ![Charts](https://img.shields.io/badge/Charts-Recharts%203-orange) ![License](https://img.shields.io/badge/License-MIT-green)
+![Stack](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLite%2FPostgres-blue) ![Frontend](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite%206-61DAFB) ![Charts](https://img.shields.io/badge/Charts-Recharts%203-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
@@ -56,7 +56,7 @@ Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con head
 
 | Capa | Tecnologías |
 |------|-------------|
-| **Backend** | FastAPI, Pydantic, SQLite (`money` como `INTEGER cents`), migraciones `PRAGMA user_version` (v14), `uvicorn` |
+| **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v14), `uvicorn`, `psycopg` |
 | **Frontend** | React 19, TypeScript 5, Vite 6, Tailwind v4, shadcn/ui + Base UI, Recharts 3, TanStack Query 5, React Router 7 |
 | **Calidad** | `ruff`, `mypy`, `pytest`, `tsc -b`, `oxlint`, `vite build` |
 
@@ -80,6 +80,9 @@ pacioli/
 │   │   ├── hooks/useMonth.ts# mes en URL + espejo en localStorage
 │   │   └── lib/             # api.ts, types.ts, money.ts
 │   └── public/favicon.svg   # libro con cruz
+├── Dockerfile
+├── docker-compose.yml      # app (8000) + db (host 5433)
+├── scripts/migrate_to_postgres.py
 └── README.md
 ```
 
@@ -89,6 +92,7 @@ pacioli/
 
 - Python 3.11+
 - Node.js 22+
+- Podman + `podman-compose` (para producción/contenedores)
 
 ## 🚀 Puesta en marcha
 
@@ -115,7 +119,7 @@ npm install
 # Ctrl+C detiene ambos
 ```
 
-### Producción (un solo proceso)
+### Producción
 
 ```bash
 cd frontend && npm run build && cd ..
@@ -123,11 +127,17 @@ backend/.venv/bin/uvicorn app.main:app --app-dir backend --port 8000
 # Si existe frontend/dist, el backend sirve la SPA en http://localhost:8000
 ```
 
+O con el stack completo en contenedores (app + Postgres):
+
+```bash
+podman-compose up -d --wait   # http://localhost:8000  (y Postgres en :5433)
+```
+
 ---
 
 ## 💾 Datos
 
-- **Ubicación:** `~/.local/share/pacioli/pacioli.db` (`XDG_DATA_HOME` o `PACIOLI_DATA_DIR` la sobreescriben). Compatible con `data/budget.db` del desktop: se importa una vez.
+- **Ubicación:** SQLite en `~/.local/share/pacioli/pacioli.db` (`XDG_DATA_HOME` o `PACIOLI_DATA_DIR` lo sobreescriben). Compatible con `data/budget.db` del desktop: se importa una vez. Con `DATABASE_URL` los datos viven en PostgreSQL (volúmen `pgdata` del compose).
 - **Backups diarios** con rotación (10) en `~/.local/share/pacioli/backups/`.
 - **Migraciones** (`SCHEMA_VERSION = 14`):
   - v11 `monthly_plans` (total del mes)
@@ -141,21 +151,30 @@ backend/.venv/bin/uvicorn app.main:app --app-dir backend --port 8000
 
 ### 🐘 PostgreSQL (opcional)
 
-SQLite es el valor por defecto (ideal porque “no va a crecer mucho”). Para verlo en Postgres desde VS Code sin perder SQLite:
+SQLite sigue siendo el valor por defecto en desarrollo local. El stack de producción corre **app + Postgres juntos** en Podman (compose), con Postgres publicado en el host en el puerto **5433** (5432 lo ocupa otro servicio):
 
 ```bash
-# 1) Levantá Postgres local (requiere Docker)
-docker compose up -d  # usa docker-compose.yml (pacioli:pacioli@localhost:5432/pacioli)
+# 1) Levantá el stack completo (app 8000 + db host 5433)
+podman-compose up -d --wait   # usa docker-compose.yml
 
-# 2) Migra tu SQLite actual a Postgres
-DATABASE_URL=postgresql://pacioli:pacioli@localhost:5432/pacioli python scripts/migrate_to_postgres.py
+# 2) (una vez) Migra tu SQLite actual a Postgres
+DATABASE_URL=postgresql://pacioli:pacioli@localhost:5433/pacioli \
+  backend/.venv/bin/python scripts/migrate_to_postgres.py
 
-# 3) Iniciá la app contra Postgres
-DATABASE_URL=postgresql://pacioli:pacioli@localhost:5432/pacioli ./dev.sh
-# o: DATABASE_URL=... backend/.venv/bin/uvicorn app.main:app --app-dir backend --port 8000
+# 3) La app ya corre contra Postgres (DATABASE_URL lo inyecta compose)
+curl -s http://localhost:8000/health
 ```
 
-En **VS Code**: instalá **PostgreSQL** (`cweijan.vscode-postgresql-client2`), `Ctrl+Shift+P` → **PostgreSQL: Add Connection** → pegá el `DATABASE_URL`. Sin `DATABASE_URL` la app sigue usando SQLite.
+Arranque con systemd (arranca todo el stack con la sesión):
+
+```bash
+systemctl --user enable --now pacioli
+systemctl --user restart pacioli
+```
+
+Datos de conexión: `postgresql://pacioli:pacioli@localhost:5433/pacioli` (host `localhost`, puerto `5433`, usuario `pacioli`, password `pacioli`, DB `pacioli`). Sin `DATABASE_URL` la app sigue usando SQLite.
+
+En **VS Code**: instalá **PostgreSQL** (`cweijan.vscode-postgresql-client2`), `Ctrl+Shift+P` → **PostgreSQL: Add Connection** → host `localhost`, puerto `5433`, usuario `pacioli`, password `pacioli`, DB `pacioli`. Después: Schemas → public → Tables.
 
 ---
 
@@ -180,7 +199,7 @@ Montos como strings `"1234.56"` para evitar `float64`.
 ```bash
 # Backend
 cd backend && .venv/bin/ruff check . && .venv/bin/mypy app && .venv/bin/pytest -q
-# 139 passed
+# 121 passed
 
 # Frontend
 cd frontend && npx tsc -b && npm run lint && npm run build
