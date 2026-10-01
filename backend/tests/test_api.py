@@ -505,7 +505,12 @@ class TestCreditCards:
         assert cards[0]["available"] == "750000.00"
 
         transactions = client.get("/api/transactions?month=9&year=2026").json()
-        assert transactions[0]["card_name"] == "Mastercard"
+        assert transactions == []
+
+        # Purchased Sep 15 (after the Sep 10 cutoff), so it is billed in
+        # October and belongs to that month's list.
+        october = client.get("/api/transactions?month=10&year=2026").json()
+        assert october[0]["card_name"] == "Mastercard"
 
     def test_gasto_tc_without_card_rejected(self, client: TestClient) -> None:
         expense_cat = client.post(

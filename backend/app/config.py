@@ -6,7 +6,7 @@ Persistent configuration stored under the XDG config directory
 
 import json
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 

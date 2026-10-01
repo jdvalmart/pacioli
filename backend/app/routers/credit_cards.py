@@ -22,7 +22,6 @@ def list_cards(
     When a month is supplied, the cycle shown corresponds to that month
     (the purchase on Sep 15 with cutoff 5 is billed in October).
     """
-    from fastapi import Query
 
     ref = None
     if month is not None and year is not None:

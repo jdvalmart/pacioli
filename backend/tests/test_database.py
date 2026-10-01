@@ -738,6 +738,44 @@ class TestCreditCards:
         assert cards[0].cutoff_day == 12
         assert cards[0].payment_day == 28
 
+    def test_card_purchase_counts_in_payment_month(
+        self, temp_db: str, sample_category: int
+    ) -> None:
+        # Cutoff on day 5, payment on day 15: a purchase after the 5th is
+        # billed the next month, one on/before the 5th is billed this month.
+        card_id = add_credit_card("Visa", Decimal("1000000.00"), 5, 15)
+
+        add_transaction(
+            date(2026, 9, 3),
+            Decimal("50000.00"),
+            sample_category,
+            "Antes del corte",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+        add_transaction(
+            date(2026, 9, 26),
+            Decimal("100000.00"),
+            sample_category,
+            "Mercado de octubre",
+            kind="gasto_tc",
+            card_id=card_id,
+        )
+
+        # September lists and budgets only the purchase made before the cutoff.
+        september = get_transactions(9, 2026)
+        assert [t.description for t in september] == ["Antes del corte"]
+        assert get_monthly_summary(9, 2026).by_category["Test"] == Decimal("50000.00")
+
+        # The late-September purchase is paid in October and lands there.
+        october = get_transactions(10, 2026)
+        assert [t.description for t in october] == ["Mercado de octubre"]
+        assert get_monthly_summary(10, 2026).by_category["Test"] == Decimal("100000.00")
+
+        budget = get_budget_vs_actual(10, 2026)
+        assert budget[0]["name"] == "Test"
+        assert budget[0]["actual"] == Decimal("100000.00")
+
         delete_credit_card(card_id)
         assert get_credit_cards() == []
 

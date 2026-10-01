@@ -1581,17 +1581,21 @@ def _row_to_tx(row: sqlite3.Row) -> Transaction:
 
 
 def get_transactions(month: int, year: int) -> list[Transaction]:
-    """Return all transactions of a month, newest first."""
+    """Return all transactions of a month, newest first.
+
+    Card purchases (``gasto_tc``) belong to the month in which their
+    statement is paid, not to the purchase month, so the list matches the
+    budgets and the category breakdown.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
-        start_date, end_date = _month_window(month, year)
         cursor.execute(
             """
             SELECT t.*, c.name as category_name, c.type as category_type, c.color, c.icon,
                    s.name as subcategory_name, s.icon as subcategory_icon,
                    a.name as account_name, a.icon as account_icon,
                    a2.name as to_account_name, a2.icon as to_account_icon,
-                   cc.name as card_name,
+                   cc.name as card_name, cc.cutoff_day, cc.payment_day,
                    sv.name as savings_name
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
@@ -1600,12 +1604,22 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
             LEFT JOIN accounts a2 ON t.to_account_id = a2.id
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
             LEFT JOIN savings sv ON t.savings_id = sv.id
-            WHERE t.date >= ? AND t.date < ?
             ORDER BY t.date DESC
-        """,
-            (start_date, end_date),
+        """
         )
-        return [_row_to_tx(row) for row in cursor.fetchall()]
+        rows = cursor.fetchall()
+
+    start_date, end_date = _month_window(month, year)
+    result = []
+    for row in rows:
+        if row["kind"] == "gasto_tc":
+            bill_year, bill_month = _charge_month(row)
+            if (bill_month, bill_year) != (month, year):
+                continue
+        elif not (start_date <= row["date"] < end_date):
+            continue
+        result.append(_row_to_tx(row))
+    return result
 
 
 def add_transaction(
@@ -2081,6 +2095,34 @@ def _cycle_ordinal(cutoff_day: int, day: date) -> int:
     return end.year * 12 + (end.month - 1)
 
 
+def _card_billing_month(cutoff_day: int, payment_day: int, purchase: date) -> tuple[int, int]:
+    """(year, month) in which a card purchase must be paid.
+
+    A purchase belongs to the statement that closes on the first cutoff
+    after it; that statement is due on the card's payment date. The
+    purchase is attributed to the payment's month, so a purchase late in
+    the month (after the cutoff) lands on the following month's budget.
+    """
+    end = _cutoff_in(purchase.year, purchase.month, cutoff_day)
+    if purchase > end:
+        next_year, next_month = _shift_month(purchase.year, purchase.month, 1)
+        end = _cutoff_in(next_year, next_month, cutoff_day)
+    payment = _payment_for_cutoff(end, payment_day)
+    return payment.year, payment.month
+
+
+def _charge_month(row: Any) -> tuple[int, int]:
+    """Billing (year, month) of a ``gasto_tc`` row.
+
+    Falls back to the purchase month when the row has no card attached.
+    """
+    purchase = date.fromisoformat(row["date"])
+    cutoff_day = row["cutoff_day"]
+    if cutoff_day is None:
+        return purchase.year, purchase.month
+    return _card_billing_month(cutoff_day, row["payment_day"], purchase)
+
+
 def _gross(amount_cents: int, interest_bp: int) -> Decimal:
     """Purchase total with its plan interest applied."""
     return _to_dec(amount_cents) * (Decimal(10000 + interest_bp) / Decimal(10000))
@@ -2446,14 +2488,15 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
         start_date, end_date = _month_window(month, year)
 
         # Spending by category (informational): real expenses plus card
-        # purchases, so the user still sees where the money went.
+        # purchases, so the user still sees where the money went. Card
+        # purchases count in the month their statement is paid.
         cursor.execute(
             """
             SELECT c.name, t.kind, SUM(t.amount_cents) as total_cents
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             WHERE t.date >= ? AND t.date < ?
-              AND t.kind IN ('ingreso', 'gasto', 'gasto_tc')
+              AND t.kind IN ('ingreso', 'gasto')
             GROUP BY c.name, t.kind
         """,
             (start_date, end_date),
@@ -2463,6 +2506,23 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
         for row in cursor.fetchall():
             name = row["name"]
             by_category[name] = by_category.get(name, Decimal("0.00")) + _to_dec(row["total_cents"])
+
+        # Card purchases billed in this month, attributed by payment date.
+        cursor.execute(
+            """
+            SELECT c.name, t.amount_cents, t.date, cc.cutoff_day, cc.payment_day
+            FROM transactions t
+            JOIN categories c ON t.category_id = c.id
+            LEFT JOIN credit_cards cc ON t.card_id = cc.id
+            WHERE t.kind = 'gasto_tc'
+        """
+        )
+        for row in cursor.fetchall():
+            if _charge_month(row) == (year, month):
+                name = row["name"]
+                by_category[name] = by_category.get(name, Decimal("0.00")) + _to_dec(
+                    row["amount_cents"]
+                )
 
         # Cash totals: expenses are actual outflows. A card payment is
         # an outflow; the card purchase itself is not (yet).
@@ -2524,32 +2584,80 @@ def get_category_spending(
     """Return (name, total, color, icon) spending by category.
 
     Expenses include gasto and gasto_tc kinds; income only ingreso.
+    Card purchases are counted in the month their statement is paid.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
         start_date, end_date = _month_window(month, year)
-        kind_filter = (
-            "t.kind = 'ingreso'" if cat_type == "income" else "t.kind IN ('gasto', 'gasto_tc')"
-        )
+
+        if cat_type == "income":
+            cursor.execute(
+                """
+                SELECT c.name, SUM(t.amount_cents) as total_cents, c.color, c.icon
+                FROM transactions t
+                JOIN categories c ON t.category_id = c.id
+                WHERE t.kind = 'ingreso' AND t.date >= ? AND t.date < ?
+                GROUP BY c.id
+                ORDER BY total_cents DESC
+            """,
+                (start_date, end_date),
+            )
+            return [
+                (row["name"], _to_dec(row["total_cents"]), row["color"], row["icon"])
+                for row in cursor.fetchall()
+            ]
+
+        # Expense: real expenses by purchase date, plus card purchases
+        # attributed to their statement's payment month.
         cursor.execute(
-            f"""
-            SELECT c.name, SUM(t.amount_cents) as total_cents, c.color, c.icon
+            """
+            SELECT c.id, c.name, SUM(t.amount_cents) as total_cents, c.color, c.icon
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
-            WHERE {kind_filter} AND t.date >= ? AND t.date < ?
+            WHERE t.kind = 'gasto' AND t.date >= ? AND t.date < ?
             GROUP BY c.id
-            ORDER BY total_cents DESC
         """,
             (start_date, end_date),
         )
-        return [
-            (row["name"], _to_dec(row["total_cents"]), row["color"], row["icon"])
-            for row in cursor.fetchall()
-        ]
+        agg: dict[int, list[Any]] = {}
+        for row in cursor.fetchall():
+            agg[row["id"]] = [row["name"], _to_dec(row["total_cents"]), row["color"], row["icon"]]
+
+        cursor.execute(
+            """
+            SELECT t.category_id, t.amount_cents, t.date,
+                   cc.cutoff_day, cc.payment_day, c.name, c.color, c.icon
+            FROM transactions t
+            JOIN categories c ON t.category_id = c.id
+            LEFT JOIN credit_cards cc ON t.card_id = cc.id
+            WHERE t.kind = 'gasto_tc'
+        """
+        )
+        for row in cursor.fetchall():
+            if _charge_month(row) != (year, month):
+                continue
+            cat_id = row["category_id"]
+            if cat_id in agg:
+                agg[cat_id][1] += _to_dec(row["amount_cents"])
+            else:
+                agg[cat_id] = [
+                    row["name"],
+                    _to_dec(row["amount_cents"]),
+                    row["color"],
+                    row["icon"],
+                ]
+
+        result = [(v[0], v[1], v[2], v[3]) for v in agg.values() if v[1] > 0]
+        result.sort(key=lambda item: item[1], reverse=True)
+        return result
 
 
 def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
-    """Return budget vs actual spending per expense category."""
+    """Return budget vs actual spending per expense category.
+
+    Card purchases count towards the budget of the month their statement
+    is paid, not the purchase month.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         start_date, end_date = _month_window(month, year)
@@ -2562,31 +2670,60 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
             FROM categories c
             LEFT JOIN budgets b ON c.id = b.category_id AND b.month = ? AND b.year = ?
             LEFT JOIN transactions t ON c.id = t.category_id AND t.date >= ? AND t.date < ?
-                AND t.kind IN ('gasto', 'gasto_tc')
+                AND t.kind = 'gasto'
             WHERE c.type = 'expense'
             GROUP BY c.id
-            HAVING budget_cents > 0 OR actual_cents > 0
-            ORDER BY c.name
         """,
             (month, year, start_date, end_date),
         )
 
-        result = []
+        rows: dict[int, dict[str, Any]] = {}
         for row in cursor.fetchall():
-            budget = _to_dec(row["budget_cents"])
-            actual = _to_dec(row["actual_cents"])
+            rows[row["id"]] = {
+                "category_id": row["id"],
+                "name": row["name"],
+                "color": row["color"],
+                "icon": row["icon"],
+                "budget": _to_dec(row["budget_cents"]),
+                "actual": _to_dec(row["actual_cents"]),
+            }
+
+        # Card purchases billed in this month, attributed by payment date.
+        cursor.execute(
+            """
+            SELECT t.category_id, t.amount_cents, t.date,
+                   cc.cutoff_day, cc.payment_day
+            FROM transactions t
+            LEFT JOIN credit_cards cc ON t.card_id = cc.id
+            WHERE t.kind = 'gasto_tc'
+        """
+        )
+        for row in cursor.fetchall():
+            if _charge_month(row) != (year, month):
+                continue
+            cat = rows.get(row["category_id"])
+            if cat is not None:
+                cat["actual"] += _to_dec(row["amount_cents"])
+
+        result = []
+        for cat in rows.values():
+            budget = cat["budget"]
+            actual = cat["actual"]
+            if budget <= 0 and actual <= 0:
+                continue
             result.append(
                 {
-                    "category_id": row["id"],
-                    "name": row["name"],
-                    "color": row["color"],
-                    "icon": row["icon"],
+                    "category_id": cat["category_id"],
+                    "name": cat["name"],
+                    "color": cat["color"],
+                    "icon": cat["icon"],
                     "budget": budget,
                     "actual": actual,
                     "remaining": budget - actual if budget > 0 else -actual,
                     "percent": float(actual / budget * 100) if budget > 0 else 0.0,
                 }
             )
+        result.sort(key=lambda item: item["name"])
         return result
 
 
