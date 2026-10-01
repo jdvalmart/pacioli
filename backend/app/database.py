@@ -2665,14 +2665,14 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
         cursor.execute(
             """
             SELECT c.id, c.name, c.color, c.icon,
-                   COALESCE(b.amount_cents, 0) as budget_cents,
+                   COALESCE(MAX(b.amount_cents), 0) as budget_cents,
                    COALESCE(SUM(t.amount_cents), 0) as actual_cents
             FROM categories c
             LEFT JOIN budgets b ON c.id = b.category_id AND b.month = ? AND b.year = ?
             LEFT JOIN transactions t ON c.id = t.category_id AND t.date >= ? AND t.date < ?
                 AND t.kind = 'gasto'
             WHERE c.type = 'expense'
-            GROUP BY c.id
+            GROUP BY c.id, c.name, c.color, c.icon
         """,
             (month, year, start_date, end_date),
         )
