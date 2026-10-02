@@ -912,6 +912,35 @@ class TestSavings:
         accounts = {a.name: a for a in get_accounts()}
         assert accounts["Banco"].balance == Decimal("3000000.00")
 
+    def test_savings_feed_ahorro_category(self, temp_db: str) -> None:
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        add_category("Ahorro", "expense", "#22C55E", "🐷")
+        item_id = add_savings("Meta", "bolsillo")
+
+        add_transaction(
+            date(2026, 10, 1),
+            Decimal("150000.00"),
+            account_id=account_id,
+            kind="ahorro",
+            savings_id=item_id,
+        )
+        add_transaction(
+            date(2026, 10, 5),
+            Decimal("20000.00"),
+            account_id=account_id,
+            kind="retiro",
+            savings_id=item_id,
+        )
+
+        # The Ahorro category shows the net amount moved to savings.
+        budget = {r["name"]: r for r in get_budget_vs_actual(10, 2026)}
+        assert budget["Ahorro"]["actual"] == Decimal("130000.00")
+
+        summary = get_monthly_summary(10, 2026)
+        assert summary.by_category["Ahorro"] == Decimal("130000.00")
+        # Savings are not a cash expense.
+        assert summary.total_expense == Decimal("0.00")
+
     def test_initial_deposit_recorded(self, temp_db: str) -> None:
         account_id = add_account("Banco", "banco", Decimal("1000000.00"))
         add_savings(

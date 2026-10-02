@@ -679,6 +679,7 @@ function TransactionsTable({
           <TableRow>
             <TableHead>Fecha</TableHead>
             <TableHead>Tipo</TableHead>
+            <TableHead>Subcategoría</TableHead>
             <TableHead>Detalle</TableHead>
             <TableHead className="text-right">Monto</TableHead>
             <TableHead className="w-24" />
@@ -687,7 +688,7 @@ function TransactionsTable({
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+              <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                 {emptyMessage}
               </TableCell>
             </TableRow>
@@ -721,6 +722,9 @@ function TransactionsTable({
                   </span>
                 )}
               </TableCell>
+              <TableCell className="max-w-40 truncate font-bold text-muted-foreground">
+                {tx.subcategory_name || '—'}
+              </TableCell>
               <TableCell className="max-w-64 truncate">
                 <div className="truncate">{tx.description || '—'}</div>
                 <div className="mt-0.5 truncate text-xs font-bold text-muted-foreground">
@@ -735,9 +739,8 @@ function TransactionsTable({
                           : tx.account_name
                             ? `${tx.account_icon} ${tx.account_name}`
                             : '—'}
-                  {tx.subcategory_name && ` · ${tx.subcategory_name}`}
-                </div>
-              </TableCell>
+              </div>
+            </TableCell>
               <TableCell className={`text-right font-bold ${amountClass(tx)}`}>
                 {tx.kind === 'ingreso' ? '+' : tx.kind === 'transferencia' ? '⇄' : '−'}
                 {fmtCopDecimals(tx.amount)}

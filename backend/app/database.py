@@ -1347,15 +1347,58 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
             )
 
     default_subcategories = [
+        # Income
         (
-            "Servicios",
+            "Salario",
             [
-                ("Agua", "💧"),
-                ("Energía", "⚡"),
-                ("Gas", "🔥"),
-                ("Internet", "🌐"),
-                ("Teléfono", "📱"),
-                ("Televisión", "📺"),
+                ("Salario mensual", "💰"),
+                ("Bonos", "🎁"),
+                ("Horas extra", "⏰"),
+                ("Comisiones", "🤝"),
+                ("Viáticos", "🚗"),
+                ("Prima", "🏦"),
+            ],
+        ),
+        (
+            "Freelance",
+            [
+                ("Proyectos", "📁"),
+                ("Servicios", "🛠️"),
+                ("Clientes", "👥"),
+                ("Contratos", "📝"),
+                ("Honorarios", "💼"),
+            ],
+        ),
+        (
+            "Inversiones",
+            [
+                ("Rendimientos", "📈"),
+                ("Intereses", "💹"),
+                ("Dividendos", "💵"),
+                ("Ganancias", "🏆"),
+                ("Cripto", "🪙"),
+            ],
+        ),
+        (
+            "Otros ingresos",
+            [
+                ("Regalos", "🎁"),
+                ("Reembolsos", "↩️"),
+                ("Subsidio", "🤲"),
+                ("Préstamos", "💸"),
+                ("Ventas", "🏷️"),
+            ],
+        ),
+        # Expense
+        (
+            "Vivienda",
+            [
+                ("Arriendo", "🏠"),
+                ("Mantenimiento", "🔧"),
+                ("Seguro", "🛡️"),
+                ("Administración", "🏢"),
+                ("Reparaciones", "🧰"),
+                ("Impuestos", "🧾"),
             ],
         ),
         (
@@ -1371,12 +1414,37 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
             ],
         ),
         (
+            "Servicios",
+            [
+                ("Agua", "💧"),
+                ("Energía", "⚡"),
+                ("Gas", "🔥"),
+                ("Internet", "🌐"),
+                ("Teléfono", "📱"),
+                ("Televisión", "📺"),
+            ],
+        ),
+        (
             "Transporte",
             [
                 ("Gasolina", "⛽"),
                 ("Transporte público", "🚌"),
                 ("Estacionamiento", "🅿️"),
                 ("Uber/Taxi", "🚕"),
+                ("Peajes", "🛣️"),
+                ("Mantenimiento", "🔧"),
+                ("SOAT", "📄"),
+            ],
+        ),
+        (
+            "Entretenimiento",
+            [
+                ("Cine/Streaming", "🎬"),
+                ("Música", "🎵"),
+                ("Salidas", "🍸"),
+                ("Hobbies", "🎨"),
+                ("Videojuegos", "🎮"),
+                ("Eventos", "🎟️"),
             ],
         ),
         (
@@ -1385,6 +1453,9 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
                 ("Consultas", "🩺"),
                 ("Medicamentos", "💊"),
                 ("Seguro médico", "🛡️"),
+                ("Odontología", "🦷"),
+                ("Exámenes", "🔬"),
+                ("Terapias", "🧘"),
             ],
         ),
         (
@@ -1393,14 +1464,50 @@ def _seed_defaults(conn: sqlite3.Connection) -> None:
                 ("Matrícula", "🎓"),
                 ("Libros", "📖"),
                 ("Cursos", "💻"),
+                ("Útiles", "✏️"),
+                ("Uniformes", "👕"),
+                ("Plataformas", "🌐"),
             ],
         ),
         (
-            "Vivienda",
+            "Compras",
             [
-                ("Arriendo", "🏠"),
-                ("Mantenimiento", "🔧"),
-                ("Seguro", "🛡️"),
+                ("Ropa", "👕"),
+                ("Calzado", "👟"),
+                ("Regalos", "🎁"),
+                ("Tecnología", "📱"),
+                ("Hogar", "🛋️"),
+                ("Accesorios", "💍"),
+            ],
+        ),
+        (
+            "Otros gastos",
+            [
+                ("Imprevistos", "⚠️"),
+                ("Comisiones bancarias", "🏦"),
+                ("Multas", "🚨"),
+                ("Ajustes", "⚖️"),
+                ("Varios", "📦"),
+            ],
+        ),
+        (
+            "Diezmo",
+            [
+                ("Diezmo", "🙏"),
+                ("Ofrendas", "🕊️"),
+                ("Ayudas", "🤝"),
+                ("Donaciones", "🎗️"),
+                ("Primicias", "🌾"),
+            ],
+        ),
+        (
+            "Ahorro",
+            [
+                ("CDT", "🏦"),
+                ("Fondo de emergencia", "🚨"),
+                ("Meta", "🎯"),
+                ("Inversión", "📈"),
+                ("Bolsillo", "👝"),
             ],
         ),
     ]
@@ -1571,6 +1678,37 @@ def _month_window(month: int, year: int) -> tuple[str, str]:
     start = f"{year}-{month:02d}-01"
     end = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
     return start, end
+
+
+SAVINGS_CATEGORY_NAME = "Ahorro"
+
+
+def _savings_category(conn: Any) -> Any | None:
+    """Expense category that groups savings movements (named "Ahorro")."""
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, name, color, icon FROM categories "
+        "WHERE type = 'expense' AND LOWER(name) = LOWER(?) ORDER BY id LIMIT 1",
+        (SAVINGS_CATEGORY_NAME,),
+    )
+    return cursor.fetchone()
+
+
+def _savings_net_for_month(conn: Any, month: int, year: int) -> Decimal:
+    """Net amount moved to savings in a month (ahorro minus retiro)."""
+    start, end = _month_window(month, year)
+    cursor = conn.cursor()
+    row = cursor.execute(
+        """
+        SELECT COALESCE(SUM(CASE WHEN kind = 'ahorro' THEN amount_cents
+                                 WHEN kind = 'retiro' THEN -amount_cents
+                                 ELSE 0 END), 0) as cents
+        FROM transactions
+        WHERE kind IN ('ahorro', 'retiro') AND date >= ? AND date < ?
+    """,
+        (start, end),
+    ).fetchone()
+    return _to_dec(row["cents"])
 
 
 def _row_to_tx(row: sqlite3.Row) -> Transaction:
@@ -2524,6 +2662,15 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
                     row["amount_cents"]
                 )
 
+        # Savings movements feed the "Ahorro" category (net of withdrawals)
+        # without counting as cash expenses.
+        savings_cat = _savings_category(conn)
+        if savings_cat is not None:
+            net = _savings_net_for_month(conn, month, year)
+            if net != 0:
+                name = savings_cat["name"]
+                by_category[name] = by_category.get(name, Decimal("0.00")) + net
+
         # Cash totals: expenses are actual outflows. A card payment is
         # an outflow; the card purchase itself is not (yet).
         totals = cursor.execute(
@@ -2647,6 +2794,23 @@ def get_category_spending(
                     row["icon"],
                 ]
 
+        # Savings movements count in the "Ahorro" category, net of
+        # withdrawals, without being cash expenses.
+        savings_cat = _savings_category(conn)
+        if savings_cat is not None:
+            net = _savings_net_for_month(conn, month, year)
+            if net != 0:
+                cat_id = savings_cat["id"]
+                if cat_id in agg:
+                    agg[cat_id][1] += net
+                else:
+                    agg[cat_id] = [
+                        savings_cat["name"],
+                        net,
+                        savings_cat["color"],
+                        savings_cat["icon"],
+                    ]
+
         result = [(v[0], v[1], v[2], v[3]) for v in agg.values() if v[1] > 0]
         result.sort(key=lambda item: item[1], reverse=True)
         return result
@@ -2704,6 +2868,13 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
             cat = rows.get(row["category_id"])
             if cat is not None:
                 cat["actual"] += _to_dec(row["amount_cents"])
+
+        # Savings movements fill the "Ahorro" category, net of withdrawals.
+        savings_cat = _savings_category(conn)
+        if savings_cat is not None:
+            cat = rows.get(savings_cat["id"])
+            if cat is not None:
+                cat["actual"] += _savings_net_for_month(conn, month, year)
 
         result = []
         for cat in rows.values():
