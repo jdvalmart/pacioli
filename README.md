@@ -43,7 +43,7 @@ Eje Y compacto: `$3,0M / $750k`.
 Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con header + acción):
 - **Cuentas:** nombre, tipo (`efectivo/digital/ahorros/banco`), **saldo inicial** (“no cuenta en ningún mes”).
 - **Tarjetas:** límite, días de corte/pago.
-- **Ahorro e inversión:** bolsillo (meta + tasa), programado (día/monto + tasa + plazo), CDT (tasa + plazo), **acciones** (valor actual + **dividendos recibidos** + ganancia total). Grilla `sm:2 xl:3` y filas compactas (`p-3`, `size-9`).
+- **Ahorro e inversión:** bolsillo (meta + tasa), programado (día/monto + tasa + plazo), CDT (tasa + plazo), **acciones** (valor actual + **dividendos recibidos** + ganancia total). Un bolsillo puede **enlazarse a una categoría** y se muestra como **Reservado** en el presupuesto (es apartar, no gastar). Grilla `sm:2 xl:3` y filas compactas (`p-3`, `size-9`).
 - **Categorías:** `Ingresos` arriba, `Gastos` abajo (a pedido del usuario), grilla compacta.
 
 ### Navegación

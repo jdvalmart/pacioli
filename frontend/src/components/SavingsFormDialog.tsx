@@ -62,6 +62,7 @@ function SavingsFormBody({
 }) {
   const queryClient = useQueryClient()
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
 
   const [name, setName] = useState(item?.name ?? '')
   const [kind, setKind] = useState<SavingsKind>(item?.kind ?? 'bolsillo')
@@ -78,6 +79,9 @@ function SavingsFormBody({
   const [scheduledAmount, setScheduledAmount] = useState(item?.scheduled_amount ?? '')
   const [sourceAccountId, setSourceAccountId] = useState(
     item?.source_account_id ? String(item.source_account_id) : '',
+  )
+  const [categoryId, setCategoryId] = useState(
+    item?.category_id ? String(item.category_id) : 'none',
   )
   const [initialAmount, setInitialAmount] = useState('')
   const [initialAccountId, setInitialAccountId] = useState('')
@@ -98,6 +102,7 @@ function SavingsFormBody({
           kind === 'bolsillo_programado' && scheduledAmount ? normalizeAmount(scheduledAmount) : null,
         source_account_id:
           kind === 'bolsillo_programado' && sourceAccountId ? Number(sourceAccountId) : null,
+        category_id: kind === 'bolsillo' && categoryId !== 'none' ? Number(categoryId) : null,
       }
       if (item) {
         await api.updateSavings(item.id, common)
@@ -174,6 +179,31 @@ function SavingsFormBody({
             onChange={(e) => setName(e.target.value)}
           />
         </div>
+
+        {kind === 'bolsillo' && (
+          <div className="space-y-1.5">
+            <Label>Categoría del presupuesto (opcional)</Label>
+            <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? 'none')}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin categoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin categoría</SelectItem>
+                {(categories.data ?? [])
+                  .filter((c) => c.type === 'expense')
+                  .map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.icon} {c.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Si la enlazás, el dinero apartado se muestra como "Reservado" en el presupuesto de
+              esa categoría.
+            </p>
+          </div>
+        )}
 
         {(kind === 'bolsillo' || kind === 'bolsillo_programado') && (
           <div className="space-y-1.5">

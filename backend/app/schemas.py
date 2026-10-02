@@ -129,6 +129,7 @@ class SavingsIn(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     kind: Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
+    category_id: int | None = None
     target: Money | None = None
     rate_bp: int | None = Field(default=None, ge=0, le=10000)
     term_days: int | None = Field(default=None, ge=1, le=3650)
@@ -146,6 +147,7 @@ class SavingsUpdate(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     kind: Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
+    category_id: int | None = None
     target: Money | None = None
     rate_bp: int | None = Field(default=None, ge=0, le=10000)
     term_days: int | None = Field(default=None, ge=1, le=3650)
@@ -162,6 +164,7 @@ class SavingsOut(BaseModel):
     id: int
     name: str
     kind: str
+    category_id: int | None
     target: Money | None
     rate_bp: int | None
     term_days: int | None
@@ -257,6 +260,7 @@ class BudgetVsActualOut(BaseModel):
     icon: str
     budget: Money
     actual: Money
+    reserved: Money
     remaining: Money
     percent: float
 

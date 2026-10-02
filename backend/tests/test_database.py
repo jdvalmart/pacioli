@@ -941,6 +941,22 @@ class TestSavings:
         # Savings are not a cash expense.
         assert summary.total_expense == Decimal("0.00")
 
+    def test_bolsillo_reserve_shows_in_budget(self, temp_db: str) -> None:
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        cat = add_category("Transporte test", "expense", "#000000", "🚌")
+        item_id = add_savings("Reserva transporte", "bolsillo", category_id=cat)
+        add_transaction(
+            date(2026, 10, 2),
+            Decimal("160000.00"),
+            account_id=account_id,
+            kind="ahorro",
+            savings_id=item_id,
+        )
+
+        rows = {r["name"]: r for r in get_budget_vs_actual(10, 2026)}
+        assert rows["Transporte test"]["reserved"] == Decimal("160000.00")
+        assert rows["Transporte test"]["actual"] == Decimal("0.00")
+
     def test_initial_deposit_recorded(self, temp_db: str) -> None:
         account_id = add_account("Banco", "banco", Decimal("1000000.00"))
         add_savings(

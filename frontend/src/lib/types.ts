@@ -112,6 +112,7 @@ export interface SavingsItem {
   id: number
   name: string
   kind: SavingsKind
+  category_id: number | null
   target: string | null
   rate_bp: number | null
   term_days: number | null
@@ -165,6 +166,7 @@ export interface BudgetVsActual {
   icon: string
   budget: string
   actual: string
+  reserved: string
   remaining: string
   percent: number
 }

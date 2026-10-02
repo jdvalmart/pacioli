@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 def _default_data_dir() -> str:
@@ -393,6 +393,7 @@ class SavingsItem:
     id: int | None
     name: str
     kind: str  # 'bolsillo' | 'bolsillo_programado' | 'cdt' | 'acciones'
+    category_id: int | None = None
     target: Decimal | None = None
     rate_bp: int | None = None
     term_days: int | None = None
@@ -1186,6 +1187,26 @@ def _migrate_v14_savings_dividends(conn: sqlite3.Connection) -> None:
     _set_version(conn, 14)
 
 
+def _migrate_v15_savings_category(conn: sqlite3.Connection) -> None:
+    """v14 -> v15: link a savings item to a budget category.
+
+    A bolsillo can be tied to an expense category so the budget shows the
+    amount set aside (a reserve) before it is actually paid.
+    """
+    cursor = conn.cursor()
+    if _is_postgres():
+        cursor.execute(
+            "ALTER TABLE savings ADD COLUMN IF NOT EXISTS "
+            "category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL"
+        )
+    elif not _has_column(conn, "savings", "category_id"):
+        cursor.execute(
+            "ALTER TABLE savings ADD COLUMN category_id INTEGER "
+            "REFERENCES categories(id) ON DELETE SET NULL"
+        )
+    _set_version(conn, 15)
+
+
 def _create_postgres_schema(conn) -> None:  # type: ignore[no-untyped-def]
     """Create the final schema on a fresh Postgres database.
 
@@ -1238,6 +1259,7 @@ def _create_postgres_schema(conn) -> None:  # type: ignore[no-untyped-def]
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             kind TEXT NOT NULL CHECK(kind IN ('bolsillo', 'bolsillo_programado', 'cdt', 'acciones')),
+            category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
             target_cents INTEGER,
             rate_bp INTEGER,
             term_days INTEGER,
@@ -1573,6 +1595,8 @@ def init_db() -> None:
             _migrate_v13_installments(conn)
         if v < 14:
             _migrate_v14_savings_dividends(conn)
+        if v < 15:
+            _migrate_v15_savings_category(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()
@@ -1695,16 +1719,22 @@ def _savings_category(conn: Any) -> Any | None:
 
 
 def _savings_net_for_month(conn: Any, month: int, year: int) -> Decimal:
-    """Net amount moved to savings in a month (ahorro minus retiro)."""
+    """Net amount moved to savings in a month (ahorro minus retiro).
+
+    Savings linked to a budget category (reserves) are excluded here:
+    they show under their own category instead of the general "Ahorro".
+    """
     start, end = _month_window(month, year)
     cursor = conn.cursor()
     row = cursor.execute(
         """
-        SELECT COALESCE(SUM(CASE WHEN kind = 'ahorro' THEN amount_cents
-                                 WHEN kind = 'retiro' THEN -amount_cents
+        SELECT COALESCE(SUM(CASE WHEN t.kind = 'ahorro' THEN t.amount_cents
+                                 WHEN t.kind = 'retiro' THEN -t.amount_cents
                                  ELSE 0 END), 0) as cents
-        FROM transactions
-        WHERE kind IN ('ahorro', 'retiro') AND date >= ? AND date < ?
+        FROM transactions t
+        LEFT JOIN savings sv ON sv.id = t.savings_id
+        WHERE t.kind IN ('ahorro', 'retiro') AND t.date >= ? AND t.date < ?
+          AND sv.category_id IS NULL
     """,
         (start, end),
     ).fetchone()
@@ -2402,6 +2432,7 @@ def _row_to_savings(row: sqlite3.Row) -> SavingsItem:
         id=row["id"],
         name=row["name"],
         kind=row["kind"],
+        category_id=row["category_id"],
         target=_to_dec(row["target_cents"]) if row["target_cents"] is not None else None,
         rate_bp=row["rate_bp"],
         term_days=row["term_days"],
@@ -2460,6 +2491,7 @@ def add_savings(
     scheduled_day: int | None = None,
     scheduled_amount: Decimal | float | int | None = None,
     source_account_id: int | None = None,
+    category_id: int | None = None,
     initial_amount: Decimal | float | int | None = None,
     initial_account_id: int | None = None,
 ) -> int:
@@ -2479,13 +2511,14 @@ def add_savings(
             cursor,
             _ddl("""
             INSERT INTO savings
-                (name, kind, target_cents, rate_bp, term_days, current_value_cents,
+                (name, kind, category_id, target_cents, rate_bp, term_days, current_value_cents,
                  dividends_cents, scheduled_day, scheduled_amount_cents, source_account_id, opening_cents)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """),
             (
                 name,
                 kind,
+                category_id,
                 _to_cents(target) if target is not None else None,
                 rate_bp,
                 term_days,
@@ -2550,6 +2583,7 @@ def update_savings(
     scheduled_day: int | None = None,
     scheduled_amount: Decimal | float | int | None = None,
     source_account_id: int | None = None,
+    category_id: int | None = None,
 ) -> None:
     """Update a savings item, keeping its recurring template in sync."""
     with get_connection() as conn:
@@ -2559,7 +2593,7 @@ def update_savings(
             UPDATE savings
             SET name = ?, kind = ?, target_cents = ?, rate_bp = ?, term_days = ?,
                 current_value_cents = ?, dividends_cents = ?, scheduled_day = ?,
-                scheduled_amount_cents = ?, source_account_id = ?
+                scheduled_amount_cents = ?, source_account_id = ?, category_id = ?
             WHERE id = ?
             """,
             (
@@ -2573,6 +2607,7 @@ def update_savings(
                 scheduled_day,
                 _to_cents(scheduled_amount) if scheduled_amount is not None else None,
                 source_account_id,
+                category_id,
                 item_id,
             ),
         )
@@ -2850,6 +2885,7 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
                 "icon": row["icon"],
                 "budget": _to_dec(row["budget_cents"]),
                 "actual": _to_dec(row["actual_cents"]),
+                "reserved": Decimal("0.00"),
             }
 
         # Card purchases billed in this month, attributed by payment date.
@@ -2876,11 +2912,33 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
             if cat is not None:
                 cat["actual"] += _savings_net_for_month(conn, month, year)
 
+        # Money set aside in bolsillos linked to a category (reserves).
+        cursor.execute(
+            """
+            SELECT sv.category_id,
+                   SUM(CASE WHEN t.kind = 'ahorro' THEN t.amount_cents
+                            WHEN t.kind = 'retiro' THEN -t.amount_cents
+                            ELSE 0 END) as cents
+            FROM transactions t
+            JOIN savings sv ON sv.id = t.savings_id
+            WHERE t.kind IN ('ahorro', 'retiro')
+              AND sv.category_id IS NOT NULL
+              AND t.date >= ? AND t.date < ?
+            GROUP BY sv.category_id
+        """,
+            (start_date, end_date),
+        )
+        for row in cursor.fetchall():
+            cat = rows.get(row["category_id"])
+            if cat is not None:
+                cat["reserved"] = _to_dec(row["cents"])
+
         result = []
         for cat in rows.values():
             budget = cat["budget"]
             actual = cat["actual"]
-            if budget <= 0 and actual <= 0:
+            reserved = cat["reserved"]
+            if budget <= 0 and actual <= 0 and reserved <= 0:
                 continue
             result.append(
                 {
@@ -2890,6 +2948,7 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
                     "icon": cat["icon"],
                     "budget": budget,
                     "actual": actual,
+                    "reserved": reserved,
                     "remaining": budget - actual if budget > 0 else -actual,
                     "percent": float(actual / budget * 100) if budget > 0 else 0.0,
                 }

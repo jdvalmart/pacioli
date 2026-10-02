@@ -159,6 +159,7 @@ export const api = {
   createSavings: (payload: {
     name: string
     kind: SavingsKind
+    category_id?: number | null
     target?: string | null
     rate_bp?: number | null
     term_days?: number | null
@@ -178,6 +179,7 @@ export const api = {
     payload: {
       name: string
       kind: SavingsKind
+      category_id?: number | null
       target?: string | null
       rate_bp?: number | null
       term_days?: number | null

@@ -19,6 +19,7 @@ def list_savings() -> list[SavingsOut]:
             id=s.id or 0,
             name=s.name,
             kind=s.kind,
+            category_id=s.category_id,
             target=s.target,
             rate_bp=s.rate_bp,
             term_days=s.term_days,
@@ -51,6 +52,7 @@ def create_savings(payload: SavingsIn) -> CreatedOut:
             scheduled_day=payload.scheduled_day,
             scheduled_amount=payload.scheduled_amount,
             source_account_id=payload.source_account_id,
+            category_id=payload.category_id,
             initial_amount=payload.initial_amount,
             initial_account_id=payload.initial_account_id,
         )
@@ -76,6 +78,7 @@ def update_savings(item_id: int, payload: SavingsUpdate) -> MessageOut:
         scheduled_day=payload.scheduled_day,
         scheduled_amount=payload.scheduled_amount,
         source_account_id=payload.source_account_id,
+        category_id=payload.category_id,
     )
     return MessageOut(message="Savings item updated")
 

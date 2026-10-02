@@ -342,8 +342,15 @@ export function BudgetsPage() {
   const actualByCategory = new Map(
     (budgetVsActual.data ?? []).map((row) => [row.category_id, row.actual]),
   )
+  const reservedByCategory = new Map(
+    (budgetVsActual.data ?? []).map((row) => [row.category_id, row.reserved]),
+  )
 
   const totalBudget = (budgets.data ?? []).reduce((sum, b) => sum + Number(b.amount), 0)
+  const totalReserved = (budgetVsActual.data ?? []).reduce(
+    (sum, row) => sum + Number(row.reserved),
+    0,
+  )
   // Compare only against budgeted categories, so this matches the
   // dashboard. Spending in categories without a budget is shown apart.
   const budgetedRows = (budgetVsActual.data ?? []).filter((row) => Number(row.budget) > 0)
@@ -403,6 +410,11 @@ export function BudgetsPage() {
             Gastado sin presupuesto: <span className="text-rose-600">{fmtCop(unbudgeted)}</span>
           </span>
         )}
+        {totalReserved > 0 && (
+          <span className="text-sm font-bold text-muted-foreground">
+            Reservado en bolsillos: <span className="text-amber-600">{fmtCop(totalReserved)}</span>
+          </span>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -423,6 +435,7 @@ export function BudgetsPage() {
             .map((category) => {
             const current = budgetByCategory.get(category.id) ?? ''
             const actual = actualByCategory.get(category.id) ?? '0'
+            const reserved = Number(reservedByCategory.get(category.id) ?? 0)
             const hasBudget = current !== '' && Number(current) > 0
             const percent = hasBudget ? (Number(actual) / Number(current)) * 100 : 0
             const over = percent > 100
@@ -447,21 +460,30 @@ export function BudgetsPage() {
                   </div>
                 </div>
 
-                {hasBudget && (
+                {(hasBudget || reserved !== 0) && (
                   <div className="mt-3 space-y-1">
-                    <Progress
-                      value={Math.min(percent, 100)}
-                      indicatorClassName={over ? 'bg-red-500' : undefined}
-                    />
-                    <p
-                      className={`text-xs font-bold ${
-                        over ? 'text-red-500' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {over
-                        ? `Te pasaste ${fmtCopDecimals(Math.abs(remaining))}`
-                        : `Restan ${fmtCopDecimals(remaining)}`}
-                    </p>
+                    {hasBudget && (
+                      <Progress
+                        value={Math.min(percent, 100)}
+                        indicatorClassName={over ? 'bg-red-500' : undefined}
+                      />
+                    )}
+                    {reserved !== 0 && (
+                      <p className="text-xs font-bold text-amber-600">
+                        Reservado {fmtCopDecimals(reserved)}
+                      </p>
+                    )}
+                    {hasBudget && (
+                      <p
+                        className={`text-xs font-bold ${
+                          over ? 'text-red-500' : 'text-muted-foreground'
+                        }`}
+                      >
+                        {over
+                          ? `Te pasaste ${fmtCopDecimals(Math.abs(remaining))}`
+                          : `Restan ${fmtCopDecimals(remaining)}`}
+                      </p>
+                    )}
                   </div>
                 )}
               </Card>
