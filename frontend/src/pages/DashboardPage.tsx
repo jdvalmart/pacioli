@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Landmark, PiggyBank, Wallet } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { api } from '@/lib/api'
 import { fmtCop, fmtCopDecimals } from '@/lib/money'
@@ -26,6 +26,23 @@ export function DashboardPage() {
     queryKey: ['budgetVsActual', month],
     queryFn: () => api.budgetVsActual(month.month, month.year),
   })
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const savings = useQuery({ queryKey: ['savings'], queryFn: api.listSavings })
+
+  const accountsTotal = (accounts.data ?? []).reduce(
+    (sum, account) => sum + Number(account.balance),
+    0,
+  )
+  // Pocket money already sits inside the accounts; only programmed
+  // savings, CDTs and stocks have left them, so they add to net worth.
+  const investedTotal = (savings.data ?? [])
+    .filter((item) => item.kind !== 'bolsillo')
+    .reduce(
+      (sum, item) =>
+        sum + (item.current_value != null ? Number(item.current_value) : Number(item.balance)),
+      0,
+    )
+  const netWorth = accountsTotal + investedTotal
 
   const chartData = (spending.data ?? []).map((row) => ({
     name: row.name,
@@ -44,7 +61,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-extrabold">Resumen</h1>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard
           title="Ingresos"
           value={fmtCop(summary.data?.total_income ?? '0')}
@@ -58,15 +75,25 @@ export function DashboardPage() {
           tone="expense"
         />
         <StatCard
-          title="Balance acumulado"
-          value={fmtCop(summary.data?.accumulated_balance ?? '0')}
-          detail={`Este mes: ${fmtCop(summary.data?.balance ?? '0')}${
-            Number(summary.data?.carryover ?? 0) !== 0
-              ? ` · Arrastre: ${fmtCop(summary.data?.carryover ?? '0')}`
-              : ''
-          }`}
+          title="Balance del mes"
+          value={fmtCop(summary.data?.balance ?? '0')}
+          detail={`Acumulado: ${fmtCop(summary.data?.accumulated_balance ?? '0')}`}
           icon={Wallet}
           tone="primary"
+        />
+        <StatCard
+          title="En cuentas"
+          value={fmtCop(accountsTotal)}
+          detail="Efectivo disponible"
+          icon={Landmark}
+          tone="neutral"
+        />
+        <StatCard
+          title="Patrimonio"
+          value={fmtCop(netWorth)}
+          detail="Cuentas + ahorros e inversiones"
+          icon={PiggyBank}
+          tone="income"
         />
       </div>
 
