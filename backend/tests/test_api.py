@@ -753,9 +753,9 @@ class TestSavings:
         assert items[0]["balance"] == "200000.00"
         assert items[0]["target"] == "2000000.00"
 
-        # Savings deposits are allocations: the account balance stays.
+        # Savings deposits leave the account (the money is set aside).
         accounts = client.get("/api/accounts").json()
-        assert accounts[0]["balance"] == "1000000.00"
+        assert accounts[0]["balance"] == "800000.00"
 
     def test_programmed_pocket_schedule(self, client: TestClient) -> None:
         account_id = client.post(
@@ -778,7 +778,7 @@ class TestSavings:
         assert items[0]["scheduled_day"] == 15
         assert items[0]["scheduled_amount"] == "200000.00"
 
-    def test_ahorro_is_an_allocation_not_a_withdrawal(self, client: TestClient) -> None:
+    def test_ahorro_moves_money_out_of_the_account(self, client: TestClient) -> None:
         account_id = client.post(
             "/api/accounts", json={"name": "Banco", "type": "banco", "starting_amount": "0.00"}
         ).json()["id"]
@@ -801,9 +801,9 @@ class TestSavings:
         items = client.get("/api/savings").json()
         assert items[0]["balance"] == "500000.00"
 
-        # The account balance is untouched: savings are allocations.
+        # The account loses the money that was set aside.
         accounts = client.get("/api/accounts").json()
-        assert accounts[0]["balance"] == "0.00"
+        assert accounts[0]["balance"] == "-500000.00"
 
     def test_retiro_reduces_savings_balance(self, client: TestClient) -> None:
         account_id = client.post(

@@ -2100,9 +2100,9 @@ def get_accounts() -> list[Account]:
 
     The balance starts from the account's opening amount and then adds
     ingresos, subtracts gastos and pagos_tc, and moves transfers between
-    two accounts. Savings movements only leave the cash when they go to
-    a pocket *programado*, a CDT or stocks: a plain bolsillo keeps the
-    money in the account, just earmarked.
+    two accounts. Moving money to any savings item (bolsillo, programmed
+    pocket, CDT or stocks) takes it out of the account; a retiro brings
+    it back.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -2117,12 +2117,8 @@ def get_accounts() -> list[Account]:
                                    CASE WHEN t.account_id = a.id THEN -t.amount_cents
                                         WHEN t.to_account_id = a.id THEN t.amount_cents
                                         ELSE 0 END
-                               WHEN t.kind = 'ahorro' THEN
-                                   CASE WHEN COALESCE((SELECT s.kind FROM savings s WHERE s.id = t.savings_id), 'bolsillo') = 'bolsillo'
-                                        THEN 0 ELSE -t.amount_cents END
-                               WHEN t.kind = 'retiro' THEN
-                                   CASE WHEN COALESCE((SELECT s.kind FROM savings s WHERE s.id = t.savings_id), 'bolsillo') = 'bolsillo'
-                                        THEN 0 ELSE t.amount_cents END
+                               WHEN t.kind = 'ahorro' THEN -t.amount_cents
+                               WHEN t.kind = 'retiro' THEN t.amount_cents
                                ELSE 0
                            END
                        )

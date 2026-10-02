@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Pencil, PiggyBank, Plus, Trash2, TrendingUp } from 'lucide-react'
+import { ArrowLeftRight, Pencil, PiggyBank, Plus, Trash2, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -14,13 +14,166 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
 import { SectionCard } from '@/components/SectionCard'
 import { KIND_META, SavingsFormDialog } from '@/components/SavingsFormDialog'
-import { fmtCopDecimals } from '@/lib/money'
+import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { SavingsItem } from '@/lib/types'
+
+function MoveMoneyDialog({
+  open,
+  onOpenChange,
+  item,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  item: SavingsItem | null
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        {open && item && <MoveMoneyBody item={item} onOpenChange={onOpenChange} />}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function MoveMoneyBody({
+  item,
+  onOpenChange,
+}: {
+  item: SavingsItem
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const [direction, setDirection] = useState<'in' | 'out'>('in')
+  const [amount, setAmount] = useState('')
+  const [accountId, setAccountId] = useState('')
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.createTransaction({
+        date: new Date().toISOString().slice(0, 10),
+        amount: normalizeAmount(amount),
+        kind: direction === 'in' ? 'ahorro' : 'retiro',
+        category_id: null,
+        account_id: Number(accountId),
+        to_account_id: null,
+        card_id: null,
+        savings_id: item.id,
+        subcategory_id: null,
+        is_recurring: false,
+        recurring_day: null,
+      }),
+    onSuccess: () => {
+      toast.success(direction === 'in' ? 'Dinero enviado al bolsillo' : 'Dinero retirado')
+      onOpenChange(false)
+      void queryClient.invalidateQueries({ queryKey: ['savings'] })
+      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      void queryClient.invalidateQueries({ queryKey: ['summary'] })
+      void queryClient.invalidateQueries({ queryKey: ['categorySpending'] })
+      void queryClient.invalidateQueries({ queryKey: ['budgetVsActual'] })
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!(Number(normalizeAmount(amount || '0')) > 0)) {
+      toast.error('Ingresá un monto')
+      return
+    }
+    if (!accountId) {
+      toast.error('Seleccioná una cuenta')
+      return
+    }
+    mutation.mutate()
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{item.name}</DialogTitle>
+        <DialogDescription>
+          Movés dinero de una cuenta al bolsillo (apartar) o lo retirás de vuelta.
+        </DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          {(['in', 'out'] as const).map((dir) => (
+            <button
+              key={dir}
+              type="button"
+              onClick={() => setDirection(dir)}
+              className={`rounded-xl border px-3 py-2 text-sm font-bold transition-all ${
+                direction === dir
+                  ? 'border-amber-600 bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {dir === 'in' ? 'Enviar al bolsillo' : 'Retirar'}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="mv-amount">Monto</Label>
+          <Input
+            id="mv-amount"
+            required
+            placeholder="100.000"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>{direction === 'in' ? 'Desde la cuenta' : 'Hacia la cuenta'}</Label>
+          <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccioná una cuenta" />
+            </SelectTrigger>
+            <SelectContent>
+              {(accounts.data ?? []).map((account) => (
+                <SelectItem key={account.id} value={String(account.id)}>
+                  {account.icon} {account.name} ({fmtCopDecimals(account.balance)})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Button type="submit" className="w-full" disabled={mutation.isPending}>
+          {mutation.isPending
+            ? 'Guardando…'
+            : direction === 'in'
+              ? 'Enviar'
+              : 'Retirar'}
+        </Button>
+      </form>
+    </>
+  )
+}
 
 export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}) {
   const queryClient = useQueryClient()
@@ -28,6 +181,7 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<SavingsItem | null>(null)
   const [deleting, setDeleting] = useState<SavingsItem | null>(null)
+  const [moving, setMoving] = useState<SavingsItem | null>(null)
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteSavings(id),
@@ -109,6 +263,14 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                   </div>
                   {!readOnly && (
                     <div className="flex gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title="Enviar o retirar"
+                        onClick={() => setMoving(item)}
+                      >
+                        <ArrowLeftRight className="size-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-xs"
@@ -195,6 +357,12 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
       </SectionCard>
 
       <SavingsFormDialog open={formOpen} onOpenChange={setFormOpen} item={editing} />
+
+      <MoveMoneyDialog
+        open={!!moving}
+        onOpenChange={(open) => !open && setMoving(null)}
+        item={moving}
+      />
 
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>

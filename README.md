@@ -145,7 +145,7 @@ podman-compose up -d --wait   # http://localhost:8000  (y Postgres en :5433)
   - v13 `transactions.installments` / `interest_bp`
   - v14 `savings.dividends_cents` + `matures_on` (derivado de `created_at + term_days`)
 - **Reglas de saldo:**
-  - **Cuenta:** `starting + ingresos − gastos − pago_tc ± transferencias − ahorro(no-bolsillo) + retiro(no-bolsillo)`. `bolsillo` es solo apartado (sigue en cuenta); `programado/cdt/acciones` salen de la cuenta.
+  - **Cuenta:** `starting + ingresos − gastos − pago_tc ± transferencias − ahorro + retiro`. Cualquier movimiento a un ahorro (bolsillo, programado, CDT o acciones) sale del saldo disponible de la cuenta; el retiro lo devuelve.
   - **Resumen mensual:** `total_expense = gasto + pago_tc` (cuota de tarjeta no es gasto hasta pagarla). `gasto_tc` no mueve caja; para presupuestos, gasto por categoría y listado se atribuye al **mes en que se paga** la tarjeta (no al mes de compra): una compra después del corte cae en el mes siguiente.
   - **Tarjeta:** ciclo `6 sep → 5 oct` (exclusivo/inclusivo), `pending` = cuotas del ciclo actual, `outstanding` = Σ totales con interés − pagos, `available = limit − outstanding`.
 

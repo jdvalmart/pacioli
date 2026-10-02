@@ -420,10 +420,10 @@ function TransactionFormBody({
               <p className="text-xs text-muted-foreground">
                 {kind === 'ahorro'
                   ? savingsIsBolsillo
-                    ? 'Asignado al bolsillo: el dinero sigue en tu cuenta, solo apartado.'
+                    ? 'Apartado en el bolsillo: sale del saldo disponible, sigue siendo tuyo.'
                     : 'El dinero sale de tu cuenta hacia el ahorro (no se cuenta como gasto).'
                   : savingsIsBolsillo
-                    ? 'Liberado del bolsillo: el dinero sigue en tu cuenta.'
+                    ? 'Retirado del bolsillo: vuelve al saldo disponible.'
                     : 'El dinero vuelve a tu cuenta.'}
               </p>
             </div>

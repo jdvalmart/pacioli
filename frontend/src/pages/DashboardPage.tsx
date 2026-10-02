@@ -33,15 +33,13 @@ export function DashboardPage() {
     (sum, account) => sum + Number(account.balance),
     0,
   )
-  // Pocket money already sits inside the accounts; only programmed
-  // savings, CDTs and stocks have left them, so they add to net worth.
-  const investedTotal = (savings.data ?? [])
-    .filter((item) => item.kind !== 'bolsillo')
-    .reduce(
-      (sum, item) =>
-        sum + (item.current_value != null ? Number(item.current_value) : Number(item.balance)),
-      0,
-    )
+  // Money moved to savings (bolsillos, programmed pockets, CDTs and
+  // stocks) has left the accounts, so it adds to net worth.
+  const investedTotal = (savings.data ?? []).reduce(
+    (sum, item) =>
+      sum + (item.current_value != null ? Number(item.current_value) : Number(item.balance)),
+    0,
+  )
   const netWorth = accountsTotal + investedTotal
 
   const chartData = (spending.data ?? []).map((row) => ({
