@@ -28,6 +28,7 @@ from psycopg.rows import dict_row
 
 from app import clock
 from app.domain import billing
+from app.domain.kinds import TxKind
 from app.errors import IntegrityViolation
 
 SCHEMA_VERSION = 15
@@ -1799,7 +1800,7 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
     start_date, end_date = _month_window(month, year)
     result = []
     for row in rows:
-        if row["kind"] == "gasto_tc":
+        if row["kind"] == TxKind.GASTO_TC:
             billed = _billed_in(row, year, month)
             if billed is None:
                 continue
@@ -2892,17 +2893,6 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
 # ── CSV export ────────────────────────────────────────────────
 
 
-KIND_LABELS = {
-    "ingreso": "Ingreso",
-    "gasto": "Gasto",
-    "transferencia": "Transferencia",
-    "gasto_tc": "Gasto TC",
-    "pago_tc": "Pago TC",
-    "ahorro": "Ahorro",
-    "retiro": "Retiro",
-}
-
-
 def transactions_to_csv(month: int, year: int) -> str:
     """Build the CSV content of the transactions of a month."""
     import csv
@@ -2934,7 +2924,7 @@ def transactions_to_csv(month: int, year: int) -> str:
                 t.date,
                 cat_name,
                 sub_name,
-                KIND_LABELS.get(t.kind, t.kind),
+                TxKind(t.kind).label,
                 t.account_name or "",
                 t.to_account_name or "",
                 str(t.amount),

@@ -11,11 +11,12 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.database import auto_backup, init_db
+from app.errors import DomainError, NotFound
 from app.routers import (
     accounts,
     budgets,
@@ -44,6 +45,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(DomainError)
+async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
+    """Map business-rule failures raised by services to HTTP responses."""
+    status = 404 if isinstance(exc, NotFound) else 400
+    return JSONResponse(status_code=status, content={"detail": str(exc)})
+
 
 # All domain endpoints live under /api so the SPA owns the root path
 # in production without colliding with API routes.

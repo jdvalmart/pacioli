@@ -11,6 +11,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, PlainSerializer
 
+from app.domain.kinds import TxKind
+
 Money = Annotated[Decimal, PlainSerializer(lambda v: f"{v:.2f}", return_type=str)]
 
 
@@ -68,9 +70,7 @@ class TransactionIn(BaseModel):
 
     date: date
     amount: Money = Field(gt=0)
-    kind: Literal[
-        "ingreso", "gasto", "transferencia", "gasto_tc", "pago_tc", "ahorro", "retiro"
-    ] = "gasto"
+    kind: TxKind = TxKind.GASTO
     category_id: int | None = None
     account_id: int | None = None
     to_account_id: int | None = None
@@ -90,7 +90,7 @@ class TransactionOut(BaseModel):
     id: int
     date: date
     amount: Money
-    kind: str
+    kind: TxKind
     category_id: int | None
     description: str
     is_recurring: bool
