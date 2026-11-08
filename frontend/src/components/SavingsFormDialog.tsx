@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { useAccounts, useCategories, useInvalidate } from '@/lib/queries'
 import { normalizeAmount } from '@/lib/money'
 import type { SavingsItem, SavingsKind } from '@/lib/types'
 
@@ -60,9 +61,9 @@ function SavingsFormBody({
   onOpenChange: (open: boolean) => void
   onCreated?: (id: number) => void
 }) {
-  const queryClient = useQueryClient()
-  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
-  const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
+  const invalidate = useInvalidate()
+  const accounts = useAccounts()
+  const categories = useCategories()
 
   const [name, setName] = useState(item?.name ?? '')
   const [kind, setKind] = useState<SavingsKind>(item?.kind ?? 'bolsillo')
@@ -119,9 +120,7 @@ function SavingsFormBody({
       toast.success(item ? 'Actualizado' : 'Creado')
       onOpenChange(false)
       if (!item && id != null) onCreated?.(id)
-      void queryClient.invalidateQueries({ queryKey: ['savings'] })
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      void invalidate('savings')
     },
     onError: (error: Error) => toast.error(error.message),
   })

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { useCategories, useCategorySpending, useInvalidate, useSubcategories } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals } from '@/lib/money'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
@@ -76,7 +77,7 @@ function CategoryFormBody({
   defaultType: CategoryType
   onOpenChange: (open: boolean) => void
 }) {
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   const [name, setName] = useState(category?.name ?? '')
   const [type, setType] = useState<CategoryType>(category?.type ?? defaultType)
   const [color, setColor] = useState(category?.color || COLORS[0])
@@ -93,7 +94,7 @@ function CategoryFormBody({
     onSuccess: () => {
       toast.success(category ? 'Categoría actualizada' : 'Categoría creada')
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ['categories'] })
+      void invalidate('category')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -174,23 +175,20 @@ function CategoryFormBody({
 }
 
 function CategoryRow({ category, total }: { category: Category; total: number }) {
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [newSub, setNewSub] = useState('')
   const [subToDelete, setSubToDelete] = useState<number | null>(null)
 
-  const subcategories = useQuery({
-    queryKey: ['subcategories', category.id],
-    queryFn: () => api.listSubcategories(category.id),
-  })
+  const subcategories = useSubcategories(category.id)
 
   const addSub = useMutation({
     mutationFn: () => api.createSubcategory(category.id, { name: newSub, icon: '📁' }),
     onSuccess: () => {
       toast.success('Subcategoría creada')
       setNewSub('')
-      void queryClient.invalidateQueries({ queryKey: ['subcategories', category.id] })
+      void invalidate('subcategory')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -199,7 +197,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
     mutationFn: (id: number) => api.deleteSubcategory(id),
     onSuccess: () => {
       toast.success('Subcategoría eliminada')
-      void queryClient.invalidateQueries({ queryKey: ['subcategories', category.id] })
+      void invalidate('subcategory')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -208,7 +206,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
     mutationFn: () => api.deleteCategory(category.id),
     onSuccess: () => {
       toast.success('Categoría eliminada')
-      void queryClient.invalidateQueries({ queryKey: ['categories'] })
+      void invalidate('category')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -338,15 +336,9 @@ function CategoryRow({ category, total }: { category: Category; total: number })
 
 export function CategoriesSection() {
   const { month } = useMonth()
-  const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
-  const spendingExpense = useQuery({
-    queryKey: ['categorySpending', month, 'expense'],
-    queryFn: () => api.categorySpending(month.month, month.year, 'expense'),
-  })
-  const spendingIncome = useQuery({
-    queryKey: ['categorySpending', month, 'income'],
-    queryFn: () => api.categorySpending(month.month, month.year, 'income'),
-  })
+  const categories = useCategories()
+  const spendingExpense = useCategorySpending(month, 'expense')
+  const spendingIncome = useCategorySpending(month, 'income')
   const [formOpen, setFormOpen] = useState(false)
   const [formType, setFormType] = useState<CategoryType>('expense')
 

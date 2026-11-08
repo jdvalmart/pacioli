@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ArrowLeftRight, Pencil, PiggyBank, Plus, Trash2, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
@@ -33,10 +33,12 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
+import { useAccounts, useInvalidate, useSavings } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
 import { KIND_META, SavingsFormDialog } from '@/components/SavingsFormDialog'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { SavingsItem } from '@/lib/types'
+import { todayISO } from '@/lib/dates'
 
 function MoveMoneyDialog({
   open,
@@ -63,8 +65,8 @@ function MoveMoneyBody({
   item: SavingsItem
   onOpenChange: (open: boolean) => void
 }) {
-  const queryClient = useQueryClient()
-  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const invalidate = useInvalidate()
+  const accounts = useAccounts()
   const [direction, setDirection] = useState<'in' | 'out'>('in')
   const [amount, setAmount] = useState('')
   const [accountId, setAccountId] = useState('')
@@ -72,7 +74,7 @@ function MoveMoneyBody({
   const mutation = useMutation({
     mutationFn: () =>
       api.createTransaction({
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
         amount: normalizeAmount(amount),
         kind: direction === 'in' ? 'ahorro' : 'retiro',
         category_id: null,
@@ -87,12 +89,7 @@ function MoveMoneyBody({
     onSuccess: () => {
       toast.success(direction === 'in' ? 'Dinero enviado al bolsillo' : 'Dinero retirado')
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ['savings'] })
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      void queryClient.invalidateQueries({ queryKey: ['summary'] })
-      void queryClient.invalidateQueries({ queryKey: ['categorySpending'] })
-      void queryClient.invalidateQueries({ queryKey: ['budgetVsActual'] })
+      void invalidate('movement')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -176,8 +173,8 @@ function MoveMoneyBody({
 }
 
 export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}) {
-  const queryClient = useQueryClient()
-  const items = useQuery({ queryKey: ['savings'], queryFn: api.listSavings })
+  const invalidate = useInvalidate()
+  const items = useSavings()
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<SavingsItem | null>(null)
   const [deleting, setDeleting] = useState<SavingsItem | null>(null)
@@ -188,7 +185,7 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
     onSuccess: () => {
       toast.success('Eliminado')
       setDeleting(null)
-      void queryClient.invalidateQueries({ queryKey: ['savings'] })
+      void invalidate('savings')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -338,7 +335,7 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
 
                   {item.matures_on && (
                     <p className="text-xs font-bold text-muted-foreground">
-                      {item.matures_on > new Date().toISOString().slice(0, 10)
+                      {item.matures_on > todayISO()
                         ? `🔒 Bloqueado hasta el ${item.matures_on}`
                         : `Vencido el ${item.matures_on}`}
                     </p>

@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
 import { ArrowDownLeft, ArrowUpRight, Landmark, PiggyBank, Wallet } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
-import { api } from '@/lib/api'
+import { useAccounts, useBudgetVsActual, useCategorySpending, useSavings, useSummary } from '@/lib/queries'
 import { fmtCop, fmtCopDecimals } from '@/lib/money'
 import { useMonth } from '@/hooks/useMonth'
 import { AccountsSection } from '@/components/AccountsSection'
@@ -14,20 +13,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export function DashboardPage() {
   const { month } = useMonth()
-  const summary = useQuery({
-    queryKey: ['summary', month],
-    queryFn: () => api.summary(month.month, month.year),
-  })
-  const spending = useQuery({
-    queryKey: ['categorySpending', month],
-    queryFn: () => api.categorySpending(month.month, month.year),
-  })
-  const budgetVsActual = useQuery({
-    queryKey: ['budgetVsActual', month],
-    queryFn: () => api.budgetVsActual(month.month, month.year),
-  })
-  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
-  const savings = useQuery({ queryKey: ['savings'], queryFn: api.listSavings })
+  const summary = useSummary(month)
+  const spending = useCategorySpending(month)
+  const budgetVsActual = useBudgetVsActual(month)
+  const accounts = useAccounts()
+  const savings = useSavings()
 
   const accountsTotal = (accounts.data ?? []).reduce(
     (sum, account) => sum + Number(account.balance),

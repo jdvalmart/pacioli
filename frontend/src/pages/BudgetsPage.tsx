@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ArrowUpRight, PieChart, PiggyBank, SlidersHorizontal, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
@@ -18,6 +18,7 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
+import { useBudgetPlan, useBudgetVsActual, useBudgets, useCategories, useInvalidate, useSummary } from '@/lib/queries'
 import { fmtCop, fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { Category } from '@/lib/types'
@@ -112,31 +113,16 @@ function BudgetSetupDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { month } = useMonth()
-  const queryClient = useQueryClient()
-  const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
-  const budgets = useQuery({
-    queryKey: ['budgets', month],
-    queryFn: () => api.listBudgets(month.month, month.year),
-  })
+  const invalidate = useInvalidate()
+  const categories = useCategories()
+  const budgets = useBudgets(month)
 
   // Previous month (for the copy action).
   const prevDate = new Date(month.year, month.month - 2, 1)
   const prevMonth = { month: prevDate.getMonth() + 1, year: prevDate.getFullYear() }
-  const previousBudgets = useQuery({
-    queryKey: ['budgets', prevMonth],
-    queryFn: () => api.listBudgets(prevMonth.month, prevMonth.year),
-    enabled: open,
-  })
-  const summary = useQuery({
-    queryKey: ['summary', month],
-    queryFn: () => api.summary(month.month, month.year),
-    enabled: open,
-  })
-  const plan = useQuery({
-    queryKey: ['budgetPlan', month],
-    queryFn: () => api.getBudgetPlan(month.month, month.year),
-    enabled: open,
-  })
+  const previousBudgets = useBudgets(prevMonth, { enabled: open })
+  const summary = useSummary(month, { enabled: open })
+  const plan = useBudgetPlan(month, { enabled: open })
 
   const [total, setTotal] = useState('')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
@@ -211,9 +197,7 @@ function BudgetSetupDialog({
     onSuccess: () => {
       toast.success('Presupuesto guardado')
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ['budgets', month] })
-      void queryClient.invalidateQueries({ queryKey: ['budgetVsActual', month] })
-      void queryClient.invalidateQueries({ queryKey: ['budgetPlan', month] })
+      void invalidate('budget')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -317,23 +301,11 @@ function BudgetSetupDialog({
 
 export function BudgetsPage() {
   const { month } = useMonth()
-  const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
-  const budgets = useQuery({
-    queryKey: ['budgets', month],
-    queryFn: () => api.listBudgets(month.month, month.year),
-  })
-  const budgetVsActual = useQuery({
-    queryKey: ['budgetVsActual', month],
-    queryFn: () => api.budgetVsActual(month.month, month.year),
-  })
-  const summary = useQuery({
-    queryKey: ['summary', month],
-    queryFn: () => api.summary(month.month, month.year),
-  })
-  const plan = useQuery({
-    queryKey: ['budgetPlan', month],
-    queryFn: () => api.getBudgetPlan(month.month, month.year),
-  })
+  const categories = useCategories()
+  const budgets = useBudgets(month)
+  const budgetVsActual = useBudgetVsActual(month)
+  const summary = useSummary(month)
+  const plan = useBudgetPlan(month)
 
   const [setupOpen, setSetupOpen] = useState(false)
 

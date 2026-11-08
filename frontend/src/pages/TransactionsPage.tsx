@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import {
   ArrowDownLeft,
@@ -52,9 +52,11 @@ import {
 } from '@/components/ui/table'
 import { useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
+import { useAccounts, useCategories, useCreditCards, useInvalidate, useSavings, useSubcategories, useTransactions } from '@/lib/queries'
 import { SavingsFormDialog } from '@/components/SavingsFormDialog'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Transaction, TransactionInput, TransactionKind } from '@/lib/types'
+import { defaultMovementDate, todayISO } from '@/lib/dates'
 
 const KIND_OPTIONS: {
   value: TransactionKind
@@ -124,18 +126,15 @@ function TransactionFormBody({
   onOpenChange: (open: boolean) => void
 }) {
   const { month } = useMonth()
-  const queryClient = useQueryClient()
-  const categories = useQuery({ queryKey: ['categories'], queryFn: () => api.listCategories() })
-  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
-  const creditCards = useQuery({
-    queryKey: ['creditCards'],
-    queryFn: () => api.listCreditCards(),
-  })
-  const savings = useQuery({ queryKey: ['savings'], queryFn: api.listSavings })
+  const invalidate = useInvalidate()
+  const categories = useCategories()
+  const accounts = useAccounts()
+  const creditCards = useCreditCards()
+  const savings = useSavings()
 
   const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'gasto')
   const [date, setDate] = useState(
-    transaction?.date ?? `${month.year}-${String(month.month).padStart(2, '0')}-15`,
+    transaction?.date ?? defaultMovementDate(month),
   )
   const [amount, setAmount] = useState(transaction?.amount ?? '')
   const [categoryId, setCategoryId] = useState(
@@ -168,15 +167,11 @@ function TransactionFormBody({
   const visibleCategories = kind === 'ingreso' ? incomeCategories : expenseCategories
   const selectedSavings = (savings.data ?? []).find((s) => String(s.id) === savingsId)
   const savingsIsBolsillo = (selectedSavings?.kind ?? 'bolsillo') === 'bolsillo'
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = todayISO()
   const selectedSavingsLocked =
     selectedSavings?.matures_on != null && selectedSavings.matures_on > todayStr
 
-  const subcategories = useQuery({
-    queryKey: ['subcategories', categoryId],
-    queryFn: () => api.listSubcategories(Number(categoryId)),
-    enabled: !!categoryId,
-  })
+  const subcategories = useSubcategories(categoryId ? Number(categoryId) : null)
 
   const mutation = useMutation({
     mutationFn: async (payload: TransactionInput) => {
@@ -189,11 +184,7 @@ function TransactionFormBody({
     onSuccess: () => {
       toast.success(transaction ? 'Movimiento actualizado' : 'Movimiento creado')
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      void queryClient.invalidateQueries({ queryKey: ['summary'] })
-      void queryClient.invalidateQueries({ queryKey: ['categorySpending'] })
-      void queryClient.invalidateQueries({ queryKey: ['budgetVsActual'] })
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      void invalidate('movement')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -779,7 +770,7 @@ function TransactionsTable({
 
 export function TransactionsPage() {
   const { month } = useMonth()
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   const [searchParams, setSearchParams] = useSearchParams()
   // ?new=1 (from the dashboard button) opens the create form directly.
   const [formOpen, setFormOpen] = useState(() => searchParams.get('new') === '1')
@@ -801,10 +792,7 @@ export function TransactionsPage() {
     if (searchParams.get('new') === '1') setFormOpen(true)
   }, [searchParams])
 
-  const transactions = useQuery({
-    queryKey: ['transactions', month],
-    queryFn: () => api.listTransactions(month.month, month.year),
-  })
+  const transactions = useTransactions(month)
 
   useEffect(() => {
     let cancelled = false
@@ -812,23 +800,21 @@ export function TransactionsPage() {
       .materializeRecurring(month.month, month.year)
       .then((result) => {
         if (!cancelled && result.created > 0) {
-          void queryClient.invalidateQueries({ queryKey: ['transactions', month] })
+          void invalidate('movement')
         }
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [month, queryClient])
+  }, [month, invalidate])
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteTransaction(id),
     onSuccess: () => {
       toast.success('Movimiento eliminado')
       setDeleting(null)
-      void queryClient.invalidateQueries({ queryKey: ['transactions', month] })
-      void queryClient.invalidateQueries({ queryKey: ['summary', month] })
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      void invalidate('movement')
     },
     onError: (error: Error) => toast.error(error.message),
   })

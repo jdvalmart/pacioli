@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import { ArrowDownLeft, ArrowUpRight, Download, TrendingUp, Wallet } from 'lucide-react'
 import {
   Bar,
@@ -27,6 +26,7 @@ import {
 } from '@/components/ui/table'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
+import { useBudgetVsActual, useCategorySpending, useYearlySummaries } from '@/lib/queries'
 import { fmtCop } from '@/lib/money'
 
 const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -64,18 +64,9 @@ function Panel({
 
 export function ReportsPage() {
   const { month } = useMonth()
-  const yearly = useQuery({
-    queryKey: ['yearly', month.year],
-    queryFn: () => api.yearlySummaries(month.year),
-  })
-  const spending = useQuery({
-    queryKey: ['categorySpending', month, 'expense'],
-    queryFn: () => api.categorySpending(month.month, month.year, 'expense'),
-  })
-  const budgetVsActual = useQuery({
-    queryKey: ['budgetVsActual', month],
-    queryFn: () => api.budgetVsActual(month.month, month.year),
-  })
+  const yearly = useYearlySummaries(month.year)
+  const spending = useCategorySpending(month, 'expense')
+  const budgetVsActual = useBudgetVsActual(month)
 
   const monthly = yearly.data ?? []
   const chartData = monthly.map((s) => ({

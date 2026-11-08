@@ -103,6 +103,29 @@ test('a purchase in installments is billed one cuota per month', async ({ page, 
   await expect(page.getByText('Televisor e2e')).toHaveCount(0)
 })
 
+test('views refresh after a write, without reloading the page', async ({ page }) => {
+  // Load the dashboard first so the card is cached, then navigate inside
+  // the app (no reload). Card data must reflect the new purchase at once,
+  // not after the 30 s staleTime.
+  await page.goto('/')
+  const card = page.getByText('Deuda total: $300.000,00')
+  await expect(card).toBeVisible()
+
+  await page.getByRole('link', { name: 'Movimientos' }).first().click()
+  await page.getByRole('button', { name: 'Nuevo movimiento' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: /^Compra tarjeta/ }).click()
+  await dialog.getByLabel('Monto').fill('50.000')
+  await pick(page, 'Selecciona una categoría', 'Compras')
+  await pick(page, 'Selecciona la tarjeta', 'Visa e2e')
+  await dialog.getByLabel('Descripción').fill('Audífonos e2e')
+  await dialog.getByRole('button', { name: 'Guardar' }).click()
+  await expect(dialog).toBeHidden()
+
+  await page.getByRole('link', { name: 'Panel' }).first().click()
+  await expect(page.getByText('Deuda total: $350.000,00')).toBeVisible()
+})
+
 test('the savings category is a system category that cannot be deleted', async ({ page }) => {
   await page.goto('/settings')
   await expect(page.getByText('Agrupa tus movimientos de ahorro')).toBeVisible()

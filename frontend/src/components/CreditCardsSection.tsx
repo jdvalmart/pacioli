@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { CreditCard as CreditCardIcon, Pencil, Plus, Trash2, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
@@ -34,21 +34,17 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
+import { useAccounts, useCreditCards, useInvalidate } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Account, CreditCard } from '@/lib/types'
+import { addDaysISO, todayISO } from '@/lib/dates'
 
 const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
 function fmtDay(iso: string): string {
   const [, month, day] = iso.split('-').map(Number)
   return `${day} ${MONTHS_SHORT[month - 1]}`
-}
-
-function addOneDay(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`)
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
 }
 
 function CardForm({
@@ -76,7 +72,7 @@ function CardFormBody({
   card: CreditCard | null
   onOpenChange: (open: boolean) => void
 }) {
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   const [name, setName] = useState(card?.name ?? '')
   const [limit, setLimit] = useState(card?.limit ?? '')
   const [cutoffDay, setCutoffDay] = useState(String(card?.cutoff_day ?? 15))
@@ -99,7 +95,7 @@ function CardFormBody({
     onSuccess: () => {
       toast.success(card ? 'Tarjeta actualizada' : 'Tarjeta creada')
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      void invalidate('card')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -211,8 +207,8 @@ function PayCardBody({
   card: CreditCard
   onOpenChange: (open: boolean) => void
 }) {
-  const queryClient = useQueryClient()
-  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const invalidate = useInvalidate()
+  const accounts = useAccounts()
   const [accountId, setAccountId] = useState('')
   // Default to the closed statement still owed (like a bank's "statement balance").
   const [amount, setAmount] = useState(Number(card.debt) > 0 ? card.debt : card.outstanding)
@@ -227,7 +223,7 @@ function PayCardBody({
   const mutation = useMutation({
     mutationFn: () =>
       api.createTransaction({
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
         amount: normalizeAmount(amount),
         kind: 'pago_tc',
         category_id: null,
@@ -242,9 +238,7 @@ function PayCardBody({
     onSuccess: () => {
       toast.success('Pago registrado')
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ['creditCards'] })
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      void invalidate('movement')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -365,11 +359,8 @@ function PayCardBody({
 
 export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } = {}) {
   const { month } = useMonth()
-  const queryClient = useQueryClient()
-  const cards = useQuery({
-    queryKey: ['creditCards', month],
-    queryFn: () => api.listCreditCards(month.month, month.year),
-  })
+  const invalidate = useInvalidate()
+  const cards = useCreditCards(month)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<CreditCard | null>(null)
   const [deleting, setDeleting] = useState<CreditCard | null>(null)
@@ -380,7 +371,7 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
     onSuccess: () => {
       toast.success('Tarjeta eliminada — sus gastos quedaron sin tarjeta')
       setDeleting(null)
-      void queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      void invalidate('card')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -479,7 +470,7 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                   </p>
                   <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
                     <span>
-                      Ciclo {fmtDay(addOneDay(card.cycle_start))} → {fmtDay(card.cycle_end)}
+                      Ciclo {fmtDay(addDaysISO(card.cycle_start, 1))} → {fmtDay(card.cycle_end)}
                     </span>
                     <span>Pago {fmtDay(card.payment_date)}</span>
                   </div>

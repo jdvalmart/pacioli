@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Pencil, Plus, Trash2, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
+import { useAccounts, useInvalidate } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { Account, AccountType } from '@/lib/types'
@@ -72,7 +73,7 @@ function AccountFormBody({
   account: Account | null
   onOpenChange: (open: boolean) => void
 }) {
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   const [name, setName] = useState(account?.name ?? '')
   const [type, setType] = useState<AccountType>(account?.type ?? 'efectivo')
   const [startingAmount, setStartingAmount] = useState(
@@ -91,9 +92,7 @@ function AccountFormBody({
     onSuccess: () => {
       toast.success(account ? 'Cuenta actualizada' : 'Cuenta creada')
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      void queryClient.invalidateQueries({ queryKey: ['summary'] })
+      void invalidate('account')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -162,8 +161,8 @@ function AccountFormBody({
 }
 
 export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {}) {
-  const queryClient = useQueryClient()
-  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const invalidate = useInvalidate()
+  const accounts = useAccounts()
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Account | null>(null)
   const [deleting, setDeleting] = useState<Account | null>(null)
@@ -173,7 +172,7 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
     onSuccess: () => {
       toast.success('Cuenta eliminada — sus movimientos quedaron sin cuenta')
       setDeleting(null)
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      void invalidate('account')
     },
     onError: (error: Error) => toast.error(error.message),
   })
