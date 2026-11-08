@@ -240,6 +240,7 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
                     <Button
                       variant="ghost"
                       size="icon-xs"
+                      aria-label={`Editar cuenta ${account.name}`}
                       onClick={() => {
                         setEditing(account)
                         setFormOpen(true)
@@ -247,7 +248,12 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
                     >
                       <Pencil className="size-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(account)}>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={`Eliminar cuenta ${account.name}`}
+                      onClick={() => setDeleting(account)}
+                    >
                       <Trash2 className="size-3.5 text-destructive" />
                     </Button>
                   </div>

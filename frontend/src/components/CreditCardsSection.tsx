@@ -443,6 +443,7 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                       <Button
                         variant="ghost"
                         size="icon-xs"
+                        aria-label={`Editar tarjeta ${card.name}`}
                         onClick={() => {
                           setEditing(card)
                           setFormOpen(true)
@@ -450,7 +451,12 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                       >
                         <Pencil className="size-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(card)}>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Eliminar tarjeta ${card.name}`}
+                        onClick={() => setDeleting(card)}
+                      >
                         <Trash2 className="size-3.5 text-destructive" />
                       </Button>
                     </div>

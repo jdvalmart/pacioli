@@ -14,10 +14,20 @@ export interface Month {
   year: number
 }
 
-const now = new Date()
 const STORAGE_KEY = 'pacioli-month'
 
-function isValid(m: unknown): m is Month {
+/** The current month. Read on every call: the app stays open across months. */
+export function currentMonth(today: Date = new Date()): Month {
+  return { month: today.getMonth() + 1, year: today.getFullYear() }
+}
+
+/** Move a month by ``delta`` months, rolling over years. */
+export function shiftMonthValue(m: Month, delta: number): Month {
+  const index = m.year * 12 + (m.month - 1) + delta
+  return { month: (((index % 12) + 12) % 12) + 1, year: Math.floor(index / 12) }
+}
+
+export function isValidMonth(m: unknown): m is Month {
   if (typeof m !== 'object' || m === null) return false
   const { month, year } = m as Partial<Month>
   return (
@@ -35,17 +45,18 @@ function readSavedMonth(): Month | null {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
-    return isValid(parsed) ? parsed : null
+    return isValidMonth(parsed) ? parsed : null
   } catch {
     return null
   }
 }
 
-function parseMonth(params: URLSearchParams): Month {
+/** Month from the URL, else the last one used, else the current month. */
+export function parseMonth(params: URLSearchParams, saved: Month | null = readSavedMonth()): Month {
   const month = Number(params.get('month'))
   const year = Number(params.get('year'))
-  if (isValid({ month, year })) return { month, year }
-  return readSavedMonth() ?? { month: now.getMonth() + 1, year: now.getFullYear() }
+  if (isValidMonth({ month, year })) return { month, year }
+  return saved ?? currentMonth()
 }
 
 export function useMonth(): {
@@ -73,10 +84,7 @@ export function useMonth(): {
   )
 
   const shiftMonth = useCallback(
-    (delta: number) => {
-      const date = new Date(month.year, month.month - 1 + delta, 1)
-      setMonth({ month: date.getMonth() + 1, year: date.getFullYear() })
-    },
+    (delta: number) => setMonth(shiftMonthValue(month, delta)),
     [month, setMonth],
   )
 

@@ -3,7 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, LayoutDashboard, PiggyBank, Pl
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
-import { monthLabel, useMonth } from '@/hooks/useMonth'
+import { currentMonth, monthLabel, useMonth } from '@/hooks/useMonth'
 import { cn } from '@/lib/utils'
 
 // Pages load on demand so charts (Recharts) and other heavy
@@ -60,9 +60,8 @@ function NewTransactionFab({ isLeft = false }: { isLeft?: boolean }) {
 
 export default function App() {
   const { month, shiftMonth, setMonth } = useMonth()
-  const today = new Date()
-  const isCurrentMonth =
-    month.month === today.getMonth() + 1 && month.year === today.getFullYear()
+  const thisMonth = currentMonth()
+  const isCurrentMonth = month.month === thisMonth.month && month.year === thisMonth.year
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('pacioli-sidebar') === 'collapsed',
   )
@@ -170,9 +169,7 @@ export default function App() {
                 variant="outline"
                 size="sm"
                 className="rounded-full"
-                onClick={() =>
-                  setMonth({ month: today.getMonth() + 1, year: today.getFullYear() })
-                }
+                onClick={() => setMonth(currentMonth())}
               >
                 Mes actual
               </Button>

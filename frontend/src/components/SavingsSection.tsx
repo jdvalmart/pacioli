@@ -267,6 +267,7 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                         variant="ghost"
                         size="icon-xs"
                         title="Enviar o retirar"
+                        aria-label={`Enviar o retirar de ${item.name}`}
                         onClick={() => setMoving(item)}
                       >
                         <ArrowLeftRight className="size-3.5" />
@@ -274,6 +275,7 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                       <Button
                         variant="ghost"
                         size="icon-xs"
+                        aria-label={`Editar ${item.name}`}
                         onClick={() => {
                           setEditing(item)
                           setFormOpen(true)
@@ -281,7 +283,12 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                       >
                         <Pencil className="size-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(item)}>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Eliminar ${item.name}`}
+                        onClick={() => setDeleting(item)}
+                      >
                         <Trash2 className="size-3.5 text-destructive" />
                       </Button>
                     </div>

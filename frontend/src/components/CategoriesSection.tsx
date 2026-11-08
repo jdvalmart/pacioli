@@ -232,11 +232,21 @@ function CategoryRow({ category, total }: { category: Category; total: number })
                 : 'Sin movimientos'}
           </p>
         </div>
-        <Button variant="ghost" size="icon-xs" onClick={() => setEditing(true)}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Editar categoría ${category.name}`}
+          onClick={() => setEditing(true)}
+        >
           <Pencil className="size-3.5" />
         </Button>
         {!category.role && (
-          <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(true)}>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Eliminar categoría ${category.name}`}
+            onClick={() => setDeleting(true)}
+          >
             <Trash2 className="size-3.5 text-red-500" />
           </Button>
         )}
@@ -268,7 +278,13 @@ function CategoryRow({ category, total }: { category: Category; total: number })
             value={newSub}
             onChange={(e) => setNewSub(e.target.value)}
           />
-          <Button type="submit" variant="ghost" size="icon" className="size-7">
+          <Button
+            type="submit"
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={`Agregar subcategoría a ${category.name}`}
+          >
             <Plus />
           </Button>
         </form>

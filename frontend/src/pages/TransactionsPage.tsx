@@ -751,10 +751,20 @@ function TransactionsTable({
               </TableCell>
               <TableCell>
                 <div className="flex justify-end gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => onEdit(tx)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Editar movimiento ${tx.description || tx.category_name || ''}`.trim()}
+                    onClick={() => onEdit(tx)}
+                  >
                     <Pencil />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => onDelete(tx)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Eliminar movimiento ${tx.description || tx.category_name || ''}`.trim()}
+                    onClick={() => onDelete(tx)}
+                  >
                     <Trash2 className="text-red-500" />
                   </Button>
                 </div>

@@ -58,7 +58,7 @@ Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con head
 |------|-------------|
 | **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v17), `uvicorn`, `psycopg` |
 | **Frontend** | React 19, TypeScript 5, Vite 6, Tailwind v4, shadcn/ui + Base UI, Recharts 3, TanStack Query 5, React Router 7 |
-| **Calidad** | `ruff`, `mypy`, `pytest`, `tsc -b`, `oxlint`, `vite build` |
+| **Calidad** | `ruff`, `mypy`, `pytest` (SQLite + Postgres), `tsc -b`, `oxlint`, Vitest, Playwright E2E |
 
 ---
 
@@ -218,10 +218,14 @@ docker run -d --rm --name pacioli-test-pg -e POSTGRES_USER=pacioli -e POSTGRES_P
 PACIOLI_TEST_DATABASE_URL=postgresql://pacioli:pacioli@127.0.0.1:55432/pacioli_test .venv/bin/pytest -q
 
 # Frontend
-cd frontend && npx tsc -b && npm run lint && npm run build
+cd frontend && npx tsc -b && npm run lint && npm test && npm run build
+
+# End-to-end (Playwright): backend real + SPA compilada en :8099 con una base nueva por corrida
+npx playwright install chromium   # una vez
+npm run test:e2e
 ```
 
-Verificación visual con Chrome headless (`--screenshot`, `--virtual-time-budget`, `--remote-debugging-port` + `WebSocket` CDP) para dashboard, presupuestos, reportes, settings y formulario de transacción.
+CI corre backend (SQLite y Postgres 16), frontend (tipos, lint, unitarios con Vitest, build) y los flujos end-to-end con Playwright.
 
 ---
 
