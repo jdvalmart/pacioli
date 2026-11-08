@@ -56,7 +56,7 @@ Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con head
 
 | Capa | Tecnologías |
 |------|-------------|
-| **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v16), `uvicorn`, `psycopg` |
+| **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v17), `uvicorn`, `psycopg` |
 | **Frontend** | React 19, TypeScript 5, Vite 6, Tailwind v4, shadcn/ui + Base UI, Recharts 3, TanStack Query 5, React Router 7 |
 | **Calidad** | `ruff`, `mypy`, `pytest`, `tsc -b`, `oxlint`, `vite build` |
 
@@ -72,8 +72,7 @@ pacioli/
 │   │   ├── routers/         # solo HTTP: accounts, savings, transactions, budgets, credit_cards, reports
 │   │   ├── services/        # casos de uso (validación de movimientos)
 │   │   ├── domain/          # reglas puras: billing (ciclos, cuotas, FIFO), kinds (TxKind)
-│   │   ├── db/              # persistencia por agregado + connection, migrations (v16), backup
-│   │   ├── database.py      # fachada de compatibilidad sobre app/db
+│   │   ├── db/              # persistencia por agregado + connection, migrations (v17), backup
 │   │   ├── cli.py           # python -m app.cli backup
 │   │   └── schemas.py       # Pydantic (Money como string "1234.56")
 │   └── tests/
@@ -156,13 +155,14 @@ Detén antes el servicio local (`systemctl --user stop pacioli`), porque ambos u
 
 - **Ubicación:** SQLite en `~/.local/share/pacioli/pacioli.db` (`XDG_DATA_HOME` o `PACIOLI_DATA_DIR` lo sobreescriben). Compatible con `data/budget.db` del desktop: se importa una vez. Con `DATABASE_URL` los datos viven en PostgreSQL (volúmen `pgdata` del compose).
 - **Backups diarios** con rotación (10) en `~/.local/share/pacioli/backups/`: al arrancar y con el timer `pacioli-backup` (`python -m app.cli backup`). Solo SQLite; Postgres no se respalda automáticamente.
-- **Migraciones** (`SCHEMA_VERSION = 16`). Antes de migrar una base SQLite existente se guarda una copia `backups/pre-migration_vN-to-vM_<fecha>.db` (fuera de la rotación):
+- **Migraciones** (`SCHEMA_VERSION = 17`). Antes de migrar una base SQLite existente se guarda una copia `backups/pre-migration_vN-to-vM_<fecha>.db` (fuera de la rotación):
   - v11 `monthly_plans` (total del mes)
   - v12 `accounts.starting_cents` / `savings.opening_cents` (saldos iniciales fuera de mes)
   - v13 `transactions.installments` / `interest_bp`
   - v14 `savings.dividends_cents` + `matures_on` (derivado de `created_at + term_days`)
   - v15 `savings.category_id` (bolsillos como reserva de una categoría del presupuesto)
   - v16 `categories.role`: la categoría de sistema `savings` (🐷 Ahorro) agrupa los movimientos de ahorro; se busca por rol, se puede renombrar y no se puede borrar
+  - v17 elimina `chat_history`, `ai_learnings` y `desc_learnings` (restos del asistente de IA retirado)
 - **Reglas de saldo:**
   - **Cuenta:** `starting + ingresos − gastos − pago_tc ± transferencias − ahorro + retiro`. Cualquier movimiento a un ahorro (bolsillo, programado, CDT o acciones) sale del saldo disponible de la cuenta; el retiro lo devuelve.
   - **Resumen mensual:** `total_expense = gasto + pago_tc` (cuota de tarjeta no es gasto hasta pagarla). `gasto_tc` no mueve caja; para presupuestos, gasto por categoría y listado cada cuota se atribuye al **mes en que se paga** su extracto (no al mes de compra): una compra después del corte cae en el mes siguiente.

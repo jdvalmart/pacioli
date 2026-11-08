@@ -33,7 +33,7 @@ if not os.path.exists(SRC):
 
 # Ensure the Postgres schema exists (run the app's migrations once)
 print("→ Inicializando esquema en Postgres...")
-from app.database import init_db  # noqa: E402
+from app.db.migrations import init_db  # noqa: E402
 
 init_db()
 
@@ -91,7 +91,9 @@ for table in TABLES:
     dst.commit()
     # Re-sync the SERIAL sequence after explicit-id inserts
     with dst.cursor() as cur:
-        cur.execute(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), (SELECT MAX(id) FROM {table}))")
+        cur.execute(
+            f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), (SELECT MAX(id) FROM {table}))"
+        )
     dst.commit()
 
 # Copy the SQLite user_version into Postgres

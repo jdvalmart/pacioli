@@ -12,7 +12,7 @@ runs, so a long-running server still gets a fresh backup every day.
 import argparse
 import sys
 
-from app.database import BACKUP_KEEP, auto_backup
+from app.db.backup import BACKUP_KEEP, auto_backup
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.database import set_db_path
+from app.db.connection import set_db_path
 from app.main import app
 
 TEST_PG_URL = os.environ.get("PACIOLI_TEST_DATABASE_URL", "")

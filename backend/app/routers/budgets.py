@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app import database as db
+from app.db import budgets as budgets_db
 from app.errors import IntegrityViolation
 from app.schemas import (
     BudgetBulkIn,
@@ -22,14 +22,14 @@ def list_budgets(
     year: int = Query(ge=2000, le=2100),
 ) -> list[BudgetOut]:
     """List the budgets of a month."""
-    return [BudgetOut(**b.__dict__) for b in db.get_budgets(month, year)]
+    return [BudgetOut(**b.__dict__) for b in budgets_db.get_budgets(month, year)]
 
 
 @router.put("", response_model=MessageOut)
 def upsert_budget(payload: BudgetIn) -> MessageOut:
     """Create or update the budget of a category for a month."""
     try:
-        db.set_budget(payload.category_id, payload.month, payload.year, payload.amount)
+        budgets_db.set_budget(payload.category_id, payload.month, payload.year, payload.amount)
     except IntegrityViolation:
         raise HTTPException(status_code=400, detail="Category does not exist") from None
     return MessageOut(message="Budget saved")
@@ -39,7 +39,7 @@ def upsert_budget(payload: BudgetIn) -> MessageOut:
 def bulk_set_budgets(payload: BudgetBulkIn) -> MessageOut:
     """Replace the full budget state of a month."""
     try:
-        db.set_budgets_bulk(
+        budgets_db.set_budgets_bulk(
             payload.month,
             payload.year,
             [(item.category_id, item.amount) for item in payload.budgets],
@@ -55,13 +55,13 @@ def get_plan(
     year: int = Query(ge=2000, le=2100),
 ) -> BudgetPlanOut:
     """Return the total budget set for a month (or None)."""
-    return BudgetPlanOut(month=month, year=year, total=db.get_monthly_plan(month, year))
+    return BudgetPlanOut(month=month, year=year, total=budgets_db.get_monthly_plan(month, year))
 
 
 @router.put("/plan", response_model=MessageOut)
 def set_plan(payload: BudgetPlanIn) -> MessageOut:
     """Create or update the total budget of a month."""
-    db.set_monthly_plan(payload.month, payload.year, payload.total)
+    budgets_db.set_monthly_plan(payload.month, payload.year, payload.total)
     return MessageOut(message="Plan saved")
 
 
@@ -72,5 +72,5 @@ def delete_budget(
     year: int = Query(ge=2000, le=2100),
 ) -> MessageOut:
     """Delete the budget of a category for a month."""
-    db.delete_budget(category_id, month, year)
+    budgets_db.delete_budget(category_id, month, year)
     return MessageOut(message="Budget deleted")

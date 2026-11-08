@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 
-from app import database as db
+from app.db import accounts as accounts_db
 from app.errors import IntegrityViolation
 from app.schemas import AccountIn, AccountOut, AccountUpdate, CreatedOut, MessageOut
 
@@ -24,7 +24,7 @@ def list_accounts() -> list[AccountOut]:
             starting=a.starting or Decimal("0.00"),
             balance=a.balance or Decimal("0.00"),
         )
-        for a in db.get_accounts()
+        for a in accounts_db.get_accounts()
     ]
 
 
@@ -32,7 +32,7 @@ def list_accounts() -> list[AccountOut]:
 def create_account(payload: AccountIn) -> CreatedOut:
     """Create an account with an optional opening balance."""
     try:
-        account_id = db.add_account(
+        account_id = accounts_db.add_account(
             name=payload.name,
             acct_type=payload.type,
             starting_amount=payload.starting_amount,
@@ -49,7 +49,7 @@ def create_account(payload: AccountIn) -> CreatedOut:
 @router.put("/{account_id}", response_model=MessageOut)
 def update_account(account_id: int, payload: AccountUpdate) -> MessageOut:
     """Update an account's name, type and opening balance."""
-    db.update_account(
+    accounts_db.update_account(
         account_id,
         payload.name,
         acct_type=payload.type,
@@ -61,5 +61,5 @@ def update_account(account_id: int, payload: AccountUpdate) -> MessageOut:
 @router.delete("/{account_id}", response_model=MessageOut)
 def delete_account(account_id: int) -> MessageOut:
     """Delete an account, leaving its transactions unlinked."""
-    db.delete_account(account_id)
+    accounts_db.delete_account(account_id)
     return MessageOut(message="Account deleted")

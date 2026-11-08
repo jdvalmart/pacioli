@@ -20,7 +20,7 @@ from app.db.connection import (
 )
 from app.db.models import CATEGORY_ROLE_SAVINGS
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 # Historical location (repo/data/budget.db); imported once if present.
@@ -897,6 +897,23 @@ def _migrate_v16_category_roles(conn: sqlite3.Connection) -> None:
     _set_version(conn, 16)
 
 
+AI_LEFTOVER_TABLES = ("chat_history", "ai_learnings", "desc_learnings")
+
+
+def _migrate_v17_drop_ai_tables(conn: sqlite3.Connection) -> None:
+    """v16 -> v17: drop the tables of the removed AI assistant.
+
+    ``chat_history``, ``ai_learnings`` and ``desc_learnings`` were created by
+    the v1 baseline for the Ollama chat, which was removed from the app; no
+    code reads them. Existing SQLite data is preserved in the automatic
+    pre-migration backup. Runs on SQLite and Postgres.
+    """
+    cursor = conn.cursor()
+    for table in AI_LEFTOVER_TABLES:
+        cursor.execute(f"DROP TABLE IF EXISTS {table}")
+    _set_version(conn, 17)
+
+
 def _create_postgres_schema(conn) -> None:  # type: ignore[no-untyped-def]
     """Create the final schema on a fresh Postgres database.
 
@@ -1338,6 +1355,8 @@ def init_db() -> None:
             _migrate_v15_savings_category(conn)
         if v < 16:
             _migrate_v16_category_roles(conn)
+        if v < 17:
+            _migrate_v17_drop_ai_tables(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()

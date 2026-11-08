@@ -5,7 +5,8 @@ import os
 import pytest
 
 from app import cli
-from app.database import get_backup_dir, init_db, set_db_path
+from app.db.connection import get_backup_dir, set_db_path
+from app.db.migrations import init_db
 
 
 def test_backup_creates_one_snapshot_per_day(

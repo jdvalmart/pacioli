@@ -9,43 +9,30 @@ from pathlib import Path
 
 import pytest
 
-from app.database import (
-    CATEGORY_ROLE_SAVINGS,
+from app.db.accounts import add_account, delete_account, get_accounts, update_account
+from app.db.budgets import get_budgets, get_monthly_plan, set_budget, set_monthly_plan
+from app.db.cards import add_credit_card, delete_credit_card, get_credit_cards, update_credit_card
+from app.db.categories import (
+    add_category,
+    delete_category,
+    get_categories,
+    get_subcategories,
+    update_category,
+)
+from app.db.connection import get_connection, set_db_path
+from app.db.migrations import (
+    AI_LEFTOVER_TABLES,
     LEGACY_DB_PATH,
     SCHEMA_VERSION,
-    Category,
     _migrate_v1_baseline,
     _migrate_v2_cents,
     _seed_defaults,
-    add_account,
-    add_category,
-    add_credit_card,
-    add_savings,
-    add_transaction,
-    delete_account,
-    delete_category,
-    delete_credit_card,
-    delete_savings,
-    ensure_recurring,
-    get_accounts,
-    get_budget_vs_actual,
-    get_budgets,
-    get_categories,
-    get_connection,
-    get_credit_cards,
-    get_monthly_plan,
-    get_monthly_summary,
-    get_savings,
-    get_subcategories,
-    get_transactions,
     init_db,
-    set_budget,
-    set_db_path,
-    set_monthly_plan,
-    update_account,
-    update_category,
-    update_credit_card,
 )
+from app.db.models import CATEGORY_ROLE_SAVINGS, Category
+from app.db.reports import get_budget_vs_actual, get_monthly_summary
+from app.db.savings import add_savings, delete_savings, get_savings
+from app.db.transactions import add_transaction, ensure_recurring, get_transactions
 
 
 @pytest.fixture
@@ -1090,12 +1077,58 @@ class TestCategoryRoles:
 
             # A pre-migration snapshot holds the database as it was (v15).
             (snapshot,) = [
-                f
-                for f in os.listdir(tmp_path / "backups")
-                if f.startswith("pre-migration_v15-to-v16_")
+                f for f in os.listdir(tmp_path / "backups") if f.startswith("pre-migration_v15-to-")
             ]
             old = sqlite3.connect(tmp_path / "backups" / snapshot)
             assert old.execute("PRAGMA user_version").fetchone()[0] == 15
+            old.close()
+        finally:
+            set_db_path(None)
+
+
+class TestMigrationV17:
+    """v17 drops the tables of the removed AI assistant."""
+
+    @staticmethod
+    def _tables(db_path: Path) -> set[str]:
+        conn = sqlite3.connect(db_path)
+        try:
+            rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            return {r[0] for r in rows}
+        finally:
+            conn.close()
+
+    def test_fresh_database_has_no_ai_tables(self, tmp_path: Path) -> None:
+        set_db_path(tmp_path / "fresh.db")
+        try:
+            init_db()
+            assert not self._tables(tmp_path / "fresh.db") & set(AI_LEFTOVER_TABLES)
+        finally:
+            set_db_path(None)
+
+    def test_upgrade_drops_ai_tables_and_keeps_a_copy(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "v16.db"
+        set_db_path(db_path)
+        try:
+            init_db()
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE chat_history (id INTEGER PRIMARY KEY, message TEXT)")
+            conn.execute("INSERT INTO chat_history (message) VALUES ('hola')")
+            conn.execute("CREATE TABLE ai_learnings (id INTEGER PRIMARY KEY)")
+            conn.execute("PRAGMA user_version = 16")
+            conn.commit()
+            conn.close()
+
+            init_db()
+
+            assert not self._tables(db_path) & set(AI_LEFTOVER_TABLES)
+            (snapshot,) = [
+                f
+                for f in os.listdir(tmp_path / "backups")
+                if f.startswith("pre-migration_v16-to-v17_")
+            ]
+            old = sqlite3.connect(tmp_path / "backups" / snapshot)
+            assert old.execute("SELECT message FROM chat_history").fetchall() == [("hola",)]
             old.close()
         finally:
             set_db_path(None)

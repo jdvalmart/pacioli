@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Query
 
-from app import database as db
+from app.db import transactions as transactions_db
 from app.schemas import CreatedOut, MaterializeResult, MessageOut, TransactionIn, TransactionOut
 from app.services import transactions
 
@@ -15,7 +15,7 @@ def list_transactions(
     year: int = Query(ge=2000, le=2100),
 ) -> list[TransactionOut]:
     """List the transactions of a month, newest first."""
-    return [TransactionOut(**t.__dict__) for t in db.get_transactions(month, year)]
+    return [TransactionOut(**t.__dict__) for t in transactions_db.get_transactions(month, year)]
 
 
 @router.post("", response_model=CreatedOut, status_code=201)
@@ -35,7 +35,7 @@ def update_transaction(trans_id: int, payload: TransactionIn) -> MessageOut:
 @router.delete("/{trans_id}", response_model=MessageOut)
 def delete_transaction(trans_id: int) -> MessageOut:
     """Delete a transaction."""
-    db.delete_transaction(trans_id)
+    transactions_db.delete_transaction(trans_id)
     return MessageOut(message="Transaction deleted")
 
 
@@ -48,4 +48,4 @@ def materialize_recurring(
 
     Idempotent: months already materialized return created=0.
     """
-    return MaterializeResult(created=db.ensure_recurring(month, year))
+    return MaterializeResult(created=transactions_db.ensure_recurring(month, year))

@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 
-from app import database as db
+from app.db import savings as savings_db
 from app.errors import IntegrityViolation
 from app.schemas import CreatedOut, MessageOut, SavingsIn, SavingsOut, SavingsUpdate
 
@@ -33,7 +33,7 @@ def list_savings() -> list[SavingsOut]:
             invested=s.invested or Decimal("0.00"),
             matures_on=s.matures_on,
         )
-        for s in db.get_savings()
+        for s in savings_db.get_savings()
     ]
 
 
@@ -41,7 +41,7 @@ def list_savings() -> list[SavingsOut]:
 def create_savings(payload: SavingsIn) -> CreatedOut:
     """Create a savings item, optionally seeding it with an initial deposit."""
     try:
-        item_id = db.add_savings(
+        item_id = savings_db.add_savings(
             name=payload.name,
             kind=payload.kind,
             target=payload.target,
@@ -66,7 +66,7 @@ def create_savings(payload: SavingsIn) -> CreatedOut:
 @router.put("/{item_id}", response_model=MessageOut)
 def update_savings(item_id: int, payload: SavingsUpdate) -> MessageOut:
     """Update a savings item."""
-    db.update_savings(
+    savings_db.update_savings(
         item_id=item_id,
         name=payload.name,
         kind=payload.kind,
@@ -86,5 +86,5 @@ def update_savings(item_id: int, payload: SavingsUpdate) -> MessageOut:
 @router.delete("/{item_id}", response_model=MessageOut)
 def delete_savings(item_id: int) -> MessageOut:
     """Delete a savings item and its recurring template."""
-    db.delete_savings(item_id)
+    savings_db.delete_savings(item_id)
     return MessageOut(message="Savings item deleted")

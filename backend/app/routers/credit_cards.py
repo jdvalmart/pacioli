@@ -7,7 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException
 
 from app import clock
-from app import database as db
+from app.db import cards as cards_db
 from app.errors import IntegrityViolation
 from app.schemas import CreatedOut, CreditCardIn, CreditCardOut, MessageOut
 
@@ -36,7 +36,7 @@ def list_cards(
     mid-month day would move the cycle past today's cutoff and report the
     still-open statement as already due.
     """
-    cards = db.get_credit_cards(today=_reference_date(month, year))
+    cards = cards_db.get_credit_cards(today=_reference_date(month, year))
     return [
         CreditCardOut(
             id=c.id or 0,
@@ -60,7 +60,7 @@ def list_cards(
 def create_card(payload: CreditCardIn) -> CreatedOut:
     """Create a credit card."""
     try:
-        card_id = db.add_credit_card(
+        card_id = cards_db.add_credit_card(
             name=payload.name,
             limit=payload.limit,
             cutoff_day=payload.cutoff_day,
@@ -76,7 +76,7 @@ def create_card(payload: CreditCardIn) -> CreatedOut:
 @router.put("/{card_id}", response_model=MessageOut)
 def update_card(card_id: int, payload: CreditCardIn) -> MessageOut:
     """Update a credit card."""
-    db.update_credit_card(
+    cards_db.update_credit_card(
         card_id=card_id,
         name=payload.name,
         limit=payload.limit,
@@ -89,5 +89,5 @@ def update_card(card_id: int, payload: CreditCardIn) -> MessageOut:
 @router.delete("/{card_id}", response_model=MessageOut)
 def delete_card(card_id: int) -> MessageOut:
     """Delete a credit card, leaving its transactions unlinked."""
-    db.delete_credit_card(card_id)
+    cards_db.delete_credit_card(card_id)
     return MessageOut(message="Credit card deleted")

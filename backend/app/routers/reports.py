@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Query
 from fastapi.responses import PlainTextResponse
 
-from app import database as db
+from app.db import reports as reports_db
 from app.schemas import (
     BudgetVsActualOut,
     CategorySpendingOut,
@@ -19,13 +19,13 @@ def monthly_summary(
     year: int = Query(ge=2000, le=2100),
 ) -> MonthlySummaryOut:
     """Return income, expense and balance totals for a month."""
-    return MonthlySummaryOut(**db.get_monthly_summary(month, year).__dict__)
+    return MonthlySummaryOut(**reports_db.get_monthly_summary(month, year).__dict__)
 
 
 @router.get("/monthly", response_model=list[MonthlySummaryOut])
 def yearly_summaries(year: int = Query(ge=2000, le=2100)) -> list[MonthlySummaryOut]:
     """Return the monthly summary for every month of a year."""
-    return [MonthlySummaryOut(**s.__dict__) for s in db.get_monthly_summaries(year)]
+    return [MonthlySummaryOut(**s.__dict__) for s in reports_db.get_monthly_summaries(year)]
 
 
 @router.get("/category-spending", response_model=list[CategorySpendingOut])
@@ -35,7 +35,7 @@ def category_spending(
     type: str = Query(default="expense", pattern="^(income|expense)$"),
 ) -> list[CategorySpendingOut]:
     """Return spending totals by category, highest first."""
-    rows = db.get_category_spending(month, year, type)
+    rows = reports_db.get_category_spending(month, year, type)
     return [CategorySpendingOut(name=n, total=t, color=c, icon=i) for n, t, c, i in rows]
 
 
@@ -45,7 +45,7 @@ def budget_vs_actual(
     year: int = Query(ge=2000, le=2100),
 ) -> list[BudgetVsActualOut]:
     """Return budget vs actual spending per expense category."""
-    return [BudgetVsActualOut(**row) for row in db.get_budget_vs_actual(month, year)]
+    return [BudgetVsActualOut(**row) for row in reports_db.get_budget_vs_actual(month, year)]
 
 
 @router.get("/export", response_class=PlainTextResponse)
@@ -55,7 +55,7 @@ def export_csv(
 ) -> PlainTextResponse:
     """Export the transactions of a month as a CSV download."""
     return PlainTextResponse(
-        db.transactions_to_csv(month, year),
+        reports_db.transactions_to_csv(month, year),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=pacioli_{year}-{month:02d}.csv"},
     )

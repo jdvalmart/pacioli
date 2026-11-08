@@ -9,7 +9,11 @@ from decimal import Decimal
 from typing import TypedDict
 
 from app import clock
-from app import database as db
+from app.db import accounts as accounts_db
+from app.db import cards as cards_db
+from app.db import categories as categories_db
+from app.db import savings as savings_db
+from app.db import transactions as transactions_db
 from app.domain.kinds import TxKind
 from app.errors import IntegrityViolation, ValidationFailed
 from app.schemas import TransactionIn
@@ -39,7 +43,7 @@ def validate(payload: TransactionIn) -> None:
             raise ValidationFailed(
                 "Card payments require account_id (source) and card_id",
             )
-        cards = {c.id: c for c in db.get_credit_cards(today=clock.today())}
+        cards = {c.id: c for c in cards_db.get_credit_cards(today=clock.today())}
         card = cards.get(payload.card_id)
         if card is None:
             raise ValidationFailed("Credit card does not exist")
@@ -50,7 +54,7 @@ def validate(payload: TransactionIn) -> None:
             raise ValidationFailed(
                 f"The amount exceeds the outstanding balance ({outstanding})",
             )
-        accounts = {a.id: a for a in db.get_accounts()}
+        accounts = {a.id: a for a in accounts_db.get_accounts()}
         source = accounts.get(payload.account_id)
         if source is None:
             raise ValidationFailed("Source account does not exist")
@@ -65,7 +69,7 @@ def validate(payload: TransactionIn) -> None:
             raise ValidationFailed(
                 "Savings movements require account_id and savings_id",
             )
-        items = {s.id: s for s in db.get_savings()}
+        items = {s.id: s for s in savings_db.get_savings()}
         item = items.get(payload.savings_id)
         if item is None:
             raise ValidationFailed("Savings item does not exist")
@@ -73,7 +77,7 @@ def validate(payload: TransactionIn) -> None:
             raise ValidationFailed(
                 (f"This savings item is locked until it matures on {item.matures_on.isoformat()}"),
             )
-        accounts = {a.id: a for a in db.get_accounts()}
+        accounts = {a.id: a for a in accounts_db.get_accounts()}
         if accounts.get(payload.account_id) is None:
             raise ValidationFailed("Account does not exist")
         return
@@ -99,11 +103,11 @@ def validate(payload: TransactionIn) -> None:
 
 
 def _category_types() -> dict[int, str]:
-    return {c.id: c.type for c in db.get_categories() if c.id is not None}
+    return {c.id: c.type for c in categories_db.get_categories() if c.id is not None}
 
 
 class _TransactionFields(TypedDict):
-    """Keyword arguments shared by ``db.add_transaction`` and ``db.update_transaction``."""
+    """Keyword arguments shared by ``transactions_db.add_transaction`` and ``transactions_db.update_transaction``."""
 
     date_val: date
     amount: Decimal
@@ -144,7 +148,7 @@ def create(payload: TransactionIn) -> int:
     """Validate and store a new movement; return its id."""
     validate(payload)
     try:
-        return db.add_transaction(**_fields(payload))
+        return transactions_db.add_transaction(**_fields(payload))
     except IntegrityViolation:
         raise ValidationFailed(_MISSING_REFERENCE) from None
 
@@ -153,6 +157,6 @@ def update(trans_id: int, payload: TransactionIn) -> None:
     """Validate and replace an existing movement."""
     validate(payload)
     try:
-        db.update_transaction(trans_id=trans_id, **_fields(payload))
+        transactions_db.update_transaction(trans_id=trans_id, **_fields(payload))
     except IntegrityViolation:
         raise ValidationFailed(_MISSING_REFERENCE) from None

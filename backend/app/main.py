@@ -15,7 +15,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.database import auto_backup, init_db
+from app.db.backup import auto_backup
+from app.db.migrations import init_db
 from app.errors import DomainError, NotFound
 from app.routers import (
     accounts,
