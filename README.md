@@ -56,7 +56,7 @@ Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con head
 
 | Capa | Tecnologías |
 |------|-------------|
-| **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v14), `uvicorn`, `psycopg` |
+| **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v15), `uvicorn`, `psycopg` |
 | **Frontend** | React 19, TypeScript 5, Vite 6, Tailwind v4, shadcn/ui + Base UI, Recharts 3, TanStack Query 5, React Router 7 |
 | **Calidad** | `ruff`, `mypy`, `pytest`, `tsc -b`, `oxlint`, `vite build` |
 
@@ -68,15 +68,15 @@ Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con head
 pacioli/
 ├── backend/
 │   ├── app/
-│   │   ├── database.py      # 14 migraciones, cuentas/savings con apertura, tarjetas con ciclos/cuotas
+│   │   ├── database.py      # 15 migraciones, cuentas/savings con apertura, tarjetas con ciclos/cuotas
 │   │   ├── main.py          # SPA + /api
 │   │   ├── routers/         # accounts, savings, transactions, budgets, credit_cards, reports
 │   │   └── schemas.py       # Pydantic (Money como string "1234.56")
 │   └── tests/
 ├── frontend/
 │   ├── src/
-│   │   ├── components/      # SectionCard, StatCard, SavingsFormDialog, Logo
-│   │   ├── pages/           # Dashboard, Transactions, Budgets, Reports, Settings (+ Categories)
+│   │   ├── components/      # SectionCard, StatCard, secciones de Ajustes (cuentas, tarjetas, ahorro, categorías)
+│   │   ├── pages/           # Dashboard, Transactions, Budgets, Reports, Settings
 │   │   ├── hooks/useMonth.ts# mes en URL + espejo en localStorage
 │   │   └── lib/             # api.ts, types.ts, money.ts
 │   └── public/favicon.svg   # libro con cruz
@@ -139,11 +139,12 @@ podman-compose up -d --wait   # http://localhost:8000  (y Postgres en :5433)
 
 - **Ubicación:** SQLite en `~/.local/share/pacioli/pacioli.db` (`XDG_DATA_HOME` o `PACIOLI_DATA_DIR` lo sobreescriben). Compatible con `data/budget.db` del desktop: se importa una vez. Con `DATABASE_URL` los datos viven en PostgreSQL (volúmen `pgdata` del compose).
 - **Backups diarios** con rotación (10) en `~/.local/share/pacioli/backups/`.
-- **Migraciones** (`SCHEMA_VERSION = 14`):
+- **Migraciones** (`SCHEMA_VERSION = 15`):
   - v11 `monthly_plans` (total del mes)
   - v12 `accounts.starting_cents` / `savings.opening_cents` (saldos iniciales fuera de mes)
   - v13 `transactions.installments` / `interest_bp`
   - v14 `savings.dividends_cents` + `matures_on` (derivado de `created_at + term_days`)
+  - v15 `savings.category_id` (bolsillos como reserva de una categoría del presupuesto)
 - **Reglas de saldo:**
   - **Cuenta:** `starting + ingresos − gastos − pago_tc ± transferencias − ahorro + retiro`. Cualquier movimiento a un ahorro (bolsillo, programado, CDT o acciones) sale del saldo disponible de la cuenta; el retiro lo devuelve.
   - **Resumen mensual:** `total_expense = gasto + pago_tc` (cuota de tarjeta no es gasto hasta pagarla). `gasto_tc` no mueve caja; para presupuestos, gasto por categoría y listado se atribuye al **mes en que se paga** la tarjeta (no al mes de compra): una compra después del corte cae en el mes siguiente.

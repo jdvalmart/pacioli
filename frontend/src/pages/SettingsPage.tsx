@@ -1,7 +1,7 @@
 import { AccountsSection } from '@/components/AccountsSection'
 import { CreditCardsSection } from '@/components/CreditCardsSection'
 import { SavingsSection } from '@/components/SavingsSection'
-import { CategoriesSection } from '@/pages/CategoriesPage'
+import { CategoriesSection } from '@/components/CategoriesSection'
 
 export function SettingsPage() {
   return (

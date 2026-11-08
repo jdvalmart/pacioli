@@ -106,16 +106,15 @@ def _ddl(sql: str) -> str:
 
 def _get_version(conn) -> int:  # type: ignore[no-untyped-def]
     if _is_postgres():
-        try:
-            conn.execute(_adapt_sql("CREATE TABLE IF NOT EXISTS pacioli_schema_version (id INT PRIMARY KEY, version INT NOT NULL)"))
-            row = conn.execute(_adapt_sql("SELECT version FROM pacioli_schema_version WHERE id = 1")).fetchone()
-            if row is None:
-                return 0
-            if isinstance(row, dict):
-                return int(row["version"])
-            return int(row[0])
-        except Exception:
-            return 0
+        # No blanket except: a connection or permission error must abort
+        # startup, not be mistaken for an empty database (version 0) and
+        # trigger schema creation and seeding.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pacioli_schema_version "
+            "(id INT PRIMARY KEY, version INT NOT NULL)"
+        )
+        row = conn.execute("SELECT version FROM pacioli_schema_version WHERE id = 1").fetchone()
+        return 0 if row is None else int(row["version"])
     return int(conn.execute("PRAGMA user_version").fetchone()[0])
 
 
