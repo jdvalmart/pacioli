@@ -137,6 +137,25 @@ class TestCreditCard:
         assert card["payment_date"] == "2026-11-25"
         assert _d(card["pending"]) == _d("100000")  # 3rd of 3 installments
 
+    def test_month_view_of_current_month_uses_today(self, ledger: dict[str, Any]) -> None:
+        """?month= of the current month must match the plain listing.
+
+        Regression: the month view used day 15 as "today", which is past
+        the cutoff (10) and reported the open statement as already due.
+        """
+        client = ledger["client"]
+        assert (
+            client.get("/api/credit-cards?month=10&year=2026").json()
+            == client.get("/api/credit-cards").json()
+        )
+
+    def test_past_month_view_shows_month_close(self, ledger: dict[str, Any]) -> None:
+        """September as of Sep 30 ignores the Oct 15 payment: Sep cuota still owed."""
+        card = ledger["client"].get("/api/credit-cards?month=9&year=2026").json()[0]
+        assert card["cycle_end"] == "2026-10-10"
+        assert _d(card["debt"]) == _d("100000")
+        assert _d(card["outstanding"]) == _d("300000")
+
     def test_debt_is_unpaid_closed_statements(self, ledger: dict[str, Any]) -> None:
         """Sep and Oct statements (200k) closed; one 100k payment -> 100k due now."""
         card = ledger["client"].get("/api/credit-cards").json()[0]

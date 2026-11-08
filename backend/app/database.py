@@ -2267,14 +2267,16 @@ def _row_to_card(row: Any, conn: Any, today: date) -> CreditCard:
         _purchase_of(r)
         for r in conn.execute(
             "SELECT date, amount_cents, installments, interest_bp FROM transactions "
-            "WHERE card_id = ? AND kind = 'gasto_tc'",
-            (row["id"],),
+            "WHERE card_id = ? AND kind = 'gasto_tc' AND date <= ?",
+            (row["id"], today.isoformat()),
         ).fetchall()
     ]
+    # Only what had happened by ``today``: a past-month view must not
+    # count later purchases or payments.
     payments = conn.execute(
         "SELECT COALESCE(SUM(amount_cents), 0) as cents FROM transactions "
-        "WHERE card_id = ? AND kind = 'pago_tc'",
-        (row["id"],),
+        "WHERE card_id = ? AND kind = 'pago_tc' AND date <= ?",
+        (row["id"], today.isoformat()),
     ).fetchone()["cents"]
     status = billing.card_status(card, purchases, int(payments), today)
 

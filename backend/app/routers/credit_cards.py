@@ -1,5 +1,6 @@
 """Credit card endpoints."""
 
+import calendar
 from datetime import date
 from decimal import Decimal
 
@@ -13,6 +14,15 @@ from app.schemas import CreatedOut, CreditCardIn, CreditCardOut, MessageOut
 router = APIRouter(prefix="/credit-cards", tags=["credit-cards"])
 
 
+def _reference_date(month: int | None, year: int | None) -> date:
+    today = clock.today()
+    if month is None or year is None or not 1 <= month <= 12:
+        return today
+    if (year, month) == (today.year, today.month):
+        return today
+    return date(year, month, calendar.monthrange(year, month)[1])
+
+
 @router.get("", response_model=list[CreditCardOut])
 def list_cards(
     month: int | None = None,
@@ -20,17 +30,13 @@ def list_cards(
 ) -> list[CreditCardOut]:
     """List all credit cards with spending, payments, debt and available credit.
 
-    When a month is supplied, the cycle shown corresponds to that month
-    (the purchase on Sep 15 with cutoff 5 is billed in October).
+    Amounts are computed as of a reference date: today for the current
+    month (or when no month is given), and the month's last day for any
+    other month, so a past month shows how the card closed it. A fixed
+    mid-month day would move the cycle past today's cutoff and report the
+    still-open statement as already due.
     """
-
-    ref = None
-    if month is not None and year is not None:
-        try:
-            ref = date(year, month, 15)
-        except ValueError:
-            ref = None
-    cards = db.get_credit_cards(today=ref)
+    cards = db.get_credit_cards(today=_reference_date(month, year))
     return [
         CreditCardOut(
             id=c.id or 0,
