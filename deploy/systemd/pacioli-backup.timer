@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily snapshot of the Pacioli database
+
+[Timer]
+# Every day at 03:00, plus up to 30 min of random delay.
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=30min
+# If the PC was off at that moment, run at the next login.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

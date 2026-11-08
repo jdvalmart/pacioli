@@ -1,0 +1,18 @@
+[Unit]
+Description=Pacioli personal finance (API + web app on 127.0.0.1:8000)
+Documentation=file://%h/Proyectos/pacioli/README.md
+
+[Service]
+Type=simple
+# Adjust the paths if the repository lives elsewhere.
+WorkingDirectory=%h/Proyectos/pacioli/backend
+ExecStart=%h/Proyectos/pacioli/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Local install: SQLite under ~/.local/share/pacioli, never a Postgres
+# URL that may be exported in the login environment.
+UnsetEnvironment=DATABASE_URL PACIOLI_DATA_DIR
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

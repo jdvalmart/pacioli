@@ -8,13 +8,14 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // dev.sh exports PACIOLI_API_PORT (8001 by default, next to the service on 8000).
+        target: `http://localhost:${process.env.PACIOLI_API_PORT ?? '8000'}`,
         changeOrigin: true,
       },
     },

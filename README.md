@@ -92,7 +92,8 @@ pacioli/
 
 - Python 3.11+
 - Node.js 22+
-- Podman + `podman-compose` (para producción/contenedores)
+- `uv` (entorno de Python) y systemd de usuario para el servicio local
+- Opcional: Docker o Podman con compose (stack con Postgres)
 
 ## 🚀 Puesta en marcha
 
@@ -110,35 +111,47 @@ npm install
 # npm i @fontsource-variable/plus-jakarta-sans  # ya incluida
 ```
 
+### Uso diario: servicio local siempre activo (recomendado)
+
+Pacioli corre como servicio de usuario de systemd: arranca al iniciar sesión, se reinicia solo
+si falla y sirve la app compilada en **http://localhost:8000** (solo `127.0.0.1`). Los datos
+viven en SQLite (`~/.local/share/pacioli`) y un timer hace un backup diario a las 03:00.
+
+```bash
+scripts/install-service.sh              # instala o actualiza (compila el frontend y reinicia)
+scripts/install-service.sh --uninstall  # quita el servicio (los datos se conservan)
+
+systemctl --user status pacioli         # estado
+journalctl --user -u pacioli -f         # logs
+systemctl --user list-timers pacioli-backup.timer
+```
+
+Después de hacer `git pull` o cambiar el código, vuelve a correr `scripts/install-service.sh`.
+Las unidades están en [`deploy/systemd/`](deploy/systemd/).
+
 ### Desarrollo
 
 ```bash
 ./dev.sh
-# API → http://localhost:8000  (/docs)
-# Vite → http://localhost:5173  (proxy /api/* → :8000)
+# API  → http://localhost:8001  (/docs)   ← 8001 para no chocar con el servicio en 8000
+# Vite → http://localhost:5173  (proxy /api/* → :8001)
+# Datos de desarrollo en ./.dev-data (nunca toca tus datos reales)
 # Ctrl+C detiene ambos
 ```
 
-### Producción
+### Contenedores (opcional, Postgres)
 
 ```bash
-cd frontend && npm run build && cd ..
-backend/.venv/bin/uvicorn app.main:app --app-dir backend --port 8000
-# Si existe frontend/dist, el backend sirve la SPA en http://localhost:8000
+docker compose up -d --wait   # http://localhost:8000 (y Postgres en :5433)
 ```
-
-O con el stack completo en contenedores (app + Postgres):
-
-```bash
-podman-compose up -d --wait   # http://localhost:8000  (y Postgres en :5433)
-```
+Detén antes el servicio local (`systemctl --user stop pacioli`), porque ambos usan el puerto 8000.
 
 ---
 
 ## 💾 Datos
 
 - **Ubicación:** SQLite en `~/.local/share/pacioli/pacioli.db` (`XDG_DATA_HOME` o `PACIOLI_DATA_DIR` lo sobreescriben). Compatible con `data/budget.db` del desktop: se importa una vez. Con `DATABASE_URL` los datos viven en PostgreSQL (volúmen `pgdata` del compose).
-- **Backups diarios** con rotación (10) en `~/.local/share/pacioli/backups/`.
+- **Backups diarios** con rotación (10) en `~/.local/share/pacioli/backups/`: al arrancar y con el timer `pacioli-backup` (`python -m app.cli backup`). Solo SQLite; Postgres no se respalda automáticamente.
 - **Migraciones** (`SCHEMA_VERSION = 15`):
   - v11 `monthly_plans` (total del mes)
   - v12 `accounts.starting_cents` / `savings.opening_cents` (saldos iniciales fuera de mes)
@@ -164,13 +177,6 @@ DATABASE_URL=postgresql://pacioli:pacioli@localhost:5433/pacioli \
 
 # 3) La app ya corre contra Postgres (DATABASE_URL lo inyecta compose)
 curl -s http://localhost:8000/health
-```
-
-Arranque con systemd (arranca todo el stack con la sesión):
-
-```bash
-systemctl --user enable --now pacioli
-systemctl --user restart pacioli
 ```
 
 Datos de conexión: `postgresql://pacioli:pacioli@localhost:5433/pacioli` (host `localhost`, puerto `5433`, usuario `pacioli`, password `pacioli`, DB `pacioli`). Sin `DATABASE_URL` la app sigue usando SQLite.
