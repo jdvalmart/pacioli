@@ -60,6 +60,9 @@ export interface Transaction {
   interest_bp: number
   savings_id: number | null
   savings_name: string | null
+  /** gasto_tc only: which cuota is billed in the listed month, and its amount. */
+  installment_number?: number | null
+  billed_amount?: string | null
 }
 
 export interface TransactionInput {

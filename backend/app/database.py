@@ -27,6 +27,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app import clock
+from app.domain import billing
 from app.errors import IntegrityViolation
 
 SCHEMA_VERSION = 15
@@ -332,6 +333,8 @@ class Transaction:
     interest_bp: int = 0  # Total interest for the plan, in basis points
     savings_id: int | None = None  # Savings/investment item for ahorro/retiro
     savings_name: str | None = None
+    installment_number: int | None = None  # gasto_tc: cuota billed in the listed month
+    billed_amount: Decimal | None = None  # gasto_tc: that cuota's amount, interest included
 
 
 @dataclass
@@ -1797,12 +1800,15 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
     result = []
     for row in rows:
         if row["kind"] == "gasto_tc":
-            bill_year, bill_month = _charge_month(row)
-            if (bill_month, bill_year) != (month, year):
+            billed = _billed_in(row, year, month)
+            if billed is None:
                 continue
-        elif not (start_date <= row["date"] < end_date):
-            continue
-        result.append(_row_to_tx(row))
+            tx = _row_to_tx(row)
+            tx.installment_number = billed[0]
+            tx.billed_amount = _to_dec(billed[1])
+            result.append(tx)
+        elif start_date <= row["date"] < end_date:
+            result.append(_row_to_tx(row))
     return result
 
 
@@ -2221,154 +2227,71 @@ def delete_account(account_id: int) -> None:
 # gasto_tc transactions linked to it.
 
 
-def _days_in(year: int, month: int) -> int:
-    return calendar.monthrange(year, month)[1]
+def _card_of(row: Any) -> billing.Card | None:
+    """Billing parameters joined on a gasto_tc row (None if the card was deleted)."""
+    if row["cutoff_day"] is None:
+        return None
+    return billing.Card(cutoff_day=row["cutoff_day"], payment_day=row["payment_day"])
 
 
-def _cutoff_in(year: int, month: int, cutoff_day: int) -> date:
-    """The cutoff date within a month, clamped to its last day."""
-    return date(year, month, min(cutoff_day, _days_in(year, month)))
+def _purchase_of(row: Any) -> billing.Purchase:
+    return billing.Purchase(
+        date=date.fromisoformat(row["date"]),
+        amount_cents=row["amount_cents"],
+        installments=row["installments"] or 1,
+        interest_bp=row["interest_bp"] or 0,
+    )
 
 
-def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
-    index = year * 12 + (month - 1) + delta
-    return index // 12, index % 12 + 1
+def _billed_in(row: Any, year: int, month: int) -> tuple[int, int] | None:
+    """(installment number, cents) of a gasto_tc row paid in ``(year, month)``.
 
-
-def _last_cutoff(cutoff_day: int, today: date) -> date:
-    """Most recent cutoff on or before today (start of the open cycle)."""
-    this = _cutoff_in(today.year, today.month, cutoff_day)
-    if today >= this:
-        return this
-    prev_year, prev_month = _shift_month(today.year, today.month, -1)
-    return _cutoff_in(prev_year, prev_month, cutoff_day)
-
-
-def _next_cutoff(cutoff_day: int, today: date) -> date:
-    """First cutoff strictly after today (closes the open cycle)."""
-    this = _cutoff_in(today.year, today.month, cutoff_day)
-    if today < this:
-        return this
-    next_year, next_month = _shift_month(today.year, today.month, 1)
-    return _cutoff_in(next_year, next_month, cutoff_day)
-
-
-def _payment_for_cutoff(cutoff: date, payment_day: int) -> date:
-    """Payment date for the statement that closes on ``cutoff``.
-
-    Falls on ``payment_day`` of the cutoff's month, or the following
-    month when that day is earlier than the cutoff itself.
+    Each installment counts in the month its statement is due. A purchase
+    whose card was deleted has no cycle: it counts once, in full, in its
+    purchase month.
     """
-    payment = _cutoff_in(cutoff.year, cutoff.month, payment_day)
-    if payment < cutoff:
-        next_year, next_month = _shift_month(cutoff.year, cutoff.month, 1)
-        payment = _cutoff_in(next_year, next_month, payment_day)
-    return payment
+    purchase = _purchase_of(row)
+    card = _card_of(row)
+    if card is None:
+        if (purchase.date.year, purchase.date.month) == (year, month):
+            return 1, billing.financed_cents(purchase)
+        return None
+    item = billing.installment_in_month(card, purchase, year, month)
+    return None if item is None else (item.number, item.cents)
 
 
-def _cycle_ordinal(cutoff_day: int, day: date) -> int:
-    """Index (year*12 + month) of the cutoff that closes ``day``'s cycle."""
-    end = _cutoff_in(day.year, day.month, cutoff_day)
-    if day > end:
-        next_year, next_month = _shift_month(day.year, day.month, 1)
-        end = _cutoff_in(next_year, next_month, cutoff_day)
-    return end.year * 12 + (end.month - 1)
+def _row_to_card(row: Any, conn: Any, today: date) -> CreditCard:
+    card = billing.Card(cutoff_day=row["cutoff_day"], payment_day=row["payment_day"])
+    purchases = [
+        _purchase_of(r)
+        for r in conn.execute(
+            "SELECT date, amount_cents, installments, interest_bp FROM transactions "
+            "WHERE card_id = ? AND kind = 'gasto_tc'",
+            (row["id"],),
+        ).fetchall()
+    ]
+    payments = conn.execute(
+        "SELECT COALESCE(SUM(amount_cents), 0) as cents FROM transactions "
+        "WHERE card_id = ? AND kind = 'pago_tc'",
+        (row["id"],),
+    ).fetchone()["cents"]
+    status = billing.card_status(card, purchases, int(payments), today)
 
-
-def _card_billing_month(cutoff_day: int, payment_day: int, purchase: date) -> tuple[int, int]:
-    """(year, month) in which a card purchase must be paid.
-
-    A purchase belongs to the statement that closes on the first cutoff
-    after it; that statement is due on the card's payment date. The
-    purchase is attributed to the payment's month, so a purchase late in
-    the month (after the cutoff) lands on the following month's budget.
-    """
-    end = _cutoff_in(purchase.year, purchase.month, cutoff_day)
-    if purchase > end:
-        next_year, next_month = _shift_month(purchase.year, purchase.month, 1)
-        end = _cutoff_in(next_year, next_month, cutoff_day)
-    payment = _payment_for_cutoff(end, payment_day)
-    return payment.year, payment.month
-
-
-def _charge_month(row: Any) -> tuple[int, int]:
-    """Billing (year, month) of a ``gasto_tc`` row.
-
-    Falls back to the purchase month when the row has no card attached.
-    """
-    purchase = date.fromisoformat(row["date"])
-    cutoff_day = row["cutoff_day"]
-    if cutoff_day is None:
-        return purchase.year, purchase.month
-    return _card_billing_month(cutoff_day, row["payment_day"], purchase)
-
-
-def _gross(amount_cents: int, interest_bp: int) -> Decimal:
-    """Purchase total with its plan interest applied."""
-    return _to_dec(amount_cents) * (Decimal(10000 + interest_bp) / Decimal(10000))
-
-
-def _row_to_card(row: sqlite3.Row, conn: sqlite3.Connection, today: date) -> CreditCard:
     limit = _to_dec(row["limit_cents"])
-    cutoff_day = row["cutoff_day"]
-    payment_day = row["payment_day"]
-    card_id = row["id"]
-
-    cycle_start = _last_cutoff(cutoff_day, today)
-    cycle_end = _next_cutoff(cutoff_day, today)
-    payment_date = _payment_for_cutoff(cycle_end, payment_day)
-    today_ordinal = _cycle_ordinal(cutoff_day, today)
-
-    purchases = conn.execute(
-        "SELECT date, amount_cents, installments, interest_bp FROM transactions "
-        "WHERE card_id = ? AND kind = 'gasto_tc'",
-        (card_id,),
-    ).fetchall()
-
-    def charges_in(ordinal: int) -> Decimal:
-        """Installments billed in a given billing cycle."""
-        total = Decimal("0.00")
-        for r in purchases:
-            installments = r["installments"] or 1
-            gross = _gross(r["amount_cents"], r["interest_bp"] or 0)
-            start = _cycle_ordinal(cutoff_day, date.fromisoformat(r["date"]))
-            if start <= ordinal <= start + installments - 1:
-                total += gross / installments
-        return _q(total)
-
-    payments = _to_dec(
-        conn.execute(
-            "SELECT COALESCE(SUM(amount_cents), 0) as cents FROM transactions "
-            "WHERE card_id = ? AND kind = 'pago_tc'",
-            (card_id,),
-        ).fetchone()["cents"]
-    )
-
-    outstanding = (
-        sum(
-            (_gross(r["amount_cents"], r["interest_bp"] or 0) for r in purchases),
-            Decimal("0.00"),
-        )
-        - payments
-    )
-    outstanding = max(outstanding, Decimal("0.00"))
-
-    pending = min(charges_in(today_ordinal), outstanding)
-    debt = max(charges_in(today_ordinal - 1) - payments, Decimal("0.00"))
-
+    outstanding = _to_dec(status.outstanding_cents)
     return CreditCard(
-        id=card_id,
+        id=row["id"],
         name=row["name"],
         limit=limit,
-        cutoff_day=cutoff_day,
-        payment_day=payment_day,
-        pending=pending,
-        debt=debt,
+        cutoff_day=card.cutoff_day,
+        payment_day=card.payment_day,
+        pending=_to_dec(status.pending_cents),
+        debt=_to_dec(status.due_cents),
         outstanding=outstanding,
         available=limit - outstanding,
-        cycle_start=cycle_start,
-        cycle_end=cycle_end,
-        payment_date=payment_date,
+        cycle_start=status.cycle_start,
+        cycle_end=status.cycle_end,
+        payment_date=status.payment_date,
     )
 
 
@@ -2695,7 +2618,8 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
         # Card purchases billed in this month, attributed by payment date.
         cursor.execute(
             """
-            SELECT c.name, t.amount_cents, t.date, cc.cutoff_day, cc.payment_day
+            SELECT c.name, t.amount_cents, t.date, t.installments, t.interest_bp,
+                   cc.cutoff_day, cc.payment_day
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
@@ -2703,11 +2627,10 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
         """
         )
         for row in cursor.fetchall():
-            if _charge_month(row) == (year, month):
+            billed = _billed_in(row, year, month)
+            if billed is not None:
                 name = row["name"]
-                by_category[name] = by_category.get(name, Decimal("0.00")) + _to_dec(
-                    row["amount_cents"]
-                )
+                by_category[name] = by_category.get(name, Decimal("0.00")) + _to_dec(billed[1])
 
         # Savings movements feed the "Ahorro" category (net of withdrawals)
         # without counting as cash expenses.
@@ -2819,7 +2742,7 @@ def get_category_spending(
 
         cursor.execute(
             """
-            SELECT t.category_id, t.amount_cents, t.date,
+            SELECT t.category_id, t.amount_cents, t.date, t.installments, t.interest_bp,
                    cc.cutoff_day, cc.payment_day, c.name, c.color, c.icon
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
@@ -2828,18 +2751,14 @@ def get_category_spending(
         """
         )
         for row in cursor.fetchall():
-            if _charge_month(row) != (year, month):
+            billed = _billed_in(row, year, month)
+            if billed is None:
                 continue
             cat_id = row["category_id"]
             if cat_id in agg:
-                agg[cat_id][1] += _to_dec(row["amount_cents"])
+                agg[cat_id][1] += _to_dec(billed[1])
             else:
-                agg[cat_id] = [
-                    row["name"],
-                    _to_dec(row["amount_cents"]),
-                    row["color"],
-                    row["icon"],
-                ]
+                agg[cat_id] = [row["name"], _to_dec(billed[1]), row["color"], row["icon"]]
 
         # Savings movements count in the "Ahorro" category, net of
         # withdrawals, without being cash expenses.
@@ -2903,7 +2822,7 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
         # Card purchases billed in this month, attributed by payment date.
         cursor.execute(
             """
-            SELECT t.category_id, t.amount_cents, t.date,
+            SELECT t.category_id, t.amount_cents, t.date, t.installments, t.interest_bp,
                    cc.cutoff_day, cc.payment_day
             FROM transactions t
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
@@ -2911,11 +2830,12 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
         """
         )
         for row in cursor.fetchall():
-            if _charge_month(row) != (year, month):
+            billed = _billed_in(row, year, month)
+            if billed is None:
                 continue
             cat = rows.get(row["category_id"])
             if cat is not None:
-                cat["actual"] += _to_dec(row["amount_cents"])
+                cat["actual"] += _to_dec(billed[1])
 
         # Savings movements fill the "Ahorro" category, net of withdrawals.
         savings_cat = _savings_category(conn)

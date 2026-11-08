@@ -214,7 +214,8 @@ function PayCardBody({
   const queryClient = useQueryClient()
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
   const [accountId, setAccountId] = useState('')
-  const [amount, setAmount] = useState(card.outstanding)
+  // Default to the closed statement still owed (like a bank's "statement balance").
+  const [amount, setAmount] = useState(Number(card.debt) > 0 ? card.debt : card.outstanding)
 
   const outstanding = Number(card.outstanding)
   const selectedAccount: Account | undefined = (accounts.data ?? []).find(
@@ -271,6 +272,11 @@ function PayCardBody({
             Deuda total
           </p>
           <p className="text-2xl font-black text-orange-600">{fmtCopDecimals(card.outstanding)}</p>
+          {Number(card.debt) > 0 && (
+            <p className="text-xs font-bold text-red-600">
+              Por pagar ya: {fmtCopDecimals(card.debt)}
+            </p>
+          )}
           <p className="text-xs font-bold text-muted-foreground">
             Cuota del mes: {fmtCopDecimals(card.pending)}
           </p>
@@ -307,6 +313,17 @@ function PayCardBody({
             placeholder="0"
           />
           <div className="flex gap-2">
+            {Number(card.debt) > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => setAmount(card.debt)}
+              >
+                Por pagar ya
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -473,6 +490,11 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                       <Wallet /> Pagar
                     </Button>
                   </div>
+                  {Number(card.debt) > 0 && (
+                    <p className="text-xs font-bold text-red-600">
+                      Por pagar ya (extractos cerrados): {fmtCopDecimals(card.debt)}
+                    </p>
+                  )}
                   {outstanding > 0 && (
                     <p className="text-xs font-bold text-orange-600">
                       Deuda total: {fmtCopDecimals(card.outstanding)}

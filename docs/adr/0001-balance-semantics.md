@@ -1,7 +1,7 @@
 # ADR 0001 — Semántica de saldos, balance acumulado y tarjetas
 
-- **Estado:** aceptado (describe el comportamiento actual) · 2 puntos abiertos
-- **Fecha:** 2026-11-07
+- **Estado:** aceptado · puntos abiertos resueltos el 2026-11-08 (ver *Decisiones de tarjeta*)
+- **Fecha:** 2026-11-07 (revisado 2026-11-08)
 - **Tests que lo fijan:** `backend/tests/test_invariants.py`
 
 ## Contexto
@@ -22,26 +22,38 @@ Antes de refactorizar la capa de datos hay que fijar qué significa cada número
 | **Invariante** | `balance acumulado = Σ saldos de cuentas + Σ (saldo − apertura) de ahorros` | test `test_equals_accounts_plus_net_savings` |
 | **Encadenamiento** | `carryover(m+1) = accumulated_balance(m)` | test `test_months_chain` |
 | **Patrimonio (dashboard)** | `Σ cuentas + Σ ahorros (valor actual o saldo)` | `DashboardPage.tsx` (cliente) |
-| **Deuda de tarjeta** | `outstanding = Σ compras con interés − Σ pagos`; `available = límite − outstanding` | `GET /api/credit-cards` |
-| **Cuota del ciclo** | `pending = Σ (bruto / cuotas)` de las compras cuyo plan cae en el ciclo abierto | idem |
+| **Deuda total** | `outstanding = Σ compras con interés − Σ pagos`; `available = límite − outstanding` | `GET /api/credit-cards` |
+| **Por pagar ya** | `debt = Σ cuotas de extractos cerrados − Σ pagos` (mínimo 0) | idem |
+| **Cuota del ciclo** | `pending = cuotas del ciclo abierto − pagos anticipados` (pagos que exceden lo ya facturado) | idem |
+| **Gasto por categoría** | cada cuota (con interés) cuenta en el mes en que vence su extracto | resumen, reportes, presupuesto, listado |
 
 Mover dinero a un bolsillo/CDT/acciones **sale de la cuenta** pero **no** reduce el balance
 acumulado: es apartar, no gastar. Las aperturas de ahorros no forman parte de ninguna de las dos cifras.
 
-## Puntos abiertos (requieren decisión de producto)
+## Decisiones de tarjeta (2026-11-08)
 
-1. **Compras en cuotas en presupuestos/reportes.** Hoy una compra de 300.000 en 3 cuotas cuenta
-   **completa y sin interés** en el mes del primer pago, mientras que la tarjeta factura 100.000 por
-   ciclo (con interés). Opciones: (a) mantener — el gasto se reconoce al comprar; (b) repartir por
-   cuota con interés, coherente con lo que realmente se paga cada mes.
-2. **`debt` en `/api/credit-cards` es incorrecto** cuando hay pagos de ciclos anteriores:
-   se calcula como `cuotas del ciclo cerrado − TODOS los pagos históricos`. Ejemplo: compra en 3 cuotas,
-   se paga el extracto de septiembre, el de octubre queda pendiente → `debt = 0` en vez de 100.000.
-   La UI no usa el campo (solo aparece en `types.ts`), así que el bug está latente. Opciones:
-   corregir con asignación de pagos por ciclo (FIFO) o eliminar el campo.
+Criterio: comportarse como un producto comercial y como factura un banco. Las reglas viven en
+el módulo puro `backend/app/domain/billing.py` y se prueban sin base de datos en `tests/test_billing.py`.
+
+1. **Las compras en cuotas se reparten por cuota, con interés.** Cada cuota cuenta en la categoría de la
+   compra el mes en que vence su extracto. Una compra de 300.000 en 3 cuotas suma 100.000 en cada uno de
+   los tres meses y aparece en el listado de cada mes como "cuota k/3". `amount` sigue siendo el valor de
+   la compra (para editarla) y `billed_amount` es la cuota del mes. El interés es un costo real del gasto,
+   así que se presupuesta. *Rechazado:* reconocer la compra completa al comprar o en el primer pago, porque
+   descuadra el presupuesto respecto de lo que el usuario realmente paga cada mes e ignora el interés.
+2. **`debt` se corrige y se muestra como "Por pagar ya".** Los pagos se aplican primero a los extractos
+   más antiguos (FIFO), así que `debt` es lo facturado en extractos cerrados que sigue sin pagarse (incluye
+   extractos vencidos). Lo pagado de más reduce la cuota del ciclo abierto (`pending`). Es la cifra más
+   importante de una tarjeta, así que la UI la destaca y la propone por defecto en el diálogo de pago.
+   *Rechazado:* eliminar el campo.
+3. **Redondeo:** el total financiado se redondea una vez al centavo (half-up) y se reparte en cuotas
+   enteras que suman exactamente ese total; los centavos sobrantes van en las primeras cuotas.
+   Con 1 cuota no se cobra interés.
+
+Una compra cuya tarjeta se eliminó ya no tiene ciclo: cuenta una vez, completa, en el mes de compra.
 
 ## Consecuencias
 
 - Cualquier refactor de `database.py` debe mantener verde `test_invariants.py` en SQLite **y** Postgres.
-- Cambiar alguno de los puntos abiertos implica actualizar este ADR y el test correspondiente
-  (`test_card_purchase_attributed_to_first_payment_month`).
+- Cambiar una regla de tarjeta implica actualizar este ADR, `test_billing.py` y
+  `test_installments_spread_over_their_payment_months` / `test_debt_is_unpaid_closed_statements`.

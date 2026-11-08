@@ -731,7 +731,11 @@ function TransactionsTable({
                   {tx.kind === 'transferencia'
                     ? `${tx.account_icon} ${tx.account_name ?? '—'} → ${tx.to_account_icon} ${tx.to_account_name ?? '—'}`
                     : tx.kind === 'gasto_tc'
-                      ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}`
+                      ? `💳 ${tx.card_name ?? 'Tarjeta de crédito'}${
+                          tx.installments > 1 && tx.installment_number
+                            ? ` · cuota ${tx.installment_number}/${tx.installments} de ${fmtCopDecimals(tx.amount)}`
+                            : ''
+                        }`
                       : tx.kind === 'pago_tc'
                         ? `${tx.account_icon} ${tx.account_name ?? '—'} → 💳 ${tx.card_name ?? 'Tarjeta'}`
                         : tx.kind === 'ahorro' || tx.kind === 'retiro'
@@ -743,7 +747,7 @@ function TransactionsTable({
             </TableCell>
               <TableCell className={`text-right font-bold ${amountClass(tx)}`}>
                 {tx.kind === 'ingreso' ? '+' : tx.kind === 'transferencia' ? '⇄' : '−'}
-                {fmtCopDecimals(tx.amount)}
+                {fmtCopDecimals(tx.billed_amount ?? tx.amount)}
               </TableCell>
               <TableCell>
                 <div className="flex justify-end gap-1">
@@ -940,8 +944,12 @@ export function TransactionsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar movimiento?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete &quot;{deleting?.description || 'este movimiento'}&quot; por{' '}
-              {deleting ? fmtCopDecimals(deleting.amount) : ''}. Esta acción no se puede deshacer.
+              Se eliminará &quot;{deleting?.description || 'este movimiento'}&quot; por{' '}
+              {deleting ? fmtCopDecimals(deleting.amount) : ''}
+              {deleting && deleting.installments > 1
+                ? `, con sus ${deleting.installments} cuotas en todos los meses`
+                : ''}
+              . Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

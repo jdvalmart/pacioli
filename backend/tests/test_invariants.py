@@ -137,6 +137,11 @@ class TestCreditCard:
         assert card["payment_date"] == "2026-11-25"
         assert _d(card["pending"]) == _d("100000")  # 3rd of 3 installments
 
+    def test_debt_is_unpaid_closed_statements(self, ledger: dict[str, Any]) -> None:
+        """Sep and Oct statements (200k) closed; one 100k payment -> 100k due now."""
+        card = ledger["client"].get("/api/credit-cards").json()[0]
+        assert _d(card["debt"]) == _d("100000")
+
 
 class TestReportsAgree:
     @pytest.mark.parametrize("month", [9, 10, 11])
@@ -153,18 +158,30 @@ class TestReportsAgree:
         for name, total in spending_map.items():
             assert _d(by_category[name]) == total
 
-    def test_card_purchase_attributed_to_first_payment_month(self, ledger: dict[str, Any]) -> None:
-        """Current rule: the full purchase lands on the first statement's month.
+    def test_installments_spread_over_their_payment_months(self, ledger: dict[str, Any]) -> None:
+        """Each cuota counts in the month its statement is due (ADR 0001).
 
-        Note: installments are billed over 3 cycles, but budgets and
-        reports count the whole amount (without interest) once. Pinned
-        here as-is; see docs/adr/0001-balance-semantics.md.
+        The 300k purchase in 3 cuotas (Sep 5, cutoff 10, payment 25) is
+        billed Sep, Oct and Nov: 100k per month in its category, and the
+        purchase is listed once per month as cuota k/3.
         """
         client = ledger["client"]
-        spending = {
-            row["name"]: _d(row["total"])
-            for row in client.get("/api/reports/category-spending?month=9&year=2026").json()
-        }
-        assert spending["Mercado"] == _d("400000")  # 100k gasto + 300k card purchase
-        listed = client.get("/api/transactions?month=9&year=2026").json()
-        assert any(t["kind"] == "gasto_tc" for t in listed)
+        expected = {9: _d("200000"), 10: _d("100000"), 11: _d("100000")}  # Sep adds the 100k gasto
+        for month, total in expected.items():
+            spending = {
+                row["name"]: _d(row["total"])
+                for row in client.get(
+                    f"/api/reports/category-spending?month={month}&year=2026"
+                ).json()
+            }
+            assert spending["Mercado"] == total
+
+            listed = [
+                t
+                for t in client.get(f"/api/transactions?month={month}&year=2026").json()
+                if t["kind"] == "gasto_tc"
+            ]
+            assert len(listed) == 1
+            assert listed[0]["installment_number"] == month - 8
+            assert _d(listed[0]["billed_amount"]) == _d("100000")
+            assert _d(listed[0]["amount"]) == _d("300000")  # editable purchase amount

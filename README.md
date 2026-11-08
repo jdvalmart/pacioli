@@ -147,8 +147,8 @@ podman-compose up -d --wait   # http://localhost:8000  (y Postgres en :5433)
   - v15 `savings.category_id` (bolsillos como reserva de una categoría del presupuesto)
 - **Reglas de saldo:**
   - **Cuenta:** `starting + ingresos − gastos − pago_tc ± transferencias − ahorro + retiro`. Cualquier movimiento a un ahorro (bolsillo, programado, CDT o acciones) sale del saldo disponible de la cuenta; el retiro lo devuelve.
-  - **Resumen mensual:** `total_expense = gasto + pago_tc` (cuota de tarjeta no es gasto hasta pagarla). `gasto_tc` no mueve caja; para presupuestos, gasto por categoría y listado se atribuye al **mes en que se paga** la tarjeta (no al mes de compra): una compra después del corte cae en el mes siguiente.
-  - **Tarjeta:** ciclo `6 sep → 5 oct` (exclusivo/inclusivo), `pending` = cuotas del ciclo actual, `outstanding` = Σ totales con interés − pagos, `available = limit − outstanding`.
+  - **Resumen mensual:** `total_expense = gasto + pago_tc` (cuota de tarjeta no es gasto hasta pagarla). `gasto_tc` no mueve caja; para presupuestos, gasto por categoría y listado cada cuota se atribuye al **mes en que se paga** su extracto (no al mes de compra): una compra después del corte cae en el mes siguiente.
+  - **Tarjeta:** ciclo `6 sep → 5 oct` (exclusivo/inclusivo). Cada cuota (con interés) cuenta en el mes en que vence su extracto. `debt` (*por pagar ya*) = extractos cerrados sin pagar (pagos FIFO), `pending` = cuota del ciclo abierto, `outstanding` = Σ totales con interés − pagos, `available = limit − outstanding`. Detalle en [ADR 0001](docs/adr/0001-balance-semantics.md).
 
 ### 🐘 PostgreSQL (opcional)
 

@@ -115,6 +115,8 @@ class TransactionOut(BaseModel):
     interest_bp: int
     savings_id: int | None
     savings_name: str | None
+    installment_number: int | None = None
+    billed_amount: Money | None = None
 
 
 class SavingsIn(BaseModel):
