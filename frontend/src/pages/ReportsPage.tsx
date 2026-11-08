@@ -102,8 +102,9 @@ export function ReportsPage() {
   const maxSpending = Math.max(1, ...spendingRows.map((r) => Number(r.total)))
   const spendingTotal = spendingRows.reduce((acc, r) => acc + Number(r.total), 0)
 
+  // The savings goal is not spending: it is not part of budget vs actual.
   const budgetRows = (budgetVsActual.data ?? [])
-    .filter((row) => Number(row.budget) > 0)
+    .filter((row) => Number(row.budget) > 0 && row.role !== 'savings')
     .sort((a, b) => Number(b.percent) - Number(a.percent))
 
   return (

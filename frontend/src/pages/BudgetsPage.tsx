@@ -22,6 +22,7 @@ import { PageHeader, SectionHeading } from '@/components/PageHeader'
 import { api } from '@/lib/api'
 import { useBudgetPlan, useBudgetVsActual, useBudgets, useCategories, useInvalidate, useSummary } from '@/lib/queries'
 import { fmtMoney, normalizeAmount } from '@/lib/money'
+import { budgetTotals, totalSourceLabel } from '@/lib/budget'
 import { cn } from '@/lib/utils'
 import type { Category } from '@/lib/types'
 
@@ -85,16 +86,11 @@ function CategoryField({
   const percent = total > 0 && amount > 0 ? Math.round((amount / total) * 100) : null
   return (
     <div className="flex items-center gap-3">
-      <div
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-base text-white"
-        style={{ backgroundColor: category.color || '#888' }}
-      >
-        {category.icon}
-      </div>
+      <CategoryIcon icon={category.icon} color={category.color} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{category.name}</p>
         {percent != null && (
-          <p className="text-[11px] font-semibold text-muted-foreground">{percent}% del total</p>
+          <p className="text-xs text-muted-foreground">{percent}% del total</p>
         )}
       </div>
       <MoneyInput
@@ -119,10 +115,6 @@ function BudgetSetupDialog({
   const categories = useCategories()
   const budgets = useBudgets(month)
 
-  // Previous month (for the copy action).
-  const prevDate = new Date(month.year, month.month - 2, 1)
-  const prevMonth = { month: prevDate.getMonth() + 1, year: prevDate.getFullYear() }
-  const previousBudgets = useBudgets(prevMonth, { enabled: open })
   const summary = useSummary(month, { enabled: open })
   const plan = useBudgetPlan(month, { enabled: open })
 
@@ -130,18 +122,16 @@ function BudgetSetupDialog({
   const [amounts, setAmounts] = useState<Record<string, string>>({})
 
   const allExpense = categories.data?.filter((c) => c.type === 'expense') ?? []
-  const findCat = (name: string) => allExpense.find((c) => c.name === name)
+  // The savings category is the month's savings goal; it goes first, on its own.
+  const savingsCategory = allExpense.find((c) => c.role === 'savings')
+  const savedAmount = (id: number) => Number((budgets.data ?? []).find((b) => b.category_id === id)?.amount ?? 0)
+  const spendCategories = allExpense
+    .filter((c) => c.role !== 'savings')
+    .sort((a, b) => savedAmount(b.id) - savedAmount(a.id) || a.name.localeCompare(b.name, 'es'))
+  const orderedCategories = savingsCategory ? [savingsCategory, ...spendCategories] : spendCategories
 
-  // Diezmo and Ahorro are budget categories like any other, shown in
-  // the user's preferred order rather than set apart.
-  const orderedNames = ['Vivienda', 'Alimentación', 'Servicios', 'Transporte', 'Diezmo', 'Ahorro']
-  const orderedCategories = [
-    ...orderedNames.map((name) => findCat(name)).filter((c): c is Category => Boolean(c)),
-    ...allExpense.filter((c) => !orderedNames.includes(c.name)),
-  ]
-
-  // Initialize the form: total = saved plan (or the month's income),
-  // amounts from saved budgets.
+  // Initialize the form: total = the month's plan (saved, inherited or recent
+  // income average; else this month's income), amounts = budgets in effect.
   const [initialized, setInitialized] = useState(false)
   if (open && !initialized && budgets.data && categories.data && summary.data && plan.data) {
     const map: Record<string, string> = {}
@@ -166,17 +156,6 @@ function BudgetSetupDialog({
   const assigned = orderedCategories.reduce((sum, c) => sum + num(amounts[String(c.id)]), 0)
   const pending = totalNum - assigned
   const usedPercent = totalNum > 0 ? Math.min(100, (assigned / totalNum) * 100) : 0
-
-  const hasPreviousBudgets = (previousBudgets.data ?? []).length > 0
-
-  const copyPrevious = () => {
-    const map: Record<string, string> = {}
-    for (const b of previousBudgets.data ?? []) {
-      map[String(b.category_id)] = fmtInput(b.amount)
-    }
-    setAmounts(map)
-    toast.success('Presupuesto del mes copiado')
-  }
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -206,7 +185,7 @@ function BudgetSetupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         {open && (
           <>
             <DialogHeader>
@@ -221,8 +200,10 @@ function BudgetSetupDialog({
               <div className="space-y-1.5">
                 <Label htmlFor="budget-total">Mi presupuesto total</Label>
                 <MoneyInput id="budget-total" value={total} onChange={setTotal} placeholder="3.000.000" />
-                <p className="text-xs font-semibold text-muted-foreground">
-                  Por defecto usamos el ingreso del mes: {fmtMoney(Number(summary.data?.total_income ?? 0))}
+                <p className="text-xs text-muted-foreground">
+                  {plan.data?.total != null
+                    ? `${totalSourceLabel(plan.data.source ?? 'saved')}.`
+                    : `Sin datos previos: usamos tus ingresos del mes (${fmtMoney(Number(summary.data?.total_income ?? 0))}).`}
                 </p>
               </div>
 
@@ -264,17 +245,24 @@ function BudgetSetupDialog({
                 )}
               </div>
 
-              {hasPreviousBudgets && (
-                <Button type="button" variant="outline" className="w-full" onClick={copyPrevious}>
-                  📋 Copiar presupuesto del mes pasado
-                </Button>
+              {savingsCategory && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Meta de ahorro</p>
+                  <CategoryField
+                    category={savingsCategory}
+                    value={amounts[String(savingsCategory.id)] ?? ''}
+                    onChange={(v) => setAmount(savingsCategory.id, v)}
+                    total={totalNum}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Cuánto quieres apartar este mes. No es gasto: superarla es bueno.
+                  </p>
+                </div>
               )}
 
               <div className="space-y-3">
-                <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  Categorías
-                </p>
-                {orderedCategories.map((cat) => (
+                <p className="text-xs font-medium text-muted-foreground">Categorías de gasto</p>
+                {spendCategories.map((cat) => (
                   <CategoryField
                     key={cat.id}
                     category={cat}
@@ -311,42 +299,24 @@ export function BudgetsPage() {
 
   const [setupOpen, setSetupOpen] = useState(false)
 
-  const expenseCategories = categories.data?.filter((c) => c.type === 'expense') ?? []
-  const budgetByCategory = new Map((budgets.data ?? []).map((b) => [b.category_id, b.amount]))
-  const actualByCategory = new Map(
-    (budgetVsActual.data ?? []).map((row) => [row.category_id, row.actual]),
+  const totals = budgetTotals(
+    budgetVsActual.data ?? [],
+    plan.data,
+    Number(summary.data?.total_income ?? 0),
+  )
+  const inherited = (budgets.data ?? []).some((b) => b.inherited)
+  const reservedTotal = (budgetVsActual.data ?? []).reduce((sum, row) => sum + Number(row.reserved), 0)
+  const budgeted = new Set(totals.categories.map((c) => c.row.category_id))
+  const spentByCategory = new Map(
+    (budgetVsActual.data ?? []).map((row) => [row.category_id, Number(row.actual)]),
   )
   const reservedByCategory = new Map(
-    (budgetVsActual.data ?? []).map((row) => [row.category_id, row.reserved]),
+    (budgetVsActual.data ?? []).map((row) => [row.category_id, Number(row.reserved)]),
   )
-
-  const totalBudget = (budgets.data ?? []).reduce((sum, b) => sum + Number(b.amount), 0)
-  const totalReserved = (budgetVsActual.data ?? []).reduce(
-    (sum, row) => sum + Number(row.reserved),
-    0,
+  const withoutBudget = (categories.data ?? []).filter(
+    (c) => c.type === 'expense' && c.role !== 'savings' && !budgeted.has(c.id),
   )
-  // Compare only against budgeted categories, so this matches the
-  // dashboard. Spending in categories without a budget is shown apart.
-  const budgetedRows = (budgetVsActual.data ?? []).filter((row) => Number(row.budget) > 0)
-  const totalActual = budgetedRows.reduce((sum, row) => sum + Number(row.actual), 0)
-  const unbudgeted = (budgetVsActual.data ?? [])
-    .filter((row) => Number(row.budget) === 0)
-    .reduce((sum, row) => sum + Number(row.actual), 0)
-  const totalRemaining = totalBudget - totalActual
-  const income = Number(summary.data?.total_income ?? 0)
-  const planTotal = plan.data?.total != null ? Number(plan.data.total) : income
-  const unassigned = planTotal - totalBudget
-
-  const rows = [...expenseCategories]
-    .map((category) => {
-      const budget = Number(budgetByCategory.get(category.id) ?? 0)
-      const actual = Number(actualByCategory.get(category.id) ?? 0)
-      const reserved = Number(reservedByCategory.get(category.id) ?? 0)
-      return { category, budget, actual, reserved, percent: budget > 0 ? (actual / budget) * 100 : 0 }
-    })
-    .sort((a, b) => b.budget - a.budget || b.actual - a.actual)
-  const withBudget = rows.filter((row) => row.budget > 0)
-  const withoutBudget = rows.filter((row) => row.budget === 0)
+  const goal = totals.savings
 
   return (
     <div className="space-y-6">
@@ -360,66 +330,98 @@ export function BudgetsPage() {
         }
       />
 
+      {inherited && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-sm text-muted-foreground">
+          <span>
+            Este mes usa el presupuesto del último mes que definiste. Ajústalo si este mes es distinto.
+          </span>
+          <Button variant="outline" size="sm" onClick={() => setSetupOpen(true)}>
+            Ajustar este mes
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
           title="Presupuesto total"
-          value={fmtMoney(planTotal)}
-          detail={plan.data?.total == null ? 'Igual a tus ingresos del mes' : undefined}
+          value={fmtMoney(totals.total)}
+          detail={totalSourceLabel(totals.totalSource)}
           icon={Wallet}
           tone="primary"
         />
         <StatCard
-          title="Asignado"
-          value={fmtMoney(totalBudget)}
-          detail={
-            unassigned > 0
-              ? `Sin asignar ${fmtMoney(unassigned)}`
-              : unassigned < 0
-                ? `Excede el total en ${fmtMoney(Math.abs(unassigned))}`
-                : 'Todo asignado'
-          }
-          icon={PieChart}
-          tone="neutral"
-        />
-        <StatCard
           title="Gastado"
-          value={fmtMoney(totalActual)}
-          detail={unbudgeted > 0 ? `+ ${fmtMoney(unbudgeted)} sin presupuesto` : 'En categorías con presupuesto'}
+          value={fmtMoney(totals.spent)}
+          detail={
+            totals.spentWithoutBudget > 0
+              ? `${fmtMoney(totals.spentWithoutBudget)} sin presupuesto`
+              : 'Todo dentro de categorías con presupuesto'
+          }
           icon={ArrowUpRight}
           tone="expense"
         />
         <StatCard
-          title="Restante"
-          value={fmtMoney(totalRemaining)}
-          valueClassName={totalRemaining < 0 ? 'text-negative' : undefined}
-          detail={totalReserved > 0 ? `Reservado en bolsillos ${fmtMoney(totalReserved)}` : undefined}
+          title="Disponible"
+          value={fmtMoney(totals.available)}
+          valueClassName={totals.available < 0 ? 'text-negative' : undefined}
+          detail={totals.available < 0 ? 'Gastaste más que tu presupuesto' : 'Lo que queda para gastar'}
+          icon={PieChart}
+          tone={totals.available < 0 ? 'expense' : 'neutral'}
+        />
+        <StatCard
+          title="Meta de ahorro"
+          value={goal ? fmtMoney(goal.saved) : fmtMoney(0)}
+          valueClassName={goal && goal.goal > 0 && goal.saved >= goal.goal ? 'text-positive' : undefined}
+          detail={
+            !goal || goal.goal <= 0
+              ? 'Define una meta en “Definir presupuesto”'
+              : goal.saved >= goal.goal
+                ? `Meta de ${fmtMoney(goal.goal)} cumplida`
+                : `de ${fmtMoney(goal.goal)} · faltan ${fmtMoney(goal.goal - goal.saved)}`
+          }
           icon={PiggyBank}
-          tone={totalRemaining < 0 ? 'expense' : 'income'}
+          tone="income"
         />
       </div>
 
       <section className="space-y-3">
-        <SectionHeading title="Por categoría" count={withBudget.length} />
-        {budgets.isLoading || categories.isLoading ? (
+        <SectionHeading
+          title="Por categoría"
+          count={totals.categories.length}
+          aside={
+            <>
+              Asignado {fmtMoney(totals.assigned)}
+              {totals.unassigned !== 0 && (
+                <span className={cn('ml-2', totals.unassigned < 0 && 'text-negative')}>
+                  ·{' '}
+                  {totals.unassigned > 0
+                    ? `sin asignar ${fmtMoney(totals.unassigned)}`
+                    : `excede el total en ${fmtMoney(Math.abs(totals.unassigned))}`}
+                </span>
+              )}
+            </>
+          }
+        />
+        {budgets.isLoading || budgetVsActual.isLoading ? (
           <Skeleton className="h-64 w-full" />
-        ) : withBudget.length === 0 ? (
+        ) : totals.categories.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-            Aún no asignas presupuesto a ninguna categoría este mes.
+            Aún no asignas presupuesto a ninguna categoría.
           </div>
         ) : (
           <Card className="gap-0 py-0">
             <ul className="divide-y divide-border">
-              {withBudget.map(({ category, budget, actual, reserved, percent }) => {
-                const over = percent > 100
-                const remaining = budget - actual
+              {totals.categories.map(({ row, budget, spent, percent, over }) => {
+                const reserved = reservedByCategory.get(row.category_id) ?? 0
+                const remaining = budget - spent
                 return (
                   <li
-                    key={category.id}
+                    key={row.category_id}
                     className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:grid-cols-[auto_minmax(8rem,13rem)_1fr_13rem_10rem]"
                   >
-                    <CategoryIcon icon={category.icon} color={category.color} />
+                    <CategoryIcon icon={row.icon} color={row.color} />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{category.name}</p>
+                      <p className="truncate text-sm font-medium">{row.name}</p>
                       {reserved !== 0 && (
                         <p className="text-xs text-muted-foreground">Reservado {fmtMoney(reserved)}</p>
                       )}
@@ -440,7 +442,7 @@ export function BudgetsPage() {
                       </span>
                     </div>
                     <p className="row-start-1 col-start-3 text-right text-sm whitespace-nowrap sm:row-auto sm:col-auto">
-                      <span className={cn('font-medium', over && 'text-negative')}>{fmtMoney(actual)}</span>
+                      <span className={cn('font-medium', over && 'text-negative')}>{fmtMoney(spent)}</span>
                       <span className="text-muted-foreground"> de {fmtMoney(budget)}</span>
                     </p>
                     <p
@@ -457,6 +459,11 @@ export function BudgetsPage() {
             </ul>
           </Card>
         )}
+        {reservedTotal > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Reservado en bolsillos para categorías: {fmtMoney(reservedTotal)}
+          </p>
+        )}
       </section>
 
       {withoutBudget.length > 0 && (
@@ -464,19 +471,24 @@ export function BudgetsPage() {
           <SectionHeading
             title="Sin presupuesto"
             count={withoutBudget.length}
-            aside={unbudgeted > 0 ? `Gastado ${fmtMoney(unbudgeted)}` : undefined}
+            aside={
+              totals.spentWithoutBudget > 0 ? `Gastado ${fmtMoney(totals.spentWithoutBudget)}` : undefined
+            }
           />
           <div className="flex flex-wrap gap-2">
-            {withoutBudget.map(({ category, actual }) => (
-              <span
-                key={category.id}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card py-1.5 pr-3 pl-1.5 text-sm"
-              >
-                <CategoryIcon icon={category.icon} color={category.color} size="sm" />
-                {category.name}
-                {actual > 0 && <span className="text-muted-foreground">{fmtMoney(actual)}</span>}
-              </span>
-            ))}
+            {withoutBudget.map((category) => {
+              const spent = spentByCategory.get(category.id) ?? 0
+              return (
+                <span
+                  key={category.id}
+                  className="flex items-center gap-2 rounded-lg border border-border bg-card py-1.5 pr-3 pl-1.5 text-sm"
+                >
+                  <CategoryIcon icon={category.icon} color={category.color} size="sm" />
+                  {category.name}
+                  {spent > 0 && <span className="text-muted-foreground">{fmtMoney(spent)}</span>}
+                </span>
+              )
+            })}
           </div>
         </section>
       )}

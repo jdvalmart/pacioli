@@ -9,6 +9,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
+import { budgetTotals } from '@/lib/budget'
 import { fmtMoney } from '@/lib/money'
 import {
   useAccounts,
@@ -68,12 +69,12 @@ export function DashboardPage() {
   }))
   const spendingTotal = chartData.reduce((sum, row) => sum + row.value, 0)
 
-  // Only categories with a budget appear here, largest first.
-  const budgetRows = (budgetVsActual.data ?? [])
-    .filter((row) => Number(row.budget) > 0)
-    .sort((a, b) => Number(b.budget) - Number(a.budget))
-  const budgeted = budgetRows.reduce((sum, row) => sum + Number(row.budget), 0)
-  const budgetSpent = budgetRows.reduce((sum, row) => sum + Number(row.actual), 0)
+  // Same figures as the Budgets page (savings are a goal, not spending).
+  const budget = budgetTotals(budgetVsActual.data ?? [], undefined, 0)
+  const budgetRows = budget.categories.map((c) => c.row)
+  const budgeted = budget.categories.reduce((sum, c) => sum + c.budget, 0)
+  const budgetSpent = budget.categories.reduce((sum, c) => sum + c.spent, 0)
+  const goal = budget.savings
 
   const balance = Number(summary.data?.balance ?? 0)
 
@@ -173,6 +174,21 @@ export function DashboardPage() {
                     )
                   })}
                 </ul>
+              )}
+              {goal && goal.goal > 0 && (
+                <div className="mt-4 flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5 text-sm">
+                  <PiggyBank className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    Meta de ahorro:{' '}
+                    <span className={cn('font-medium', goal.saved >= goal.goal && 'text-positive')}>
+                      {fmtMoney(goal.saved)}
+                    </span>{' '}
+                    <span className="text-muted-foreground">de {fmtMoney(goal.goal)}</span>
+                  </span>
+                  <span className={cn('text-xs font-medium', goal.saved >= goal.goal ? 'text-positive' : 'text-muted-foreground')}>
+                    {goal.saved >= goal.goal ? 'Cumplida' : `${Math.round(goal.percent)}%`}
+                  </span>
+                </div>
               )}
             </CardContent>
           </Card>

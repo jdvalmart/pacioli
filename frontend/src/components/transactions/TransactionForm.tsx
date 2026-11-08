@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,6 +24,18 @@ import type { Transaction } from '@/lib/types'
 import { FORM_KINDS, KIND_META } from '@/components/transactions/kinds'
 import { useTransactionForm } from '@/components/transactions/useTransactionForm'
 
+/** Something the form needs does not exist yet: say so and link to where to create it. */
+function SetupNotice({ to, action, children }: { to: string; action: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+      <span>{children}</span>
+      <Link to={to} className="shrink-0 font-medium text-foreground underline-offset-4 hover:underline">
+        {action}
+      </Link>
+    </div>
+  )
+}
+
 const FORM_OPTIONS = FORM_KINDS.map((value) => ({ value, ...KIND_META[value] }))
 
 interface TransactionFormProps {
@@ -34,7 +47,10 @@ interface TransactionFormProps {
 export function TransactionForm({ open, onOpenChange, transaction }: TransactionFormProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent
+        className="sm:max-w-md"
+        initialFocus={() => document.getElementById('tx-amount') ?? true}
+      >
         {open && <TransactionFormBody transaction={transaction} onOpenChange={onOpenChange} />}
       </DialogContent>
     </Dialog>
@@ -105,13 +121,15 @@ function TransactionFormBody({
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Tipo de movimiento">
           {FORM_OPTIONS.map(({ value, label, icon: Icon, activeClass }) => (
             <button
               key={value}
               type="button"
+              role="radio"
+              aria-checked={kind === value}
               onClick={() => handleKindChange(value)}
-              className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-medium transition-all ${
+              className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground/30 focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${
                 kind === value
                   ? activeClass
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
@@ -223,9 +241,9 @@ function TransactionFormBody({
             <div className="space-y-1.5">
               <Label>{kind === 'ahorro' ? 'Cuenta origen' : 'Cuenta destino'}</Label>
               {!hasAccounts ? (
-                <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
-                  Todavía no tienes cuentas. Crea una en Ajustes.
-                </div>
+                <SetupNotice to="/settings" action="Crear cuenta">
+                  Todavía no tienes cuentas.
+                </SetupNotice>
               ) : (
                 <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
                   <SelectTrigger>
@@ -292,10 +310,9 @@ function TransactionFormBody({
               <div className="space-y-1.5">
                 <Label>Tarjeta de crédito</Label>
                 {(creditCards.data ?? []).length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-                    💳 Todavía no tienes tarjetas. Crea una en Ajustes (sección Tarjetas de
-                    crédito) para registrar compras con tarjeta.
-                  </div>
+                  <SetupNotice to="/settings" action="Crear tarjeta">
+                    Todavía no tienes tarjetas de crédito.
+                  </SetupNotice>
                 ) : (
                   <>
                     <Select value={cardId} onValueChange={(v) => setCardId(v ?? '')}>
@@ -356,10 +373,10 @@ function TransactionFormBody({
               <div className="space-y-1.5">
                 <Label>{accountLabel}</Label>
                 {!hasAccounts ? (
-                  <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
-                    Todavía no tienes cuentas. Crea una en Ajustes (billetera,
-                    banco, ahorro…) para registrar movimientos.
-                  </div>
+                  <SetupNotice to="/settings" action="Crear cuenta">
+                    Todavía no tienes cuentas: crea una (banco, billetera o efectivo) para registrar
+                    movimientos.
+                  </SetupNotice>
                 ) : (
                   <>
                     <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
