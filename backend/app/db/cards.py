@@ -30,12 +30,36 @@ def _purchase_of(row: Any) -> billing.Purchase:
     )
 
 
-def _billed_in(row: Any, year: int, month: int) -> tuple[int, int] | None:
-    """(installment number, cents) of a gasto_tc row paid in ``(year, month)``.
+# Month index (year * 12 + month - 1) of a transaction's ISO date, in SQL that
+# SQLite and Postgres both understand.
+_MONTH_INDEX_SQL = (
+    "(CAST(SUBSTR(t.date, 1, 4) AS INTEGER) * 12 + CAST(SUBSTR(t.date, 6, 2) AS INTEGER) - 1)"
+)
 
-    Each installment counts in the month its statement is due. A purchase
-    whose card was deleted has no cycle: it counts once, in full, in its
-    purchase month.
+# Card purchases that CAN bill something in a target month. An installment is
+# never due before the purchase month, and the last one is due at most
+# ``installments + 1`` months after it (the first statement may close the next
+# month and be due the month after). ``_billed_in`` then decides exactly; this
+# only skips rows that cannot apply, so years of history stay cheap.
+CARD_CANDIDATES_SQL = (
+    f"t.kind = 'gasto_tc' AND {_MONTH_INDEX_SQL} <= ? "
+    f"AND {_MONTH_INDEX_SQL} + COALESCE(t.installments, 1) + 1 >= ?"
+)
+
+
+def card_candidates_params(year: int, month: int) -> tuple[int, int]:
+    """Parameters for ``CARD_CANDIDATES_SQL`` targeting ``(year, month)``."""
+    target = year * 12 + (month - 1)
+    return target, target
+
+
+def _billed_in(row: Any, year: int, month: int) -> tuple[int, int] | None:
+    """(first installment number, cents) of a gasto_tc row paid in ``(year, month)``.
+
+    Each installment counts in the month its statement is due; when two fall
+    due in the same month (cutoff 31 / payment 30) their amounts add up. A
+    purchase whose card was deleted has no cycle: it counts once, in full, in
+    its purchase month.
     """
     purchase = _purchase_of(row)
     card = _card_of(row)
@@ -43,8 +67,10 @@ def _billed_in(row: Any, year: int, month: int) -> tuple[int, int] | None:
         if (purchase.date.year, purchase.date.month) == (year, month):
             return 1, billing.financed_cents(purchase)
         return None
-    item = billing.installment_in_month(card, purchase, year, month)
-    return None if item is None else (item.number, item.cents)
+    items = billing.billed_in_month(card, purchase, year, month)
+    if not items:
+        return None
+    return items[0].number, sum(item.cents for item in items)
 
 
 def _row_to_card(row: Any, conn: Any, today: date) -> CreditCard:

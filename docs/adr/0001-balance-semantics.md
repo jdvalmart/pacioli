@@ -52,6 +52,25 @@ el módulo puro `backend/app/domain/billing.py` y se prueban sin base de datos e
 
 Una compra cuya tarjeta se eliminó ya no tiene ciclo: cuenta una vez, completa, en el mes de compra.
 
+4. **Dos cuotas pueden vencer en el mismo mes** (2026-11-08). Con corte 31 y pago 30, el extracto
+   de enero vence el 28 de febrero (no hay 30) y el de febrero, que cierra el 28, vence ese mismo día.
+   Ambas cuotas cuentan en febrero; antes se contaba solo la primera.
+
+## Rendimiento (2026-11-08)
+
+Medido con 10 años de uso intenso (36.537 movimientos, 9.122 compras con tarjeta): el 90 % del
+tiempo era construir el cronograma completo de cada compra histórica, no el SQL.
+
+- `billing.billed_in_month` y `card_status` calculan en O(1) por compra (solo 1–2 ciclos candidatos
+  por mes; sumas de cuotas por aritmética). `schedule()` queda como referencia legible y un test con
+  miles de casos aleatorios exige que las rutas rápidas den exactamente lo mismo.
+- Prefiltro SQL portable (`CARD_CANDIDATES_SQL`): una compra en N cuotas solo puede cobrarse entre su
+  mes y N+1 meses después (cota verificada contra el cronograma); la lista del mes filtra por fecha en SQL.
+- Resultado: lista del mes 536 → 43 ms, resumen 317 → 23 ms, tarjetas 325 → 67 ms, reporte anual
+  3,85 s → 0,25 s; salidas idénticas a la versión anterior en 120 respuestas comparadas.
+- *Rechazado:* persistir el mes de cobro en una columna (Fase 4 original). Duplicaba un dato derivado
+  que habría que recalcular al editar el corte de una tarjeta, y el problema real era algorítmico.
+
 ## Consecuencias
 
 - Cualquier refactor de `database.py` debe mantener verde `test_invariants.py` en SQLite **y** Postgres.

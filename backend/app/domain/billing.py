@@ -15,7 +15,9 @@ Rules modelled on how banks bill:
   rounded to the cent once, then split so the installments add up exactly;
   the leftover cents go to the first installments.
 - Each installment is attributed (for budgets and reports) to the month in
-  which its statement is paid.
+  which its statement is paid. Two consecutive statements can fall due in
+  the same month (cutoff 31 / payment 30: January's and February's both
+  fall due in February), so a month may bill two installments.
 - Payments settle the oldest billed statements first (FIFO); money paid
   beyond what has been billed reduces the open cycle's installment.
 """
@@ -24,6 +26,7 @@ import calendar
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
 
 BP_DENOMINATOR = 10_000  # interest is stored in basis points (1% = 100 bp)
 
@@ -79,6 +82,7 @@ def shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
     return index // 12, index % 12 + 1
 
 
+@lru_cache(maxsize=4096)
 def day_in_month(year: int, month: int, day: int) -> date:
     """``day`` of the month, clamped to its last day."""
     return date(year, month, min(day, calendar.monthrange(year, month)[1]))
@@ -98,6 +102,7 @@ def cutoff_of(card: Card, cycle: int) -> date:
     return day_in_month(cycle // 12, cycle % 12 + 1, card.cutoff_day)
 
 
+@lru_cache(maxsize=4096)
 def payment_date_of(card: Card, cycle: int) -> date:
     """Due date of a cycle's statement.
 
@@ -146,14 +151,47 @@ def schedule(card: Card, purchase: Purchase) -> list[Installment]:
     return result
 
 
-def installment_in_month(
-    card: Card, purchase: Purchase, year: int, month: int
-) -> Installment | None:
-    """The installment of a purchase paid in ``(year, month)``, if any."""
-    for item in schedule(card, purchase):
-        if (item.year, item.month) == (year, month):
-            return item
-    return None
+def _installment_cents(total: int, count: int, k: int) -> int:
+    """Amount of installment ``k`` (0-based); leftover cents go to the first ones."""
+    base, leftover = divmod(total, count)
+    return base + (1 if k < leftover else 0)
+
+
+def _billed_cents_before(total: int, count: int, k: int) -> int:
+    """Sum of the first ``k`` installments (0 <= k <= count)."""
+    base, leftover = divmod(total, count)
+    return k * base + min(k, leftover)
+
+
+def billed_in_month(card: Card, purchase: Purchase, year: int, month: int) -> list[Installment]:
+    """Installments of a purchase that fall due in ``(year, month)``: zero, one or two.
+
+    O(1): a statement falls due in its cutoff month or the next one, so
+    only the cycles closing in the previous or the same month can bill it.
+    Matches ``schedule`` exactly (see tests) without building it.
+    """
+    count = max(purchase.installments, 1)
+    first_cycle = cycle_of(card, purchase.date)
+    target = year * 12 + (month - 1)
+    total = financed_cents(purchase)
+    result = []
+    for cycle in (target - 1, target):
+        k = cycle - first_cycle
+        if not 0 <= k < count:
+            continue
+        due = payment_date_of(card, cycle)
+        if (due.year, due.month) == (year, month):
+            result.append(
+                Installment(
+                    number=k + 1,
+                    of=count,
+                    cycle=cycle,
+                    year=year,
+                    month=month,
+                    cents=_installment_cents(total, count, k),
+                )
+            )
+    return result
 
 
 def card_status(
@@ -165,12 +203,15 @@ def card_status(
     billed_open = 0
     financed = 0
     for purchase in purchases:
-        financed += financed_cents(purchase)
-        for item in schedule(card, purchase):
-            if item.cycle < open_cycle:
-                billed_closed += item.cents
-            elif item.cycle == open_cycle:
-                billed_open += item.cents
+        total = financed_cents(purchase)
+        count = max(purchase.installments, 1)
+        financed += total
+        # Installments are billed on consecutive cycles starting at ``first``:
+        # those before the open cycle are closed, the one on it is open (O(1)).
+        k_open = open_cycle - cycle_of(card, purchase.date)
+        billed_closed += _billed_cents_before(total, count, min(max(k_open, 0), count))
+        if 0 <= k_open < count:
+            billed_open += _installment_cents(total, count, k_open)
 
     outstanding = max(financed - payments_cents, 0)
     due = max(billed_closed - payments_cents, 0)

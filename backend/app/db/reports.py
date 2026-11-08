@@ -3,7 +3,7 @@
 from decimal import Decimal
 from typing import Any
 
-from app.db.cards import _billed_in
+from app.db.cards import CARD_CANDIDATES_SQL, _billed_in, card_candidates_params
 from app.db.categories import get_categories
 from app.db.connection import _to_dec, get_connection
 from app.db.models import MonthlySummary
@@ -53,8 +53,9 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
-            WHERE t.kind = 'gasto_tc'
-        """
+            WHERE """
+            + CARD_CANDIDATES_SQL,
+            card_candidates_params(year, month),
         )
         for row in cursor.fetchall():
             billed = _billed_in(row, year, month)
@@ -177,8 +178,9 @@ def get_category_spending(
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
-            WHERE t.kind = 'gasto_tc'
-        """
+            WHERE """
+            + CARD_CANDIDATES_SQL,
+            card_candidates_params(year, month),
         )
         for row in cursor.fetchall():
             billed = _billed_in(row, year, month)
@@ -256,8 +258,9 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
                    cc.cutoff_day, cc.payment_day
             FROM transactions t
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
-            WHERE t.kind = 'gasto_tc'
-        """
+            WHERE """
+            + CARD_CANDIDATES_SQL,
+            card_candidates_params(year, month),
         )
         for row in cursor.fetchall():
             billed = _billed_in(row, year, month)

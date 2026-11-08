@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from app import clock
-from app.db.cards import _billed_in
+from app.db.cards import CARD_CANDIDATES_SQL, _billed_in, card_candidates_params
 from app.db.connection import _ddl, _insert_get_id, _to_cents, _to_dec, get_connection
 from app.db.models import Transaction
 from app.domain.kinds import TxKind
@@ -35,6 +35,7 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
     statement is paid, not to the purchase month, so the list matches the
     budgets and the category breakdown.
     """
+    start_date, end_date = _month_window(month, year)
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -52,12 +53,16 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
             LEFT JOIN accounts a2 ON t.to_account_id = a2.id
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
             LEFT JOIN savings sv ON t.savings_id = sv.id
+            WHERE (t.kind <> 'gasto_tc' AND t.date >= ? AND t.date < ?)
+               OR ("""
+            + CARD_CANDIDATES_SQL
+            + """)
             ORDER BY t.date DESC
-        """
+        """,
+            (start_date, end_date, *card_candidates_params(year, month)),
         )
         rows = cursor.fetchall()
 
-    start_date, end_date = _month_window(month, year)
     result = []
     for row in rows:
         if row["kind"] == TxKind.GASTO_TC:
