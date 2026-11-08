@@ -1,11 +1,11 @@
 """Account endpoints: where the money lives."""
 
-import sqlite3
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 
 from app import database as db
+from app.errors import IntegrityViolation
 from app.schemas import AccountIn, AccountOut, AccountUpdate, CreatedOut, MessageOut
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -39,7 +39,7 @@ def create_account(payload: AccountIn) -> CreatedOut:
             icon=payload.icon,
             color=payload.color,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(
             status_code=409, detail="An account with that name already exists"
         ) from None

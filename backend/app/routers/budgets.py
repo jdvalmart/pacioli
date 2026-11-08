@@ -1,10 +1,9 @@
 """Monthly budget endpoints."""
 
-import sqlite3
-
 from fastapi import APIRouter, HTTPException, Query
 
 from app import database as db
+from app.errors import IntegrityViolation
 from app.schemas import (
     BudgetBulkIn,
     BudgetIn,
@@ -31,7 +30,7 @@ def upsert_budget(payload: BudgetIn) -> MessageOut:
     """Create or update the budget of a category for a month."""
     try:
         db.set_budget(payload.category_id, payload.month, payload.year, payload.amount)
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(status_code=400, detail="Category does not exist") from None
     return MessageOut(message="Budget saved")
 
@@ -45,7 +44,7 @@ def bulk_set_budgets(payload: BudgetBulkIn) -> MessageOut:
             payload.year,
             [(item.category_id, item.amount) for item in payload.budgets],
         )
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(status_code=400, detail="Category does not exist") from None
     return MessageOut(message="Budgets saved")
 

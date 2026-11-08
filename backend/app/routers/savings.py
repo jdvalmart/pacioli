@@ -1,11 +1,11 @@
 """Savings and investment endpoints: bolsillos, scheduled pockets, CDTs and stocks."""
 
-import sqlite3
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 
 from app import database as db
+from app.errors import IntegrityViolation
 from app.schemas import CreatedOut, MessageOut, SavingsIn, SavingsOut, SavingsUpdate
 
 router = APIRouter(prefix="/savings", tags=["savings"])
@@ -56,7 +56,7 @@ def create_savings(payload: SavingsIn) -> CreatedOut:
             initial_amount=payload.initial_amount,
             initial_account_id=payload.initial_account_id,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(
             status_code=409, detail="A savings item with that name already exists"
         ) from None

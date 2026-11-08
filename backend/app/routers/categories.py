@@ -1,10 +1,9 @@
 """Category and subcategory endpoints."""
 
-import sqlite3
-
 from fastapi import APIRouter, HTTPException, Query
 
 from app import database as db
+from app.errors import IntegrityViolation
 from app.schemas import (
     CategoryIn,
     CategoryOut,
@@ -31,7 +30,7 @@ def create_category(payload: CategoryIn) -> CreatedOut:
     """Create a category."""
     try:
         cat_id = db.add_category(payload.name, payload.type, payload.color, payload.icon)
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(
             status_code=409, detail="A category with that name already exists"
         ) from None
@@ -66,7 +65,7 @@ def create_subcategory(cat_id: int, payload: SubcategoryIn) -> CreatedOut:
     """Create a subcategory inside a category."""
     try:
         sub_id = db.add_subcategory(cat_id, payload.name, payload.icon)
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(
             status_code=409, detail="A subcategory with that name already exists in this category"
         ) from None
