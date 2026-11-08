@@ -4,9 +4,9 @@
  * The Vite dev server proxies /api/* to http://localhost:8000.
  */
 
+import type { components } from '@/lib/api-schema'
 import type {
   Account,
-  AccountType,
   Budget,
   BudgetPlan,
   BudgetVsActual,
@@ -15,11 +15,14 @@ import type {
   CreditCard,
   MonthlySummary,
   SavingsItem,
-  SavingsKind,
   Subcategory,
   Transaction,
   TransactionInput,
 } from '@/lib/types'
+
+type In = components['schemas']
+type Created = In['CreatedOut']
+type Message = In['MessageOut']
 
 const BASE = '/api'
 
@@ -49,153 +52,109 @@ export const api = {
   // Categories
   listCategories: (type?: string) =>
     request<Category[]>(`/categories${type ? `?type=${type}` : ''}`),
-  createCategory: (payload: { name: string; type: string; color: string; icon: string }) =>
-    request<{ id: number }>('/categories', { method: 'POST', body: JSON.stringify(payload) }),
-  updateCategory: (id: number, payload: { name: string; color: string; icon: string }) =>
-    request<{ message: string }>(`/categories/${id}`, {
+  createCategory: (payload: In['CategoryIn']) =>
+    request<Created>('/categories', { method: 'POST', body: JSON.stringify(payload) }),
+  updateCategory: (id: number, payload: In['CategoryUpdate']) =>
+    request<Message>(`/categories/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteCategory: (id: number) =>
-    request<{ message: string }>(`/categories/${id}`, { method: 'DELETE' }),
+    request<Message>(`/categories/${id}`, { method: 'DELETE' }),
 
   // Subcategories
   listSubcategories: (categoryId: number) =>
     request<Subcategory[]>(`/categories/${categoryId}/subcategories`),
-  createSubcategory: (categoryId: number, payload: { name: string; icon: string }) =>
-    request<{ id: number }>(`/categories/${categoryId}/subcategories`, {
+  createSubcategory: (categoryId: number, payload: In['SubcategoryIn']) =>
+    request<Created>(`/categories/${categoryId}/subcategories`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   deleteSubcategory: (id: number) =>
-    request<{ message: string }>(`/categories/subcategories/${id}`, { method: 'DELETE' }),
+    request<Message>(`/categories/subcategories/${id}`, { method: 'DELETE' }),
 
   // Transactions
   listTransactions: (month: number, year: number) =>
     request<Transaction[]>(`/transactions${query(month, year)}`),
   createTransaction: (payload: TransactionInput) =>
-    request<{ id: number }>('/transactions', { method: 'POST', body: JSON.stringify(payload) }),
+    request<Created>('/transactions', { method: 'POST', body: JSON.stringify(payload) }),
   updateTransaction: (id: number, payload: TransactionInput) =>
-    request<{ message: string }>(`/transactions/${id}`, {
+    request<Message>(`/transactions/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteTransaction: (id: number) =>
-    request<{ message: string }>(`/transactions/${id}`, { method: 'DELETE' }),
+    request<Message>(`/transactions/${id}`, { method: 'DELETE' }),
   materializeRecurring: (month: number, year: number) =>
-    request<{ created: number }>(`/transactions/materialize${query(month, year)}`, {
+    request<In['MaterializeResult']>(`/transactions/materialize${query(month, year)}`, {
       method: 'POST',
     }),
 
   // Budgets
   listBudgets: (month: number, year: number) =>
     request<Budget[]>(`/budgets${query(month, year)}`),
-  upsertBudget: (payload: { category_id: number; month: number; year: number; amount: string }) =>
-    request<{ message: string }>('/budgets', { method: 'PUT', body: JSON.stringify(payload) }),
-  replaceBudgets: (payload: {
-    month: number
-    year: number
-    budgets: { category_id: number; amount: string }[]
-  }) =>
-    request<{ message: string }>('/budgets/bulk', { method: 'PUT', body: JSON.stringify(payload) }),
+  upsertBudget: (payload: In['BudgetIn']) =>
+    request<Message>('/budgets', { method: 'PUT', body: JSON.stringify(payload) }),
+  replaceBudgets: (payload: In['BudgetBulkIn']) =>
+    request<Message>('/budgets/bulk', { method: 'PUT', body: JSON.stringify(payload) }),
   deleteBudget: (categoryId: number, month: number, year: number) =>
-    request<{ message: string }>(
+    request<Message>(
       `/budgets?category_id=${categoryId}&month=${month}&year=${year}`,
       { method: 'DELETE' },
     ),
   getBudgetPlan: (month: number, year: number) =>
     request<BudgetPlan>(`/budgets/plan${query(month, year)}`),
-  setBudgetPlan: (payload: { month: number; year: number; total: string }) =>
-    request<{ message: string }>('/budgets/plan', {
+  setBudgetPlan: (payload: In['BudgetPlanIn']) =>
+    request<Message>('/budgets/plan', {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
 
   // Accounts
   listAccounts: () => request<Account[]>('/accounts'),
-  createAccount: (payload: { name: string; type: AccountType; starting_amount: string }) =>
-    request<{ id: number }>('/accounts', {
+  createAccount: (payload: In['AccountIn']) =>
+    request<Created>('/accounts', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  updateAccount: (
-    id: number,
-    payload: { name: string; type?: AccountType; starting_amount?: string },
-  ) =>
-    request<{ message: string }>(`/accounts/${id}`, {
+  updateAccount: (id: number, payload: In['AccountUpdate']) =>
+    request<Message>(`/accounts/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteAccount: (id: number) =>
-    request<{ message: string }>(`/accounts/${id}`, { method: 'DELETE' }),
+    request<Message>(`/accounts/${id}`, { method: 'DELETE' }),
 
   // Credit cards
   listCreditCards: (month?: number, year?: number) =>
     request<CreditCard[]>(
       month != null && year != null ? `/credit-cards?month=${month}&year=${year}` : '/credit-cards',
     ),
-  createCreditCard: (payload: {
-    name: string
-    limit: string
-    cutoff_day: number
-    payment_day: number
-  }) => request<{ id: number }>('/credit-cards', {
+  createCreditCard: (payload: In['CreditCardIn']) => request<Created>('/credit-cards', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
-  updateCreditCard: (
-    id: number,
-    payload: { name: string; limit: string; cutoff_day: number; payment_day: number },
-  ) =>
-    request<{ message: string }>(`/credit-cards/${id}`, {
+  updateCreditCard: (id: number, payload: In['CreditCardIn']) =>
+    request<Message>(`/credit-cards/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteCreditCard: (id: number) =>
-    request<{ message: string }>(`/credit-cards/${id}`, { method: 'DELETE' }),
+    request<Message>(`/credit-cards/${id}`, { method: 'DELETE' }),
 
   // Savings
   listSavings: () => request<SavingsItem[]>('/savings'),
-  createSavings: (payload: {
-    name: string
-    kind: SavingsKind
-    category_id?: number | null
-    target?: string | null
-    rate_bp?: number | null
-    term_days?: number | null
-    current_value?: string | null
-    dividends?: string | null
-    scheduled_day?: number | null
-    scheduled_amount?: string | null
-    source_account_id?: number | null
-    initial_amount?: string | null
-    initial_account_id?: number | null
-  }) => request<{ id: number }>('/savings', {
+  createSavings: (payload: In['SavingsIn']) => request<Created>('/savings', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
-  updateSavings: (
-    id: number,
-    payload: {
-      name: string
-      kind: SavingsKind
-      category_id?: number | null
-      target?: string | null
-      rate_bp?: number | null
-      term_days?: number | null
-      current_value?: string | null
-      dividends?: string | null
-      scheduled_day?: number | null
-      scheduled_amount?: string | null
-      source_account_id?: number | null
-    },
-  ) =>
-    request<{ message: string }>(`/savings/${id}`, {
+  updateSavings: (id: number, payload: In['SavingsUpdate']) =>
+    request<Message>(`/savings/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteSavings: (id: number) =>
-    request<{ message: string }>(`/savings/${id}`, { method: 'DELETE' }),
+    request<Message>(`/savings/${id}`, { method: 'DELETE' }),
 
   // Reports
   summary: (month: number, year: number) =>

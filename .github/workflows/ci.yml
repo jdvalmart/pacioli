@@ -116,6 +116,13 @@ jobs:
       - name: Install frontend
         working-directory: frontend
         run: npm ci
+      - name: API types are up to date
+        # Regenerate src/lib/api-schema.ts from the backend contract and fail
+        # if it differs from the committed file (run `npm run gen:api`).
+        working-directory: frontend
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/lib/api-schema.ts
       - name: Install Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium

@@ -1,5 +1,6 @@
 """Tests for the maintenance CLI used by the systemd backup timer."""
 
+import json
 import os
 
 import pytest
@@ -30,3 +31,11 @@ def test_backup_creates_one_snapshot_per_day(
 def test_backup_rejects_unknown_command() -> None:
     with pytest.raises(SystemExit):
         cli.main(["restore"])
+
+
+def test_openapi_writes_the_api_contract(tmp_path) -> None:
+    out = tmp_path / "openapi.json"
+    assert cli.main(["openapi", "--output", str(out)]) == 0
+    spec = json.loads(out.read_text())
+    assert "/api/transactions" in spec["paths"]
+    assert spec["components"]["schemas"]["TxKind"]["enum"][0] == "ingreso"

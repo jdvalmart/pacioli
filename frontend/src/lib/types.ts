@@ -1,181 +1,37 @@
 /**
- * TypeScript types mirroring the Pacioli API schemas.
+ * Frontend names for the API types.
  *
- * Money amounts arrive as fixed-precision strings (e.g. "1234.56")
- * from the API to avoid JSON float64 precision loss.
+ * Every type comes from src/lib/api-schema.ts, which is generated from the
+ * backend's OpenAPI contract (`npm run gen:api`); never edit that file by
+ * hand. Changing a backend schema and regenerating is the only way these
+ * types change, and CI fails if the generated file is stale.
+ *
+ * Money amounts are fixed-precision strings (e.g. "1234.56") to avoid
+ * JSON float64 precision loss.
  */
+import type { components } from '@/lib/api-schema'
 
-export type CategoryType = 'income' | 'expense'
+type Schemas = components['schemas']
 
-export interface Category {
-  id: number
-  name: string
-  type: CategoryType
-  color: string
-  icon: string
-  /** System role: 'savings' groups savings movements; such categories cannot be deleted. */
-  role?: string | null
-}
+export type Category = Schemas['CategoryOut']
+export type CategoryType = Category['type']
+export type Subcategory = Schemas['SubcategoryOut']
 
-export interface Subcategory {
-  id: number
-  category_id: number
-  name: string
-  icon: string
-}
+export type TransactionKind = Schemas['TxKind']
+export type Transaction = Schemas['TransactionOut']
+export type TransactionInput = Schemas['TransactionIn']
 
-export type TransactionKind =
-  | 'ingreso'
-  | 'gasto'
-  | 'transferencia'
-  | 'gasto_tc'
-  | 'pago_tc'
-  | 'ahorro'
-  | 'retiro'
+export type Account = Schemas['AccountOut']
+export type AccountType = Account['type']
 
-export interface Transaction {
-  id: number
-  date: string
-  amount: string
-  kind: TransactionKind
-  category_id: number | null
-  description: string
-  is_recurring: boolean
-  recurring_day: number | null
-  subcategory_id: number | null
-  subcategory_name: string | null
-  subcategory_icon: string | null
-  generated_from: number | null
-  category_name: string | null
-  category_type: CategoryType | null
-  color: string | null
-  icon: string | null
-  account_id: number | null
-  account_name: string | null
-  account_icon: string | null
-  to_account_id: number | null
-  to_account_name: string | null
-  to_account_icon: string | null
-  card_id: number | null
-  card_name: string | null
-  installments: number
-  interest_bp: number
-  savings_id: number | null
-  savings_name: string | null
-  /** gasto_tc only: which cuota is billed in the listed month, and its amount. */
-  installment_number?: number | null
-  billed_amount?: string | null
-}
+export type CreditCard = Schemas['CreditCardOut']
 
-export interface TransactionInput {
-  date: string
-  amount: string
-  kind: TransactionKind
-  category_id: number | null
-  account_id: number | null
-  to_account_id: number | null
-  card_id?: number | null
-  savings_id?: number | null
-  installments?: number
-  interest_bp?: number
-  description?: string
-  is_recurring?: boolean
-  recurring_day?: number | null
-  subcategory_id?: number | null
-}
+export type SavingsItem = Schemas['SavingsOut']
+export type SavingsKind = SavingsItem['kind']
 
-export type AccountType = 'efectivo' | 'digital' | 'ahorros' | 'banco'
+export type Budget = Schemas['BudgetOut']
+export type BudgetPlan = Schemas['BudgetPlanOut']
 
-export interface Account {
-  id: number
-  name: string
-  type: AccountType
-  icon: string
-  color: string
-  starting: string
-  balance: string
-}
-
-export interface CreditCard {
-  id: number
-  name: string
-  limit: string
-  cutoff_day: number
-  payment_day: number
-  pending: string
-  debt: string
-  outstanding: string
-  available: string
-  cycle_start: string
-  cycle_end: string
-  payment_date: string
-}
-
-export type SavingsKind = 'bolsillo' | 'bolsillo_programado' | 'cdt' | 'acciones'
-
-export interface SavingsItem {
-  id: number
-  name: string
-  kind: SavingsKind
-  category_id: number | null
-  target: string | null
-  rate_bp: number | null
-  term_days: number | null
-  current_value: string | null
-  dividends: string
-  scheduled_day: number | null
-  scheduled_amount: string | null
-  source_account_id: number | null
-  opening: string
-  balance: string
-  invested: string
-  matures_on: string | null
-}
-
-export interface Budget {
-  id: number
-  category_id: number
-  month: number
-  year: number
-  amount: string
-}
-
-export interface BudgetPlan {
-  month: number
-  year: number
-  total: string | null
-}
-
-export interface MonthlySummary {
-  month: number
-  year: number
-  total_income: string
-  total_expense: string
-  balance: string
-  carryover: string
-  accumulated_balance: string
-  by_category: Record<string, string>
-}
-
-export interface CategorySpending {
-  name: string
-  total: string
-  color: string
-  icon: string
-}
-
-export interface BudgetVsActual {
-  category_id: number
-  name: string
-  color: string
-  icon: string
-  budget: string
-  actual: string
-  reserved: string
-  remaining: string
-  percent: number
-}
-
-
-
-
+export type MonthlySummary = Schemas['MonthlySummaryOut']
+export type CategorySpending = Schemas['CategorySpendingOut']
+export type BudgetVsActual = Schemas['BudgetVsActualOut']

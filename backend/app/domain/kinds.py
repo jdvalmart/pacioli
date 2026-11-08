@@ -1,6 +1,15 @@
-"""Movement kinds shared by the API, the services and the data layer."""
+"""Closed value sets (movement kinds, category/account/savings types)
+shared by the API, the services and the data layer."""
 
 from enum import StrEnum
+from typing import Literal
+
+# Closed sets stored as text in the database (enforced by CHECK constraints
+# or by the API); shared by app.db models and the API schemas.
+CategoryType = Literal["income", "expense"]
+CategoryRole = Literal["savings"]
+AccountType = Literal["efectivo", "digital", "ahorros", "banco"]
+SavingsKind = Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
 
 
 class TxKind(StrEnum):

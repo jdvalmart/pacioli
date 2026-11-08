@@ -7,11 +7,11 @@ Inputs accept either a number or a string and are coerced to Decimal.
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, Field, PlainSerializer
 
-from app.domain.kinds import TxKind
+from app.domain.kinds import AccountType, CategoryRole, CategoryType, SavingsKind, TxKind
 
 Money = Annotated[Decimal, PlainSerializer(lambda v: f"{v:.2f}", return_type=str)]
 
@@ -20,7 +20,7 @@ class CategoryIn(BaseModel):
     """Payload to create a category."""
 
     name: str = Field(min_length=1, max_length=100)
-    type: Literal["income", "expense"]
+    type: CategoryType
     color: str = "#3B82F6"
     icon: str = "📁"
 
@@ -38,10 +38,10 @@ class CategoryOut(BaseModel):
 
     id: int
     name: str
-    type: str
+    type: CategoryType
     color: str
     icon: str
-    role: str | None = None  # 'savings': system category, cannot be deleted
+    role: CategoryRole | None = None  # system category: cannot be deleted
 
 
 class SubcategoryIn(BaseModel):
@@ -101,7 +101,7 @@ class TransactionOut(BaseModel):
     subcategory_icon: str | None
     generated_from: int | None
     category_name: str | None
-    category_type: str | None
+    category_type: CategoryType | None
     color: str | None
     icon: str | None
     account_id: int | None
@@ -131,7 +131,7 @@ class SavingsIn(BaseModel):
     """
 
     name: str = Field(min_length=1, max_length=100)
-    kind: Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
+    kind: SavingsKind
     category_id: int | None = None
     target: Money | None = None
     rate_bp: int | None = Field(default=None, ge=0, le=10000)
@@ -149,7 +149,7 @@ class SavingsUpdate(BaseModel):
     """Payload to update a savings item."""
 
     name: str = Field(min_length=1, max_length=100)
-    kind: Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
+    kind: SavingsKind
     category_id: int | None = None
     target: Money | None = None
     rate_bp: int | None = Field(default=None, ge=0, le=10000)
@@ -166,7 +166,7 @@ class SavingsOut(BaseModel):
 
     id: int
     name: str
-    kind: str
+    kind: SavingsKind
     category_id: int | None
     target: Money | None
     rate_bp: int | None
@@ -274,29 +274,6 @@ class MaterializeResult(BaseModel):
     created: int
 
 
-class ChatMessageIn(BaseModel):
-    """A chat question addressed to the AI assistant."""
-
-    question: str = Field(min_length=1, max_length=2000)
-    month: int = Field(ge=1, le=12)
-    year: int = Field(ge=2000, le=2100)
-
-
-class ChatMessageOut(BaseModel):
-    """A stored chat message."""
-
-    role: str
-    message: str
-    created_at: str
-
-
-class ChatReply(BaseModel):
-    """Answer from the AI assistant, or an error."""
-
-    answer: str
-    error: str | None = None
-
-
 class AccountIn(BaseModel):
     """Payload to create an account.
 
@@ -305,7 +282,7 @@ class AccountIn(BaseModel):
     """
 
     name: str = Field(min_length=1, max_length=100)
-    type: Literal["efectivo", "digital", "ahorros", "banco"]
+    type: AccountType
     icon: str | None = None
     color: str | None = None
     starting_amount: Money = Decimal("0.00")
@@ -315,7 +292,7 @@ class AccountUpdate(BaseModel):
     """Payload to update an account's name, type and opening balance."""
 
     name: str = Field(min_length=1, max_length=100)
-    type: Literal["efectivo", "digital", "ahorros", "banco"] | None = None
+    type: AccountType | None = None
     starting_amount: Money | None = None
 
 
@@ -324,7 +301,7 @@ class AccountOut(BaseModel):
 
     id: int
     name: str
-    type: str
+    type: AccountType
     icon: str
     color: str
     starting: Money

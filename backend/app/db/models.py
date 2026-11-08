@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from app.domain.kinds import AccountType, CategoryRole, CategoryType, SavingsKind
+
 
 @dataclass
 class Category:
@@ -11,10 +13,10 @@ class Category:
 
     id: int | None
     name: str
-    type: str  # 'income' or 'expense'
+    type: CategoryType
     color: str
     icon: str
-    role: str | None = None  # system role, e.g. 'savings'
+    role: CategoryRole | None = None  # system role
 
 
 @dataclass
@@ -90,7 +92,7 @@ class Account:
 
     id: int | None
     name: str
-    type: str  # 'efectivo' | 'digital' | 'ahorros' | 'banco'
+    type: AccountType  # 'efectivo' | 'digital' | 'ahorros' | 'banco'
     icon: str
     color: str
     starting: Decimal | None = None
@@ -143,7 +145,7 @@ class SavingsItem:
 
     id: int | None
     name: str
-    kind: str  # 'bolsillo' | 'bolsillo_programado' | 'cdt' | 'acciones'
+    kind: SavingsKind  # 'bolsillo' | 'bolsillo_programado' | 'cdt' | 'acciones'
     category_id: int | None = None
     target: Decimal | None = None
     rate_bp: int | None = None
