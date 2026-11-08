@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { ArrowUpRight, PieChart, PiggyBank, SlidersHorizontal, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { StatCard } from '@/components/StatCard'
 import {
   Dialog,
@@ -17,9 +17,11 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
+import { CategoryIcon } from '@/components/CategoryIcon'
+import { PageHeader, SectionHeading } from '@/components/PageHeader'
 import { api } from '@/lib/api'
 import { useBudgetPlan, useBudgetVsActual, useBudgets, useCategories, useInvalidate, useSummary } from '@/lib/queries'
-import { fmtCop, fmtCopDecimals, normalizeAmount } from '@/lib/money'
+import { fmtMoney, normalizeAmount } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { Category } from '@/lib/types'
 
@@ -52,7 +54,7 @@ function MoneyInput({
 }) {
   return (
     <div className={cn('relative', className)}>
-      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm font-bold text-muted-foreground">
+      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm font-medium text-muted-foreground">
         $
       </span>
       <Input
@@ -60,7 +62,7 @@ function MoneyInput({
         inputMode="numeric"
         autoComplete="off"
         placeholder={placeholder}
-        className="pl-7 text-right font-bold tabular-nums"
+        className="pl-7 text-right font-medium tabular-nums"
         value={value}
         onChange={(e) => onChange(parseMoneyInput(e.target.value))}
       />
@@ -84,13 +86,13 @@ function CategoryField({
   return (
     <div className="flex items-center gap-3">
       <div
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-base text-white shadow-[0_2px_0_0_rgba(0,0,0,0.2)]"
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-base text-white"
         style={{ backgroundColor: category.color || '#888' }}
       >
         {category.icon}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold">{category.name}</p>
+        <p className="truncate text-sm font-medium">{category.name}</p>
         {percent != null && (
           <p className="text-[11px] font-semibold text-muted-foreground">{percent}% del total</p>
         )}
@@ -220,44 +222,44 @@ function BudgetSetupDialog({
                 <Label htmlFor="budget-total">Mi presupuesto total</Label>
                 <MoneyInput id="budget-total" value={total} onChange={setTotal} placeholder="3.000.000" />
                 <p className="text-xs font-semibold text-muted-foreground">
-                  Por defecto usamos el ingreso del mes: {fmtCop(Number(summary.data?.total_income ?? 0))}
+                  Por defecto usamos el ingreso del mes: {fmtMoney(Number(summary.data?.total_income ?? 0))}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-border bg-muted/40 p-4">
+              <div className="rounded-xl border border-border bg-muted/40 p-4">
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div>
-                    <p className="text-[10px] font-extrabold tracking-wide text-muted-foreground uppercase">
+                    <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                       Asignado
                     </p>
-                    <p className="text-sm font-black">{fmtCop(assigned)}</p>
+                    <p className="text-sm font-semibold">{fmtMoney(assigned)}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] font-extrabold tracking-wide text-muted-foreground uppercase">
+                    <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                       Sin asignar
                     </p>
                     <p
                       className={cn(
-                        'text-sm font-black',
+                        'text-sm font-semibold',
                         pending < 0
-                          ? 'text-rose-600'
+                          ? 'text-negative'
                           : pending > 0
-                            ? 'text-amber-600'
-                            : 'text-emerald-600',
+                            ? 'text-foreground'
+                            : 'text-positive',
                       )}
                     >
-                      {fmtCop(pending)}
+                      {fmtMoney(pending)}
                     </p>
                   </div>
                 </div>
                 <Progress
                   value={usedPercent}
                   className="mt-3"
-                  indicatorClassName={pending < 0 ? 'bg-rose-500' : undefined}
+                  indicatorClassName={pending < 0 ? 'bg-negative' : undefined}
                 />
                 {pending < 0 && (
-                  <p className="mt-2 text-xs font-bold text-rose-600">
-                    Te pasaste {fmtCopDecimals(Math.abs(pending))}
+                  <p className="mt-2 text-xs font-medium text-negative">
+                    Te pasaste {fmtMoney(Math.abs(pending))}
                   </p>
                 )}
               </div>
@@ -269,7 +271,7 @@ function BudgetSetupDialog({
               )}
 
               <div className="space-y-3">
-                <p className="text-[11px] font-extrabold tracking-wide text-muted-foreground uppercase">
+                <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                   Categorías
                 </p>
                 {orderedCategories.map((cat) => (
@@ -335,134 +337,149 @@ export function BudgetsPage() {
   const planTotal = plan.data?.total != null ? Number(plan.data.total) : income
   const unassigned = planTotal - totalBudget
 
+  const rows = [...expenseCategories]
+    .map((category) => {
+      const budget = Number(budgetByCategory.get(category.id) ?? 0)
+      const actual = Number(actualByCategory.get(category.id) ?? 0)
+      const reserved = Number(reservedByCategory.get(category.id) ?? 0)
+      return { category, budget, actual, reserved, percent: budget > 0 ? (actual / budget) * 100 : 0 }
+    })
+    .sort((a, b) => b.budget - a.budget || b.actual - a.actual)
+  const withBudget = rows.filter((row) => row.budget > 0)
+  const withoutBudget = rows.filter((row) => row.budget === 0)
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold">Presupuestos</h1>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Define cuánto puedes gastar por categoría en {monthLabel(month)}
-          </p>
-        </div>
-        <Button onClick={() => setSetupOpen(true)}>
-          <SlidersHorizontal /> Definir presupuesto
-        </Button>
-      </div>
+      <PageHeader
+        title="Presupuestos"
+        description={`Cuánto puedes gastar por categoría en ${monthLabel(month).toLowerCase()}`}
+        action={
+          <Button onClick={() => setSetupOpen(true)}>
+            <SlidersHorizontal /> Definir presupuesto
+          </Button>
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Presupuesto total" value={fmtCop(planTotal)} icon={Wallet} tone="primary" />
-        <StatCard title="Asignado" value={fmtCop(totalBudget)} icon={PieChart} tone="neutral" />
-        <StatCard title="Gastado" value={fmtCop(totalActual)} icon={ArrowUpRight} tone="expense" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard
+          title="Presupuesto total"
+          value={fmtMoney(planTotal)}
+          detail={plan.data?.total == null ? 'Igual a tus ingresos del mes' : undefined}
+          icon={Wallet}
+          tone="primary"
+        />
+        <StatCard
+          title="Asignado"
+          value={fmtMoney(totalBudget)}
+          detail={
+            unassigned > 0
+              ? `Sin asignar ${fmtMoney(unassigned)}`
+              : unassigned < 0
+                ? `Excede el total en ${fmtMoney(Math.abs(unassigned))}`
+                : 'Todo asignado'
+          }
+          icon={PieChart}
+          tone="neutral"
+        />
+        <StatCard
+          title="Gastado"
+          value={fmtMoney(totalActual)}
+          detail={unbudgeted > 0 ? `+ ${fmtMoney(unbudgeted)} sin presupuesto` : 'En categorías con presupuesto'}
+          icon={ArrowUpRight}
+          tone="expense"
+        />
         <StatCard
           title="Restante"
-          value={fmtCop(totalRemaining)}
+          value={fmtMoney(totalRemaining)}
+          valueClassName={totalRemaining < 0 ? 'text-negative' : undefined}
+          detail={totalReserved > 0 ? `Reservado en bolsillos ${fmtMoney(totalReserved)}` : undefined}
           icon={PiggyBank}
           tone={totalRemaining < 0 ? 'expense' : 'income'}
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-3">
-        <span
-          className={`text-sm font-bold ${
-            unassigned < 0
-              ? 'text-rose-600'
-              : unassigned > 0
-                ? 'text-amber-600'
-                : 'text-emerald-600'
-          }`}
-        >
-          {unassigned > 0
-            ? `Sin asignar: ${fmtCop(unassigned)} (resta repartir entre categorías)`
-            : unassigned < 0
-              ? `Te pasaste ${fmtCop(Math.abs(unassigned))} del presupuesto total`
-              : 'Presupuesto totalmente asignado ✓'}
-        </span>
-        {unbudgeted > 0 && (
-          <span className="text-sm font-bold text-muted-foreground">
-            Gastado sin presupuesto: <span className="text-rose-600">{fmtCop(unbudgeted)}</span>
-          </span>
-        )}
-        {totalReserved > 0 && (
-          <span className="text-sm font-bold text-muted-foreground">
-            Reservado en bolsillos: <span className="text-amber-600">{fmtCop(totalReserved)}</span>
-          </span>
-        )}
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="space-y-3">
+        <SectionHeading title="Por categoría" count={withBudget.length} />
         {budgets.isLoading || categories.isLoading ? (
-          <>
-            <Skeleton className="h-44 w-full" />
-            <Skeleton className="h-44 w-full" />
-            <Skeleton className="h-44 w-full" />
-          </>
+          <Skeleton className="h-64 w-full" />
+        ) : withBudget.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+            Aún no asignas presupuesto a ninguna categoría este mes.
+          </div>
         ) : (
-          [...expenseCategories]
-            .sort((a, b) => {
-              const budgetA = Number(budgetByCategory.get(a.id) ?? 0)
-              const budgetB = Number(budgetByCategory.get(b.id) ?? 0)
-              if (budgetA !== budgetB) return budgetB - budgetA
-              return Number(actualByCategory.get(b.id) ?? 0) - Number(actualByCategory.get(a.id) ?? 0)
-            })
-            .map((category) => {
-            const current = budgetByCategory.get(category.id) ?? ''
-            const actual = actualByCategory.get(category.id) ?? '0'
-            const reserved = Number(reservedByCategory.get(category.id) ?? 0)
-            const hasBudget = current !== '' && Number(current) > 0
-            const percent = hasBudget ? (Number(actual) / Number(current)) * 100 : 0
-            const over = percent > 100
-            const remaining = Number(current) - Number(actual)
-
-            return (
-              <Card key={category.id} className="p-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex size-11 items-center justify-center rounded-xl text-xl text-white shadow-[0_3px_0_0_rgba(0,0,0,0.25)]"
-                    style={{ backgroundColor: category.color || '#888' }}
+          <Card className="gap-0 py-0">
+            <ul className="divide-y divide-border">
+              {withBudget.map(({ category, budget, actual, reserved, percent }) => {
+                const over = percent > 100
+                const remaining = budget - actual
+                return (
+                  <li
+                    key={category.id}
+                    className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:grid-cols-[auto_minmax(8rem,13rem)_1fr_13rem_10rem]"
                   >
-                    {category.icon}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="text-sm leading-tight">{category.name}</CardTitle>
-                    <p className="text-xs font-bold text-muted-foreground">
-                      {hasBudget
-                        ? `Gastado ${fmtCop(actual)} de ${fmtCop(current)}`
-                        : 'Sin presupuesto asignado'}
-                    </p>
-                  </div>
-                </div>
-
-                {(hasBudget || reserved !== 0) && (
-                  <div className="mt-3 space-y-1">
-                    {hasBudget && (
+                    <CategoryIcon icon={category.icon} color={category.color} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{category.name}</p>
+                      {reserved !== 0 && (
+                        <p className="text-xs text-muted-foreground">Reservado {fmtMoney(reserved)}</p>
+                      )}
+                    </div>
+                    <div className="col-span-3 flex items-center gap-3 sm:col-span-1">
                       <Progress
+                        className="flex-1"
                         value={Math.min(percent, 100)}
-                        indicatorClassName={over ? 'bg-red-500' : undefined}
+                        indicatorClassName={over ? 'bg-negative' : undefined}
                       />
-                    )}
-                    {reserved !== 0 && (
-                      <p className="text-xs font-bold text-amber-600">
-                        Reservado {fmtCopDecimals(reserved)}
-                      </p>
-                    )}
-                    {hasBudget && (
-                      <p
-                        className={`text-xs font-bold ${
-                          over ? 'text-red-500' : 'text-muted-foreground'
-                        }`}
+                      <span
+                        className={cn(
+                          'w-11 text-right text-xs font-medium',
+                          over ? 'text-negative' : 'text-muted-foreground',
+                        )}
                       >
-                        {over
-                          ? `Te pasaste ${fmtCopDecimals(Math.abs(remaining))}`
-                          : `Restan ${fmtCopDecimals(remaining)}`}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </Card>
-            )
-          })
+                        {Math.round(percent)}%
+                      </span>
+                    </div>
+                    <p className="row-start-1 col-start-3 text-right text-sm whitespace-nowrap sm:row-auto sm:col-auto">
+                      <span className={cn('font-medium', over && 'text-negative')}>{fmtMoney(actual)}</span>
+                      <span className="text-muted-foreground"> de {fmtMoney(budget)}</span>
+                    </p>
+                    <p
+                      className={cn(
+                        'hidden text-right text-sm sm:block',
+                        over ? 'font-medium text-negative' : 'text-muted-foreground',
+                      )}
+                    >
+                      {over ? `Excedido ${fmtMoney(Math.abs(remaining))}` : `Restan ${fmtMoney(remaining)}`}
+                    </p>
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
         )}
-      </div>
+      </section>
+
+      {withoutBudget.length > 0 && (
+        <section className="space-y-3">
+          <SectionHeading
+            title="Sin presupuesto"
+            count={withoutBudget.length}
+            aside={unbudgeted > 0 ? `Gastado ${fmtMoney(unbudgeted)}` : undefined}
+          />
+          <div className="flex flex-wrap gap-2">
+            {withoutBudget.map(({ category, actual }) => (
+              <span
+                key={category.id}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card py-1.5 pr-3 pl-1.5 text-sm"
+              >
+                <CategoryIcon icon={category.icon} color={category.color} size="sm" />
+                {category.name}
+                {actual > 0 && <span className="text-muted-foreground">{fmtMoney(actual)}</span>}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       <BudgetSetupDialog open={setupOpen} onOpenChange={setSetupOpen} />
     </div>

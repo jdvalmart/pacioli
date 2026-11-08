@@ -19,7 +19,7 @@ export function KindFilter({
   onChange: (value: KindFilterValue) => void
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
       {FILTERS.map(({ value, label }) => {
         const active = selected === value
         const count =
@@ -31,10 +31,10 @@ export function KindFilter({
             key={value}
             type="button"
             onClick={() => onChange(value)}
-            className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
+            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
               active
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted'
+                ? 'border-foreground bg-foreground text-background'
+                : 'border-border bg-card text-muted-foreground hover:text-foreground'
             }`}
           >
             {label}

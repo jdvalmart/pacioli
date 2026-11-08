@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Plus, Wallet } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useMonth } from '@/hooks/useMonth'
+import { monthLabel, useMonth } from '@/hooks/useMonth'
+import { PageHeader, SectionHeading } from '@/components/PageHeader'
+import { fmtMoney, fmtSigned } from '@/lib/money'
 import { api } from '@/lib/api'
 import { useInvalidate, useTransactions } from '@/lib/queries'
 import type { Transaction } from '@/lib/types'
@@ -68,33 +69,53 @@ export function TransactionsPage() {
       ? allTransactions
       : allTransactions.filter((tx) => tx.kind === kindFilter)
 
+  // Net effect on the user's cash for a list of movements.
+  const cashTotals = (rows: Transaction[]) => {
+    let inflow = 0
+    let outflow = 0
+    for (const tx of rows) {
+      const amount = Number(tx.billed_amount ?? tx.amount)
+      const sign = KIND_META[tx.kind].sign
+      if (sign === '+') inflow += amount
+      else if (sign === '-') outflow += amount
+    }
+    return { inflow, outflow }
+  }
+  const accountTotals = cashTotals(accountTransactions)
+  const cardTotal = cardTransactions.reduce(
+    (sum, tx) => sum + Number(tx.billed_amount ?? tx.amount),
+    0,
+  )
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold">Movimientos</h1>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Todos los movimientos del mes
-          </p>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus /> Nuevo movimiento
-        </Button>
-      </div>
+      <PageHeader
+        title="Movimientos"
+        description={`Todo lo que entró y salió en ${monthLabel(month).toLowerCase()}`}
+        action={
+          <Button onClick={openCreate}>
+            <Plus /> Nuevo movimiento
+          </Button>
+        }
+      />
 
       <KindFilter transactions={allTransactions} value={kindFilter} onChange={setKindFilter} />
 
       {kindFilter === 'all' ? (
         <>
           <section className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Wallet className="size-4 text-primary" />
-              <h2 className="text-base font-extrabold">Cuentas</h2>
-              <Badge variant="secondary">{accountTransactions.length}</Badge>
-              <span className="text-xs font-semibold text-muted-foreground">
-                Ingresos, gastos, transferencias, ahorros y pagos de tarjeta
-              </span>
-            </div>
+            <SectionHeading
+              title="Cuentas"
+              count={accountTransactions.length}
+              detail="Ingresos, gastos, transferencias, ahorros y pagos de tarjeta"
+              aside={
+                <>
+                  <span className="text-positive">{fmtSigned(accountTotals.inflow, '+')}</span>
+                  <span className="mx-1.5">·</span>
+                  <span className="text-foreground">{fmtSigned(accountTotals.outflow, '-')}</span>
+                </>
+              }
+            />
             <TransactionsTable
               rows={accountTransactions}
               emptyMessage="Sin movimientos de cuenta este mes."
@@ -104,14 +125,12 @@ export function TransactionsPage() {
           </section>
 
           <section className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <CreditCard className="size-4 text-orange-500" />
-              <h2 className="text-base font-extrabold">Tarjetas de crédito</h2>
-              <Badge variant="secondary">{cardTransactions.length}</Badge>
-              <span className="text-xs font-semibold text-muted-foreground">
-                Compras con tarjeta (no se descuentan de tus cuentas hasta que las pagues)
-              </span>
-            </div>
+            <SectionHeading
+              title="Tarjetas de crédito"
+              count={cardTransactions.length}
+              detail="Cuotas que se pagan este mes; no salen de tus cuentas hasta que pagues la tarjeta"
+              aside={cardTransactions.length > 0 ? fmtMoney(cardTotal) : undefined}
+            />
             <TransactionsTable
               rows={cardTransactions}
               emptyMessage="Sin compras con tarjeta este mes."
@@ -122,13 +141,7 @@ export function TransactionsPage() {
         </>
       ) : (
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-extrabold">{KIND_META[kindFilter].label}</h2>
-            <Badge variant="secondary">{filteredTransactions.length}</Badge>
-            <span className="text-xs font-semibold text-muted-foreground">
-              Movimientos de tipo {KIND_META[kindFilter].label.toLowerCase()}
-            </span>
-          </div>
+          <SectionHeading title={KIND_META[kindFilter].label} count={filteredTransactions.length} />
           <TransactionsTable
             rows={filteredTransactions}
             emptyMessage={`Sin movimientos de tipo ${KIND_META[kindFilter].label.toLowerCase()} este mes.`}

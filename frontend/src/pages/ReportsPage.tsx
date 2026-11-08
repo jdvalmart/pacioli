@@ -24,17 +24,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { monthLabel, useMonth } from '@/hooks/useMonth'
+import { currentMonth, monthLabel, useMonth } from '@/hooks/useMonth'
+import { CategoryIcon } from '@/components/CategoryIcon'
+import { PageHeader } from '@/components/PageHeader'
+import { Card } from '@/components/ui/card'
+import { CHART, axisProps, tooltipProps } from '@/lib/chartTheme'
 import { api } from '@/lib/api'
 import { useBudgetVsActual, useCategorySpending, useYearlySummaries } from '@/lib/queries'
-import { fmtCop } from '@/lib/money'
+import { fmtMoney } from '@/lib/money'
 
 const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
-// Income/expense pair (blue + orange, colour-blind friendly).
-const INCOME_COLOR = '#3B82F6'
-const EXPENSE_COLOR = '#F97316'
-const BALANCE_COLOR = '#8B5CF6'
 
 // Compact axis labels so they fit the half-width panels.
 function fmtAxis(value: number): string {
@@ -54,11 +54,13 @@ function Panel({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-[28rem] flex-col rounded-2xl border border-border bg-card p-6 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-      <h2 className="text-lg font-extrabold">{title}</h2>
-      <p className="text-sm font-semibold text-muted-foreground">{subtitle}</p>
-      <div className="mt-4 min-h-0 flex-1">{children}</div>
-    </div>
+    <Card className="h-[26rem] gap-4 p-5">
+      <div>
+        <h2 className="text-base font-semibold">{title}</h2>
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
+      </div>
+      <div className="min-h-0 flex-1">{children}</div>
+    </Card>
   )
 }
 
@@ -69,14 +71,22 @@ export function ReportsPage() {
   const budgetVsActual = useBudgetVsActual(month)
 
   const monthly = yearly.data ?? []
+  // Months that have not happened yet have no data: plot nothing, not $0.
+  const thisMonth = currentMonth()
+  const isFuture = (m: number) =>
+    month.year > thisMonth.year || (month.year === thisMonth.year && m > thisMonth.month)
   const chartData = monthly.map((s) => ({
     name: MONTH_SHORT[s.month - 1],
-    Ingresos: Number(s.total_income),
-    Gastos: Number(s.total_expense),
+    Ingresos: isFuture(s.month) ? null : Number(s.total_income),
+    Gastos: isFuture(s.month) ? null : Number(s.total_expense),
   }))
+  // A month with no movements at all has no balance to show (not $0).
+  const hasActivity = (s: (typeof monthly)[number]) =>
+    Number(s.total_income) !== 0 || Number(s.total_expense) !== 0
   const balanceData = monthly.map((s) => ({
     name: MONTH_SHORT[s.month - 1],
-    Balance: Number(s.total_income) - Number(s.total_expense),
+    Balance:
+      isFuture(s.month) || !hasActivity(s) ? null : Number(s.total_income) - Number(s.total_expense),
   }))
   const currentMonthIndex = month.month - 1
 
@@ -98,75 +108,74 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold">Reportes</h1>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Anuario {month.year} · mes de {monthLabel(month)}
-          </p>
-        </div>
-        <a href={api.exportCsvUrl(month.month, month.year)} download>
-          <Button variant="outline" size="icon-sm" aria-label="Exportar mes en CSV">
-            <Download />
+      <PageHeader
+        title="Reportes"
+        description={`Año ${month.year} · detalle de ${monthLabel(month).toLowerCase()}`}
+        action={
+          <Button variant="outline" size="sm" render={<a href={api.exportCsvUrl(month.month, month.year)} download />}>
+            <Download /> Exportar CSV
           </Button>
-        </a>
-      </div>
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
           title="Ingresos anuales"
-          value={fmtCop(totalIncome)}
+          value={fmtMoney(totalIncome)}
           icon={ArrowDownLeft}
           tone="income"
         />
         <StatCard
           title="Gastos anuales"
-          value={fmtCop(totalExpense)}
+          value={fmtMoney(totalExpense)}
           icon={ArrowUpRight}
           tone="expense"
         />
         <StatCard
           title="Balance anual"
-          value={fmtCop(totalBalance)}
+          value={fmtMoney(totalBalance)}
           icon={Wallet}
+          valueClassName={totalBalance < 0 ? 'text-negative' : undefined}
           tone={totalBalance >= 0 ? 'income' : 'expense'}
         />
         <StatCard
           title="Gasto promedio"
-          value={fmtCop(avgExpense)}
+          value={fmtMoney(Math.round(avgExpense))}
           detail={activeMonths > 0 ? `por mes (${activeMonths} con movimientos)` : 'sin datos'}
           icon={TrendingUp}
           tone="primary"
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title={`Ingresos vs gastos ${month.year}`} subtitle="El mes actual está resaltado">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title={`Ingresos vs gastos ${month.year}`} subtitle="La línea punteada marca el mes elegido">
           {yearly.isLoading ? (
             <Skeleton className="h-full w-full" />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={fmtAxis} width={56} />
-                <Tooltip formatter={(value) => fmtCop(Number(value))} />
-                <Legend />
+              <BarChart data={chartData} barGap={2} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke={CHART.grid} />
+                <XAxis dataKey="name" {...axisProps} />
+                <YAxis tickFormatter={fmtAxis} width={56} {...axisProps} />
+                <Tooltip formatter={(value) => fmtMoney(Number(value))} {...tooltipProps} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
                 <ReferenceLine
                   x={MONTH_SHORT[currentMonthIndex]}
-                  stroke="#94a3b8"
+                  stroke={CHART.reference}
                   strokeDasharray="4 4"
                 />
                 <Bar
                   dataKey="Ingresos"
-                  fill={INCOME_COLOR}
-                  radius={[4, 4, 0, 0]}
+                  fill={CHART.income}
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={18}
                   isAnimationActive={false}
                 />
                 <Bar
                   dataKey="Gastos"
-                  fill={EXPENSE_COLOR}
-                  radius={[4, 4, 0, 0]}
+                  fill={CHART.expense}
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={18}
                   isAnimationActive={false}
                 />
               </BarChart>
@@ -179,18 +188,20 @@ export function ReportsPage() {
             <Skeleton className="h-full w-full" />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={balanceData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={fmtAxis} width={56} />
-                <Tooltip formatter={(value) => fmtCop(Number(value))} />
-                <ReferenceLine y={0} stroke="#94a3b8" />
+              <LineChart data={balanceData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke={CHART.grid} />
+                <XAxis dataKey="name" {...axisProps} />
+                <YAxis tickFormatter={fmtAxis} width={56} {...axisProps} />
+                <Tooltip formatter={(value) => fmtMoney(Number(value))} {...tooltipProps} />
+                <ReferenceLine y={0} stroke={CHART.reference} strokeOpacity={0.5} />
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="Balance"
-                  stroke={BALANCE_COLOR}
-                  strokeWidth={3}
-                  dot={{ r: 4 }}
+                  stroke={CHART.balance}
+                  strokeWidth={2}
+                  dot={{ r: 3, strokeWidth: 0, fill: CHART.balance }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
                   isAnimationActive={false}
                 />
               </LineChart>
@@ -200,7 +211,7 @@ export function ReportsPage() {
 
         <Panel
           title="Gasto por categoría"
-          subtitle={`${monthLabel(month)} · total ${fmtCop(spendingTotal)}`}
+          subtitle={`${monthLabel(month)} · total ${fmtMoney(spendingTotal)}`}
         >
           {spending.isLoading ? (
             <Skeleton className="h-full w-full" />
@@ -216,17 +227,18 @@ export function ReportsPage() {
                 return (
                   <div key={row.name} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold">
-                        {row.icon} {row.name}
+                      <span className="flex min-w-0 items-center gap-2 font-medium">
+                        <CategoryIcon icon={row.icon} color={row.color} size="sm" />
+                        <span className="truncate">{row.name}</span>
                       </span>
-                      <span className="font-black">
-                        {fmtCop(total)}
-                        <span className="ml-2 text-xs font-bold text-muted-foreground">
+                      <span className="font-semibold">
+                        {fmtMoney(total)}
+                        <span className="ml-2 text-xs font-medium text-muted-foreground">
                           {Math.round(percent)}%
                         </span>
                       </span>
                     </div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full rounded-full"
                         style={{
@@ -261,12 +273,15 @@ export function ReportsPage() {
                   {budgetRows.map((row) => (
                     <TableRow key={row.category_id}>
                       <TableCell className="font-medium">
-                        {row.icon} {row.name}
+                        <span className="flex items-center gap-2">
+                          <CategoryIcon icon={row.icon} color={row.color} size="sm" />
+                          {row.name}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right align-top">
-                        <div className="font-bold tabular-nums">{fmtCop(row.actual)}</div>
+                        <div className="font-medium tabular-nums">{fmtMoney(row.actual)}</div>
                         <div className="text-[11px] font-semibold text-muted-foreground tabular-nums">
-                          de {fmtCop(row.budget)}
+                          de {fmtMoney(row.budget)}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -274,9 +289,9 @@ export function ReportsPage() {
                             <Progress
                               value={Math.min(row.percent, 100)}
                               className="flex-1"
-                              indicatorClassName={row.percent > 100 ? 'bg-red-500' : undefined}
+                              indicatorClassName={row.percent > 100 ? 'bg-negative' : undefined}
                             />
-                          <span className="w-9 text-right text-xs font-bold text-muted-foreground">
+                          <span className="w-9 text-right text-xs font-medium text-muted-foreground">
                             {Math.round(row.percent)}%
                           </span>
                         </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fmtCop, fmtCopDecimals, normalizeAmount } from '@/lib/money'
+import { fmtCop, fmtCopDecimals, fmtMoney, fmtSigned, normalizeAmount } from '@/lib/money'
 
 describe('fmtCop', () => {
   it.each([
@@ -49,3 +49,26 @@ describe('normalizeAmount', () => {
     expect(normalizeAmount('doce mil')).toBe('docemil')
   })
 })
+
+describe('fmtMoney', () => {
+  it.each([
+    ['12367000.00', '$12.367.000'],
+    ['383333.34', '$383.333,34'],
+    ['0.00', '$0'],
+    ['-85000.00', '-$85.000'],
+    ['1200000.5', '$1.200.000,50'],
+    [99.999, '$100'], // rounds to whole pesos when cents round to zero
+  ])('%s -> %s', (input, expected) => {
+    expect(fmtMoney(input)).toBe(expected)
+  })
+})
+
+describe('fmtSigned', () => {
+  it('uses a true minus sign and never doubles the sign', () => {
+    expect(fmtSigned('85000.00', '-')).toBe('\u2212$85.000')
+    expect(fmtSigned('-85000.00', '-')).toBe('\u2212$85.000')
+    expect(fmtSigned('1200000.00', '+')).toBe('+$1.200.000')
+    expect(fmtSigned('150000.00', '')).toBe('$150.000')
+  })
+})
+

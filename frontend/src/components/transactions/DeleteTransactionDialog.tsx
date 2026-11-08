@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { api } from '@/lib/api'
-import { fmtCopDecimals } from '@/lib/money'
+import { fmtMoney } from '@/lib/money'
 import { useInvalidate } from '@/lib/queries'
 import type { Transaction } from '@/lib/types'
 
@@ -42,7 +42,7 @@ export function DeleteTransactionDialog({
           <AlertDialogTitle>¿Eliminar movimiento?</AlertDialogTitle>
           <AlertDialogDescription>
             Se eliminará &quot;{transaction?.description || 'este movimiento'}&quot; por{' '}
-            {transaction ? fmtCopDecimals(transaction.amount) : ''}
+            {transaction ? fmtMoney(transaction.amount) : ''}
             {transaction && transaction.installments > 1
               ? `, con sus ${transaction.installments} cuotas en todos los meses`
               : ''}

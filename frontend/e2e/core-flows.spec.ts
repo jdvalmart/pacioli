@@ -20,7 +20,7 @@ test('create an account with an opening balance', async ({ page }) => {
   await dialog.getByRole('button', { name: /guardar|crear/i }).click()
 
   await expect(page.getByText('Banco').first()).toBeVisible()
-  await expect(page.getByText('$1.000.000,00').first()).toBeVisible()
+  await expect(page.getByText('$1.000.000').first()).toBeVisible()
 })
 
 test('register an expense and see the account balance drop', async ({ page }) => {
@@ -37,10 +37,10 @@ test('register an expense and see the account balance drop', async ({ page }) =>
 
   const row = page.getByRole('row').filter({ hasText: 'Mercado e2e' })
   await expect(row).toContainText('Alimentación')
-  await expect(row).toContainText('$250.000,00')
+  await expect(row).toContainText('$250.000')
 
   await page.goto('/')
-  await expect(page.getByText('$750.000,00').first()).toBeVisible()
+  await expect(page.getByText('$750.000').first()).toBeVisible()
 })
 
 test('the floating button opens the new-movement form from any page', async ({ page }) => {
@@ -65,7 +65,7 @@ test('edit and delete a movement', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Guardar' }).click()
 
   const row = page.getByRole('row').filter({ hasText: 'Mercado e2e' })
-  await expect(row).toContainText('$200.000,00')
+  await expect(row).toContainText('$200.000')
 
   await page.getByRole('button', { name: 'Eliminar movimiento Mercado e2e' }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: /eliminar/i }).click()
@@ -73,7 +73,7 @@ test('edit and delete a movement', async ({ page }) => {
 
   // The account is back to its opening balance.
   await page.goto('/')
-  await expect(page.getByText('$1.000.000,00').first()).toBeVisible()
+  await expect(page.getByText('$1.000.000').first()).toBeVisible()
 })
 
 test('a purchase in installments is billed one cuota per month', async ({ page, request }) => {
@@ -108,8 +108,8 @@ test('a purchase in installments is billed one cuota per month', async ({ page, 
   ]) {
     await page.goto(`/transactions?month=${month}&year=2026`)
     const row = page.getByRole('row').filter({ hasText: 'Televisor e2e' })
-    await expect(row).toContainText(`cuota ${cuota}/3 de $300.000,00`)
-    await expect(row).toContainText('$100.000,00')
+    await expect(row).toContainText(`cuota ${cuota}/3 de $300.000`)
+    await expect(row).toContainText('$100.000')
   }
 
   await page.goto('/transactions?month=4&year=2026')
@@ -121,8 +121,9 @@ test('views refresh after a write, without reloading the page', async ({ page })
   // the app (no reload). Card data must reflect the new purchase at once,
   // not after the 30 s staleTime.
   await page.goto('/')
-  const card = page.getByText('Deuda total: $300.000,00')
-  await expect(card).toBeVisible()
+  // Dashboard card list: the Visa row shows its total debt next to the name.
+  const visaRow = page.getByRole('listitem').filter({ hasText: 'Visa e2e' })
+  await expect(visaRow).toContainText('$300.000')
 
   await page.getByRole('link', { name: 'Movimientos' }).first().click()
   await page.getByRole('button', { name: 'Nuevo movimiento' }).click()
@@ -136,7 +137,7 @@ test('views refresh after a write, without reloading the page', async ({ page })
   await expect(dialog).toBeHidden()
 
   await page.getByRole('link', { name: 'Panel' }).first().click()
-  await expect(page.getByText('Deuda total: $350.000,00')).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: 'Visa e2e' })).toContainText('$350.000')
 })
 
 test('the savings category is a system category that cannot be deleted', async ({ page }) => {

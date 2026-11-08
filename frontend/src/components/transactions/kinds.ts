@@ -15,66 +15,69 @@ import {
 
 import type { Transaction, TransactionKind } from '@/lib/types'
 
+/** Selected kind in the form: the brand accent, same for every kind. */
+const SELECTED = 'border-primary bg-brand-soft text-foreground ring-1 ring-primary/40'
+
 export interface KindMeta {
   label: string
   icon: LucideIcon
   /** Selected state of the kind button in the form. */
   activeClass: string
-  /** Badge in the movements table. */
-  badgeClass: string
   /** Color of the amount in the movements table. */
   amountClass: string
+  /** Effect on the user's cash accounts: '+' money in, '-' money out, '' moved between own accounts. */
+  sign: '+' | '-' | ''
 }
 
 export const KIND_META: Record<TransactionKind, KindMeta> = {
   ingreso: {
     label: 'Ingreso',
     icon: ArrowDownLeft,
-    activeClass: 'bg-emerald-500 border-emerald-700 text-white shadow-[0_4px_0_0_#047857]',
-    badgeClass: 'bg-emerald-100 text-emerald-700',
-    amountClass: 'text-emerald-600',
+    activeClass: SELECTED,
+    amountClass: 'text-positive',
+    sign: '+',
   },
   gasto: {
     label: 'Gasto',
     icon: ArrowUpRight,
-    activeClass: 'bg-rose-500 border-rose-700 text-white shadow-[0_4px_0_0_#be123c]',
-    badgeClass: 'bg-rose-100 text-rose-700',
-    amountClass: 'text-red-600',
+    activeClass: SELECTED,
+    amountClass: 'text-foreground',
+    sign: '-',
   },
   transferencia: {
     label: 'Transferencia',
     icon: ArrowLeftRight,
-    activeClass: 'bg-blue-500 border-blue-700 text-white shadow-[0_4px_0_0_#1d4ed8]',
-    badgeClass: 'bg-blue-100 text-blue-700',
-    amountClass: 'text-blue-600',
+    activeClass: SELECTED,
+    amountClass: 'text-muted-foreground',
+    sign: '',
   },
   gasto_tc: {
     label: 'Compra tarjeta',
     icon: CreditCard,
-    activeClass: 'bg-orange-500 border-orange-700 text-white shadow-[0_4px_0_0_#c2410c]',
-    badgeClass: 'bg-orange-100 text-orange-700',
-    amountClass: 'text-red-600',
+    activeClass: SELECTED,
+    amountClass: 'text-foreground',
+    sign: '-',
   },
   pago_tc: {
     label: 'Pago tarjeta',
     icon: Wallet,
-    activeClass: 'bg-violet-500 border-violet-700 text-white shadow-[0_4px_0_0_#6d28d9]',
-    badgeClass: 'bg-violet-100 text-violet-700',
-    amountClass: 'text-red-600',
+    activeClass: SELECTED,
+    amountClass: 'text-foreground',
+    sign: '-',
   },
   ahorro: {
     label: 'Ahorro',
     icon: PiggyBank,
-    activeClass: 'bg-amber-500 border-amber-700 text-white shadow-[0_4px_0_0_#b45309]',
-    badgeClass: 'bg-amber-100 text-amber-700',
-    amountClass: 'text-red-600',
+    activeClass: SELECTED,
+    amountClass: 'text-foreground',
+    sign: '-',
   },
   retiro: {
     label: 'Retiro',
     icon: HandCoins,
-    activeClass: 'bg-teal-500 border-teal-700 text-white shadow-[0_4px_0_0_#0f766e]',
-    badgeClass: 'bg-teal-100 text-teal-700',
-    amountClass: 'text-red-600',
+    activeClass: SELECTED,
+    amountClass: 'text-positive',
+    sign: '+',
   },
 }
 

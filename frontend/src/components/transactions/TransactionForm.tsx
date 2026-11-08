@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SavingsFormDialog } from '@/components/SavingsFormDialog'
-import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
+import { fmtMoney, normalizeAmount } from '@/lib/money'
 import type { Transaction } from '@/lib/types'
 
 import { FORM_KINDS, KIND_META } from '@/components/transactions/kinds'
@@ -111,7 +111,7 @@ function TransactionFormBody({
               key={value}
               type="button"
               onClick={() => handleKindChange(value)}
-              className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-bold transition-all ${
+              className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-medium transition-all ${
                 kind === value
                   ? activeClass
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
@@ -215,7 +215,7 @@ function TransactionFormBody({
                 <Plus /> Crear bolsillo, CDT o acciones
               </Button>
               {selectedSavingsLocked && (
-                <p className="text-xs font-bold text-amber-600">
+                <p className="text-xs font-medium text-muted-foreground">
                   🔒 Bloqueado hasta {selectedSavings?.matures_on} — no puedes mover el dinero hasta el vencimiento.
                 </p>
               )}
@@ -292,7 +292,7 @@ function TransactionFormBody({
               <div className="space-y-1.5">
                 <Label>Tarjeta de crédito</Label>
                 {(creditCards.data ?? []).length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
+                  <div className="rounded-lg border border-dashed border-border bg-muted/50 p-3 text-sm text-muted-foreground">
                     💳 Todavía no tienes tarjetas. Crea una en Ajustes (sección Tarjetas de
                     crédito) para registrar compras con tarjeta.
                   </div>
@@ -342,7 +342,7 @@ function TransactionFormBody({
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {Number(installments) > 1
-                        ? `Cuota: ${fmtCopDecimals(
+                        ? `Cuota: ${fmtMoney(
                             (Number(normalizeAmount(amount || '0')) *
                               (1 + Number(interest || '0') / 100)) /
                               (Number(installments) || 1),

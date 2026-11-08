@@ -150,9 +150,9 @@ function SavingsFormBody({
               key={k}
               type="button"
               onClick={() => setKind(k)}
-              className={`flex flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[11px] font-bold transition-all ${
+              className={`flex flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[11px] font-medium transition-all ${
                 kind === k
-                  ? 'border-amber-600 bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]'
+                  ? 'border-amber-600 bg-primary text-primary-foreground'
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
               }`}
             >
@@ -356,7 +356,7 @@ function SavingsFormBody({
 
         {!item && (
           <div className="space-y-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
-            <p className="text-xs font-bold text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               Monto inicial (opcional) — el dinero sale de una cuenta
             </p>
             <div className="space-y-1.5">

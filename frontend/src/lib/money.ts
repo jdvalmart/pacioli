@@ -30,6 +30,22 @@ export function fmtCopDecimals(value: string | number): string {
   return `${sign}$${wholeText},${decimalsText}`
 }
 
+/**
+ * The app's money format: $1.234.567 for whole pesos and $383.333,34 only when
+ * there are cents. Use it for every amount shown to the user.
+ */
+export function fmtMoney(value: string | number): string {
+  const amount = parseDecimal(value)
+  const cents = Math.round(Math.abs(amount) * 100) % 100
+  return cents === 0 ? fmtCop(amount) : fmtCopDecimals(amount)
+}
+
+/** Signed amount for movements: +$1.200.000 / −$85.000 (true minus sign). */
+export function fmtSigned(value: string | number, sign: '+' | '-' | ''): string {
+  const text = fmtMoney(Math.abs(parseDecimal(value)))
+  return sign === '-' ? `−${text}` : `${sign}${text}`
+}
+
 /** Normalize a user-typed amount to a fixed-precision string the API accepts. */
 export function normalizeAmount(input: string): string {
   const cleaned = input.trim().replace(/[$\s\u00a0]/g, '')

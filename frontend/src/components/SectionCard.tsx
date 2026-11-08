@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+
 import {
   Card,
   CardAction,
@@ -25,12 +26,15 @@ export function SectionCard({
     <Card>
       <CardHeader>
         <div className="flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_0_color-mix(in_oklch,var(--primary),black_18%)]">
-            <Icon className="size-5" />
+          <div
+            className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"
+            aria-hidden
+          >
+            <Icon className="size-4" />
           </div>
-          <div>
+          <div className="min-w-0">
             <CardTitle>{title}</CardTitle>
-            <CardDescription className="font-semibold">{subtitle}</CardDescription>
+            <CardDescription>{subtitle}</CardDescription>
           </div>
         </div>
         {action && <CardAction>{action}</CardAction>}

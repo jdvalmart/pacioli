@@ -37,7 +37,7 @@ import { useAccounts, useInvalidate, useSavings } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
 import { SavingsFormDialog } from '@/components/SavingsFormDialog'
 import { SAVINGS_KIND_META } from '@/components/savingsKinds'
-import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
+import { fmtMoney, normalizeAmount } from '@/lib/money'
 import type { SavingsItem } from '@/lib/types'
 import { todayISO } from '@/lib/dates'
 
@@ -123,7 +123,7 @@ function MoveMoneyBody({
               key={dir}
               type="button"
               onClick={() => setDirection(dir)}
-              className={`rounded-xl border px-3 py-2 text-sm font-bold transition-all ${
+              className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
                 direction === dir
                   ? 'border-amber-600 bg-primary text-primary-foreground'
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
@@ -154,7 +154,7 @@ function MoveMoneyBody({
             <SelectContent>
               {(accounts.data ?? []).map((account) => (
                 <SelectItem key={account.id} value={String(account.id)}>
-                  {account.icon} {account.name} ({fmtCopDecimals(account.balance)})
+                  {account.icon} {account.name} ({fmtMoney(account.balance)})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -199,19 +199,16 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
         icon={PiggyBank}
         title="Ahorro e inversión"
         subtitle={`Bolsillos, ahorros programados, CDTs y acciones${
-          (items.data ?? []).length > 0 ? ` · total ${fmtCopDecimals(total)}` : ''
+          (items.data ?? []).length > 0 ? ` · total ${fmtMoney(total)}` : ''
         }`}
         action={
           !readOnly ? (
-            <Button
-              size="icon"
-              aria-label="Nuevo ahorro o inversión"
+            <Button size="sm" variant="outline"
               onClick={() => {
                 setEditing(null)
                 setFormOpen(true)
-              }}
-            >
-              <Plus />
+              }}>
+              <Plus /> Nuevo ahorro o inversión
             </Button>
           ) : undefined
         }
@@ -249,12 +246,12 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
               <Card key={item.id} className="p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center rounded-xl bg-amber-400 text-xl text-amber-950 shadow-[0_3px_0_0_#b45309]">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-base">
                       {SAVINGS_KIND_META[item.kind]?.icon ?? '💰'}
                     </div>
                     <div>
                       <CardTitle className="text-sm leading-tight">{item.name}</CardTitle>
-                      <p className="text-xs font-bold text-muted-foreground">
+                      <p className="text-xs font-medium text-muted-foreground">
                         {SAVINGS_KIND_META[item.kind]?.label ?? item.kind}
                       </p>
                     </div>
@@ -287,41 +284,41 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                         aria-label={`Eliminar ${item.name}`}
                         onClick={() => setDeleting(item)}
                       >
-                        <Trash2 className="size-3.5 text-destructive" />
+                        <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                   )}
                 </div>
 
                 <div className="mt-3 space-y-1.5">
-                  <p className="text-xl font-black">
+                  <p className="text-xl font-semibold">
                     {item.kind === 'acciones' && item.current_value != null
-                      ? fmtCopDecimals(current)
-                      : fmtCopDecimals(item.balance)}
+                      ? fmtMoney(current)
+                      : fmtMoney(item.balance)}
                   </p>
 
                   {item.kind === 'acciones' && (
-                    <div className="space-y-0.5 text-xs font-bold text-muted-foreground">
-                      <p>Invertido: {fmtCopDecimals(invested)}</p>
-                      <p className={priceGain >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                    <div className="space-y-0.5 text-xs font-medium text-muted-foreground">
+                      <p>Invertido: {fmtMoney(invested)}</p>
+                      <p className={priceGain >= 0 ? 'text-positive' : 'text-negative'}>
                         <TrendingUp className="mr-1 inline size-3.5" />
                         Precio: {priceGain >= 0 ? '+' : ''}
-                        {fmtCopDecimals(priceGain)}
+                        {fmtMoney(priceGain)}
                       </p>
-                      {dividends > 0 && <p>Dividendos: +{fmtCopDecimals(dividends)}</p>}
-                      <p className={totalGain >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                      {dividends > 0 && <p>Dividendos: +{fmtMoney(dividends)}</p>}
+                      <p className={totalGain >= 0 ? 'text-positive' : 'text-negative'}>
                         Ganancia total: {totalGain >= 0 ? '+' : ''}
-                        {fmtCopDecimals(totalGain)} ({totalGainPct >= 0 ? '+' : ''}
+                        {fmtMoney(totalGain)} ({totalGainPct >= 0 ? '+' : ''}
                         {totalGainPct.toFixed(1)}%)
                       </p>
                     </div>
                   )}
 
                   {item.rate_bp != null && item.kind !== 'acciones' && (
-                    <p className="text-xs font-bold text-muted-foreground">
+                    <p className="text-xs font-medium text-muted-foreground">
                       Tasa {item.rate_bp / 100}% EA
                       {item.term_days
-                        ? ` · rendimiento ≈ ${fmtCopDecimals(
+                        ? ` · rendimiento ≈ ${fmtMoney(
                             (invested * (item.rate_bp / 100) * (item.term_days / 360)) / 100,
                           )}`
                         : ''}
@@ -329,13 +326,13 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                   )}
 
                   {item.kind === 'bolsillo_programado' && item.scheduled_amount != null && (
-                    <p className="text-xs font-bold text-muted-foreground">
-                      📆 Día {item.scheduled_day}: {fmtCopDecimals(item.scheduled_amount)}/mes
+                    <p className="text-xs font-medium text-muted-foreground">
+                      📆 Día {item.scheduled_day}: {fmtMoney(item.scheduled_amount)}/mes
                     </p>
                   )}
 
                   {item.matures_on && (
-                    <p className="text-xs font-bold text-muted-foreground">
+                    <p className="text-xs font-medium text-muted-foreground">
                       {item.matures_on > todayISO()
                         ? `🔒 Bloqueado hasta el ${item.matures_on}`
                         : `Vencido el ${item.matures_on}`}
@@ -346,10 +343,10 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                     <>
                       <Progress
                         value={Math.min(targetPct, 100)}
-                        indicatorClassName="bg-amber-400"
+                        
                       />
-                      <p className="text-xs font-bold text-muted-foreground">
-                        {Math.round(targetPct)}% de la meta {fmtCopDecimals(target)}
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {Math.round(targetPct)}% de la meta {fmtMoney(target)}
                       </p>
                     </>
                   )}

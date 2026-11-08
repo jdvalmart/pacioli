@@ -36,7 +36,7 @@ import { useMonth } from '@/hooks/useMonth'
 import { api } from '@/lib/api'
 import { useAccounts, useCreditCards, useInvalidate } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
-import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
+import { fmtMoney, normalizeAmount } from '@/lib/money'
 import type { Account, CreditCard } from '@/lib/types'
 import { addDaysISO, todayISO } from '@/lib/dates'
 
@@ -261,18 +261,18 @@ function PayCardBody({
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-xl bg-orange-500/10 p-3 text-center">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+        <div className="rounded-lg bg-muted p-3 text-center">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Deuda total
           </p>
-          <p className="text-2xl font-black text-orange-600">{fmtCopDecimals(card.outstanding)}</p>
+          <p className="text-2xl font-semibold">{fmtMoney(card.outstanding)}</p>
           {Number(card.debt) > 0 && (
-            <p className="text-xs font-bold text-red-600">
-              Por pagar ya: {fmtCopDecimals(card.debt)}
+            <p className="text-xs font-medium text-negative">
+              Por pagar ya: {fmtMoney(card.debt)}
             </p>
           )}
-          <p className="text-xs font-bold text-muted-foreground">
-            Cuota del mes: {fmtCopDecimals(card.pending)}
+          <p className="text-xs font-medium text-muted-foreground">
+            Cuota del mes: {fmtMoney(card.pending)}
           </p>
         </div>
 
@@ -285,15 +285,15 @@ function PayCardBody({
             <SelectContent>
               {(accounts.data ?? []).map((account) => (
                 <SelectItem key={account.id} value={String(account.id)}>
-                  {account.icon} {account.name} ({fmtCopDecimals(account.balance)})
+                  {account.icon} {account.name} ({fmtMoney(account.balance)})
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {selectedAccount && balance < amountNum && (
-            <p className="text-xs font-bold text-red-500">
-              Saldo insuficiente: la cuenta tiene {fmtCopDecimals(balance)} y quieres pagar{' '}
-              {fmtCopDecimals(amountNum)}.
+            <p className="text-xs font-medium text-negative">
+              Saldo insuficiente: la cuenta tiene {fmtMoney(balance)} y quieres pagar{' '}
+              {fmtMoney(amountNum)}.
             </p>
           )}
         </div>
@@ -350,7 +350,7 @@ function PayCardBody({
             (!!selectedAccount && balance < amountNum)
           }
         >
-          {mutation.isPending ? 'Pagando…' : `Pagar ${fmtCopDecimals(amountNum || 0)}`}
+          {mutation.isPending ? 'Pagando…' : `Pagar ${fmtMoney(amountNum || 0)}`}
         </Button>
       </form>
     </>
@@ -384,15 +384,12 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
         subtitle="Cupo disponible según tus gastos TC del mes"
         action={
           !readOnly ? (
-            <Button
-              size="icon"
-              aria-label="Nueva tarjeta"
+            <Button size="sm" variant="outline"
               onClick={() => {
                 setEditing(null)
                 setFormOpen(true)
-              }}
-            >
-              <Plus />
+              }}>
+              <Plus /> Nueva tarjeta
             </Button>
           ) : undefined
         }
@@ -419,12 +416,12 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
               <Card key={card.id} className="p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center rounded-xl bg-orange-500 text-xl text-white shadow-[0_3px_0_0_#c2410c]">
-                      <CreditCardIcon className="size-5" />
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <CreditCardIcon className="size-4" />
                     </div>
                     <div>
                       <CardTitle className="text-sm leading-tight">{card.name}</CardTitle>
-                      <p className="text-xs font-bold text-muted-foreground">
+                      <p className="text-xs font-medium text-muted-foreground">
                         Corte: día {card.cutoff_day} · Pago: día {card.payment_day}
                       </p>
                     </div>
@@ -448,7 +445,7 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                         aria-label={`Eliminar tarjeta ${card.name}`}
                         onClick={() => setDeleting(card)}
                       >
-                        <Trash2 className="size-3.5 text-destructive" />
+                        <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                   )}
@@ -456,28 +453,28 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
 
                 <div className="mt-4 space-y-1.5">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-bold text-muted-foreground">Cupo disponible</span>
-                    <span className={`font-black ${over ? 'text-red-600' : ''}`}>
-                      {fmtCopDecimals(card.available)}
+                    <span className="font-medium text-muted-foreground">Cupo disponible</span>
+                    <span className={`font-semibold ${over ? 'text-negative' : ''}`}>
+                      {fmtMoney(card.available)}
                     </span>
                   </div>
                   <Progress
                     value={Math.min(percent, 100)}
-                    indicatorClassName={over ? 'bg-red-500' : 'bg-orange-500'}
+                    indicatorClassName={over ? 'bg-negative' : undefined}
                   />
-                  <p className="text-xs font-bold text-muted-foreground">
-                    de {fmtCopDecimals(card.limit)}
+                  <p className="text-xs font-medium text-muted-foreground">
+                    de {fmtMoney(card.limit)}
                   </p>
-                  <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
+                  <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
                     <span>
                       Ciclo {fmtDay(addDaysISO(card.cycle_start, 1))} → {fmtDay(card.cycle_end)}
                     </span>
                     <span>Pago {fmtDay(card.payment_date)}</span>
                   </div>
                   <div className="flex items-center justify-between pt-1">
-                    <span className="text-xs font-bold">
+                    <span className="text-xs font-medium">
                       <span className="text-muted-foreground">Por facturar </span>
-                      {fmtCopDecimals(card.pending)}
+                      {fmtMoney(card.pending)}
                     </span>
                     <Button
                       size="sm"
@@ -488,13 +485,13 @@ export function CreditCardsSection({ readOnly = false }: { readOnly?: boolean } 
                     </Button>
                   </div>
                   {Number(card.debt) > 0 && (
-                    <p className="text-xs font-bold text-red-600">
-                      Por pagar ya (extractos cerrados): {fmtCopDecimals(card.debt)}
+                    <p className="text-xs font-medium text-negative">
+                      Por pagar ya (extractos cerrados): {fmtMoney(card.debt)}
                     </p>
                   )}
                   {outstanding > 0 && (
-                    <p className="text-xs font-bold text-orange-600">
-                      Deuda total: {fmtCopDecimals(card.outstanding)}
+                    <p className="text-xs text-muted-foreground">
+                      Deuda total: <span className="font-medium text-foreground">{fmtMoney(card.outstanding)}</span>
                     </p>
                   )}
                 </div>

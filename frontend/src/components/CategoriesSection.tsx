@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
+import { CategoryIcon } from '@/components/CategoryIcon'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -34,7 +35,7 @@ import {
 import { api } from '@/lib/api'
 import { useCategories, useCategorySpending, useInvalidate, useSubcategories } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
-import { fmtCopDecimals } from '@/lib/money'
+import { fmtMoney } from '@/lib/money'
 import { monthLabel, useMonth } from '@/hooks/useMonth'
 import type { Category, CategoryType } from '@/lib/types'
 
@@ -212,19 +213,14 @@ function CategoryRow({ category, total }: { category: Category; total: number })
   })
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-3 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+    <div className="rounded-xl border border-border bg-card p-3">
       <div className="flex items-center gap-2.5">
-        <div
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-base text-white shadow-[0_2px_0_0_rgba(0,0,0,0.25)]"
-          style={{ backgroundColor: category.color || '#888' }}
-        >
-          {category.icon}
-        </div>
+        <CategoryIcon icon={category.icon} color={category.color} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold">{category.name}</p>
-          <p className="truncate text-xs font-bold text-muted-foreground">
+          <p className="truncate text-sm font-medium">{category.name}</p>
+          <p className="truncate text-xs font-medium text-muted-foreground">
             {total > 0
-              ? `Este mes: ${fmtCopDecimals(total)}`
+              ? `Este mes: ${fmtMoney(total)}`
               : category.role === 'savings'
                 ? 'Agrupa tus movimientos de ahorro'
                 : 'Sin movimientos'}
@@ -245,7 +241,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
             aria-label={`Eliminar categoría ${category.name}`}
             onClick={() => setDeleting(true)}
           >
-            <Trash2 className="size-3.5 text-red-500" />
+            <Trash2 className="size-3.5" />
           </Button>
         )}
       </div>
@@ -256,7 +252,7 @@ function CategoryRow({ category, total }: { category: Category; total: number })
             {sub.icon} {sub.name}
             <button
               onClick={() => setSubToDelete(sub.id)}
-              className="ml-0.5 text-muted-foreground hover:text-red-500"
+              className="ml-0.5 text-muted-foreground hover:text-destructive"
               aria-label={`Eliminar ${sub.name}`}
             >
               <X className="size-3" />
@@ -377,7 +373,7 @@ export function CategoriesSection() {
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-emerald-600">Ingresos</CardTitle>
+            <CardTitle>Ingresos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -400,7 +396,7 @@ export function CategoriesSection() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-red-600">Gastos</CardTitle>
+            <CardTitle>Gastos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">

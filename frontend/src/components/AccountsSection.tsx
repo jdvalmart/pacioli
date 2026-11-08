@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ACCOUNT_ICON } from '@/components/accountIcons'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
 import {
@@ -34,7 +35,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
 import { useAccounts, useInvalidate } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
-import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
+import { fmtMoney, normalizeAmount } from '@/lib/money'
 import type { Account, AccountType } from '@/lib/types'
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; icon: string }[] = [
@@ -185,19 +186,16 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
         icon={Wallet}
         title="Cuentas"
         subtitle={`Dónde está tu dinero${
-          (accounts.data ?? []).length > 0 ? ` · total ${fmtCopDecimals(total)}` : ''
+          (accounts.data ?? []).length > 0 ? ` · total ${fmtMoney(total)}` : ''
         }`}
         action={
           !readOnly ? (
-            <Button
-              size="icon"
-              aria-label="Nueva cuenta"
+            <Button size="sm" variant="outline"
               onClick={() => {
                 setEditing(null)
                 setFormOpen(true)
-              }}
-            >
-              <Plus />
+              }}>
+              <Plus /> Nueva cuenta
             </Button>
           ) : undefined
         }
@@ -221,15 +219,15 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
             <Card key={account.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div
-                    className="flex size-11 items-center justify-center rounded-xl text-xl text-white shadow-[0_3px_0_0_rgba(0,0,0,0.25)]"
-                    style={{ backgroundColor: account.color }}
-                  >
-                    {account.icon}
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    {(() => {
+                      const Icon = ACCOUNT_ICON[account.type]
+                      return <Icon className="size-4" />
+                    })()}
                   </div>
                   <div>
                     <CardTitle className="text-sm leading-tight">{account.name}</CardTitle>
-                    <p className="text-xs font-bold text-muted-foreground">
+                    <p className="text-xs font-medium text-muted-foreground">
                       {typeLabel(account.type)}
                     </p>
                   </div>
@@ -253,15 +251,15 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
                       aria-label={`Eliminar cuenta ${account.name}`}
                       onClick={() => setDeleting(account)}
                     >
-                      <Trash2 className="size-3.5 text-destructive" />
+                      <Trash2 className="size-3.5" />
                     </Button>
                   </div>
                 )}
               </div>
-              <p className="mt-3 text-xl font-black">{fmtCopDecimals(account.balance)}</p>
+              <p className="mt-3 text-xl font-semibold">{fmtMoney(account.balance)}</p>
               {Number(account.starting) > 0 && (
-                <p className="text-xs font-bold text-muted-foreground">
-                  Incluye {fmtCopDecimals(account.starting)} de saldo inicial
+                <p className="text-xs font-medium text-muted-foreground">
+                  Incluye {fmtMoney(account.starting)} de saldo inicial
                 </p>
               )}
             </Card>

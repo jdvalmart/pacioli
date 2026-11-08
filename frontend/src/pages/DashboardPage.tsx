@@ -1,15 +1,45 @@
-import { ArrowDownLeft, ArrowUpRight, Landmark, PiggyBank, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, CreditCard, PiggyBank, Scale, Wallet } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
-import { useAccounts, useBudgetVsActual, useCategorySpending, useSavings, useSummary } from '@/lib/queries'
-import { fmtCop, fmtCopDecimals } from '@/lib/money'
-import { useMonth } from '@/hooks/useMonth'
-import { AccountsSection } from '@/components/AccountsSection'
-import { CreditCardsSection } from '@/components/CreditCardsSection'
-import { SavingsSection } from '@/components/SavingsSection'
+
+import { ACCOUNT_ICON } from '@/components/accountIcons'
+import { SAVINGS_KIND_META } from '@/components/savingsKinds'
 import { StatCard } from '@/components/StatCard'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import { monthLabel, useMonth } from '@/hooks/useMonth'
+import { fmtMoney } from '@/lib/money'
+import {
+  useAccounts,
+  useBudgetVsActual,
+  useCategorySpending,
+  useCreditCards,
+  useSavings,
+  useSummary,
+} from '@/lib/queries'
+import { cn } from '@/lib/utils'
+
+const fmtDay = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+
+function SeeAll({ to, label }: { to: string; label: string }) {
+  return (
+    <CardAction>
+      <Link
+        to={to}
+        className="flex items-center gap-0.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+      >
+        {label}
+        <ChevronRight className="size-4" />
+      </Link>
+    </CardAction>
+  )
+}
+
+function EmptyLine({ children }: { children: React.ReactNode }) {
+  return <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>
+}
 
 export function DashboardPage() {
   const { month } = useMonth()
@@ -18,16 +48,15 @@ export function DashboardPage() {
   const budgetVsActual = useBudgetVsActual(month)
   const accounts = useAccounts()
   const savings = useSavings()
+  const cards = useCreditCards(month)
 
-  const accountsTotal = (accounts.data ?? []).reduce(
-    (sum, account) => sum + Number(account.balance),
-    0,
-  )
-  // Money moved to savings (bolsillos, programmed pockets, CDTs and
-  // stocks) has left the accounts, so it adds to net worth.
-  const investedTotal = (savings.data ?? []).reduce(
-    (sum, item) =>
-      sum + (item.current_value != null ? Number(item.current_value) : Number(item.balance)),
+  const accountList = accounts.data ?? []
+  const accountsTotal = accountList.reduce((sum, account) => sum + Number(account.balance), 0)
+  // Money moved to savings (pockets, CDTs, stocks) has left the accounts,
+  // so it adds to net worth.
+  const savingsList = savings.data ?? []
+  const investedTotal = savingsList.reduce(
+    (sum, item) => sum + Number(item.current_value ?? item.balance),
     0,
   )
   const netWorth = accountsTotal + investedTotal
@@ -37,222 +66,321 @@ export function DashboardPage() {
     value: Number(row.total),
     color: row.color,
   }))
+  const spendingTotal = chartData.reduce((sum, row) => sum + row.value, 0)
 
-  // Only categories with a defined budget appear on the dashboard;
-  // categories with spending but no budget live in the Budgets page.
-  // Highest budgets come first.
-  const budgetCards = (budgetVsActual.data ?? [])
+  // Only categories with a budget appear here, largest first.
+  const budgetRows = (budgetVsActual.data ?? [])
     .filter((row) => Number(row.budget) > 0)
     .sort((a, b) => Number(b.budget) - Number(a.budget))
+  const budgeted = budgetRows.reduce((sum, row) => sum + Number(row.budget), 0)
+  const budgetSpent = budgetRows.reduce((sum, row) => sum + Number(row.actual), 0)
+
+  const balance = Number(summary.data?.balance ?? 0)
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-extrabold">Resumen</h1>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Resumen</h1>
+        <p className="text-sm text-muted-foreground">{monthLabel(month)}</p>
+      </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
           title="Ingresos"
-          value={fmtCop(summary.data?.total_income ?? '0')}
+          value={fmtMoney(summary.data?.total_income ?? '0')}
           icon={ArrowDownLeft}
           tone="income"
         />
         <StatCard
           title="Gastos"
-          value={fmtCop(summary.data?.total_expense ?? '0')}
+          value={fmtMoney(summary.data?.total_expense ?? '0')}
           icon={ArrowUpRight}
           tone="expense"
         />
         <StatCard
           title="Balance del mes"
-          value={fmtCop(summary.data?.balance ?? '0')}
-          detail={`Acumulado: ${fmtCop(summary.data?.accumulated_balance ?? '0')}`}
-          icon={Wallet}
+          value={fmtMoney(balance)}
+          valueClassName={balance < 0 ? 'text-negative' : undefined}
+          detail={`Acumulado ${fmtMoney(summary.data?.accumulated_balance ?? '0')}`}
+          icon={Scale}
           tone="primary"
         />
         <StatCard
-          title="En cuentas"
-          value={fmtCop(accountsTotal)}
-          detail="Efectivo disponible"
-          icon={Landmark}
-          tone="neutral"
-        />
-        <StatCard
           title="Patrimonio"
-          value={fmtCop(netWorth)}
-          detail="Cuentas + ahorros e inversiones"
+          value={fmtMoney(netWorth)}
+          detail={`Cuentas ${fmtMoney(accountsTotal)} · Ahorros ${fmtMoney(investedTotal)}`}
           icon={PiggyBank}
-          tone="income"
+          tone="neutral"
         />
       </div>
 
-      <AccountsSection readOnly />
-
-      <CreditCardsSection readOnly />
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-extrabold">Presupuestos</h2>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Avance del gasto por categoría
-          </p>
-        </div>
-
-        {budgetCards.length > 0 && (
-          <div className="grid grid-cols-3 gap-3">
-            {(() => {
-              const totalBudget = budgetCards.reduce((sum, row) => sum + Number(row.budget), 0)
-              const totalActual = budgetCards.reduce((sum, row) => sum + Number(row.actual), 0)
-              const totalRestante = totalBudget - totalActual
-              return (
-                <>
-                  <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
-                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Presupuestado
-                    </p>
-                    <p className="text-lg font-black">{fmtCop(totalBudget)}</p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
-                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Gastado
-                    </p>
-                    <p className="text-lg font-black text-rose-600">{fmtCop(totalActual)}</p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-3 text-center shadow-[0_3px_0_0_rgba(0,0,0,0.05)]">
-                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      Restante
-                    </p>
-                    <p
-                      className={`text-lg font-black ${
-                        totalRestante < 0 ? 'text-rose-600' : 'text-emerald-600'
-                      }`}
-                    >
-                      {fmtCop(totalRestante)}
-                    </p>
-                  </div>
-                </>
-              )
-            })()}
-          </div>
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {budgetVsActual.isLoading ? (
-            <>
-              <Skeleton className="h-36 w-full" />
-              <Skeleton className="h-36 w-full" />
-              <Skeleton className="h-36 w-full" />
-            </>
-          ) : budgetCards.length === 0 ? (
-            <Card className="col-span-full p-6 text-center text-sm font-semibold text-muted-foreground">
-              Sin presupuestos este mes. Configúralos en la pestaña Presupuestos.
-            </Card>
-          ) : (
-            budgetCards.map((row) => {
-              const over = row.percent > 100
-              return (
-                <Card key={row.category_id} className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="flex size-11 items-center justify-center rounded-xl text-xl text-white shadow-[0_3px_0_0_rgba(0,0,0,0.25)]"
-                      style={{ backgroundColor: row.color || '#888' }}
-                    >
-                      {row.icon}
-                    </div>
-                    <div>
-                      <CardTitle className="text-sm leading-tight">{row.name}</CardTitle>
-                      <p className="text-xs font-bold text-muted-foreground">
-                        {Math.round(row.percent)}% usado
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold text-muted-foreground">
-                        Gastado {fmtCop(row.actual)}
-                      </span>
-                      <span className="font-black">{fmtCop(row.budget)}</span>
-                    </div>
-                    <Progress
-                      value={Math.min(row.percent, 100)}
-                      indicatorClassName={over ? 'bg-red-500' : undefined}
-                    />
-                    <p
-                      className={`text-xs font-bold ${
-                        over ? 'text-red-500' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {over
-                        ? `Te pasaste ${fmtCopDecimals(row.remaining.replace('-', ''))}`
-                        : `Restante ${fmtCopDecimals(row.remaining)}`}
-                    </p>
-                  </div>
-                </Card>
-              )
-            })
-          )}
-        </div>
-      </section>
-
-      <SavingsSection readOnly />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Gasto por categoría</CardTitle>
-          <CardDescription>Desglose mensual del gasto</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {spending.isLoading ? (
-            <Skeleton className="h-64 w-full" />
-          ) : chartData.length === 0 ? (
-            <p className="py-20 text-center text-sm text-muted-foreground">
-              Aún no hay gastos este mes.
-            </p>
-          ) : (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={chartData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={70}
-                      outerRadius={110}
-                      paddingAngle={2}
-                    >
-                      {chartData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.color || '#8884d8'} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => fmtCop(Number(value))} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="flex items-center">
-                <ul className="w-full space-y-2.5">
-                  {chartData.map((entry) => (
-                    <li
-                      key={entry.name}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2"
-                    >
-                      <span className="flex min-w-0 items-center gap-2.5 font-bold">
-                        <span
-                          className="size-3.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: entry.color || '#8884d8' }}
-                        />
-                        <span className="truncate">{entry.name}</span>
-                      </span>
-                      <span className="shrink-0 font-black">{fmtCop(entry.value)}</span>
-                    </li>
-                  ))}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Main column: where the month's money goes */}
+        <div className="space-y-4 lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Presupuestos</CardTitle>
+              <CardDescription>
+                {budgetRows.length > 0
+                  ? `${fmtMoney(budgetSpent)} gastado de ${fmtMoney(budgeted)} presupuestado`
+                  : 'Avance del gasto por categoría'}
+              </CardDescription>
+              <SeeAll to="/budgets" label="Ajustar" />
+            </CardHeader>
+            <CardContent>
+              {budgetVsActual.isLoading ? (
+                <Skeleton className="h-40 w-full" />
+              ) : budgetRows.length === 0 ? (
+                <EmptyLine>Sin presupuestos este mes. Defínelos en Presupuestos.</EmptyLine>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {budgetRows.map((row) => {
+                    const over = row.percent > 100
+                    return (
+                      <li key={row.category_id} className="py-3 first:pt-0 last:pb-0">
+                        <div className="flex items-baseline justify-between gap-3 text-sm">
+                          <span className="flex min-w-0 items-center gap-2 font-medium">
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: row.color || '#888' }}
+                              aria-hidden
+                            />
+                            <span className="truncate">{row.name}</span>
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            <span className={cn('font-medium text-foreground', over && 'text-negative')}>
+                              {fmtMoney(row.actual)}
+                            </span>{' '}
+                            de {fmtMoney(row.budget)}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-3">
+                          <Progress
+                            className="flex-1"
+                            value={Math.min(row.percent, 100)}
+                            indicatorClassName={over ? 'bg-negative' : undefined}
+                          />
+                          <span
+                            className={cn(
+                              'w-12 shrink-0 text-right text-xs font-medium',
+                              over ? 'text-negative' : 'text-muted-foreground',
+                            )}
+                          >
+                            {Math.round(row.percent)}%
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Gasto por categoría</CardTitle>
+              <CardDescription>
+                {spendingTotal > 0 ? `Total ${fmtMoney(spendingTotal)}` : 'Desglose mensual del gasto'}
+              </CardDescription>
+              <SeeAll to="/reports" label="Reportes" />
+            </CardHeader>
+            <CardContent>
+              {spending.isLoading ? (
+                <Skeleton className="h-56 w-full" />
+              ) : chartData.length === 0 ? (
+                <EmptyLine>Aún no hay gastos este mes.</EmptyLine>
+              ) : (
+                <div className="grid items-center gap-6 sm:grid-cols-[14rem_1fr]">
+                  <div className="mx-auto h-56 w-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={chartData}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={62}
+                          outerRadius={100}
+                          paddingAngle={1.5}
+                          stroke="var(--card)"
+                          strokeWidth={2}
+                        >
+                          {chartData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.color || '#888'} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value) => fmtMoney(Number(value))}
+                          contentStyle={{
+                            background: 'var(--popover)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            color: 'var(--popover-foreground)',
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ul className="space-y-2 text-sm">
+                    {chartData.map((entry) => (
+                      <li key={entry.name} className="flex items-center justify-between gap-3">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="size-2.5 shrink-0 rounded-sm"
+                            style={{ backgroundColor: entry.color || '#888' }}
+                            aria-hidden
+                          />
+                          <span className="truncate">{entry.name}</span>
+                        </span>
+                        <span className="flex shrink-0 items-baseline gap-2">
+                          <span className="font-medium">{fmtMoney(entry.value)}</span>
+                          <span className="w-10 text-right text-xs text-muted-foreground">
+                            {Math.round((entry.value / spendingTotal) * 100)}%
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Side column: where the money is */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Cuentas</CardTitle>
+              <CardDescription>Total {fmtMoney(accountsTotal)}</CardDescription>
+              <SeeAll to="/settings" label="Gestionar" />
+            </CardHeader>
+            <CardContent>
+              {accountList.length === 0 ? (
+                <EmptyLine>Todavía no tienes cuentas. Créalas en Ajustes.</EmptyLine>
+              ) : (
+                <ul className="space-y-3">
+                  {accountList.map((account) => {
+                    const Icon = ACCOUNT_ICON[account.type]
+                    return (
+                      <li key={account.id} className="flex items-center gap-3">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                          <Icon className="size-4" />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {account.name}
+                        </span>
+                        <span className="text-sm font-semibold">{fmtMoney(account.balance)}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tarjetas de crédito</CardTitle>
+              <CardDescription>Deuda y cupo disponible</CardDescription>
+              <SeeAll to="/settings" label="Pagar" />
+            </CardHeader>
+            <CardContent>
+              {(cards.data ?? []).length === 0 ? (
+                <EmptyLine>Sin tarjetas registradas.</EmptyLine>
+              ) : (
+                <ul className="space-y-4">
+                  {(cards.data ?? []).map((card) => {
+                    const used =
+                      Number(card.limit) > 0
+                        ? (Number(card.outstanding) / Number(card.limit)) * 100
+                        : 0
+                    const due = Number(card.debt) > 0
+                    return (
+                      <li key={card.id} className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                            <CreditCard className="size-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{card.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Pago {fmtDay(card.payment_date)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold">{fmtMoney(card.outstanding)}</p>
+                            <p className="text-xs text-muted-foreground">deuda total</p>
+                          </div>
+                        </div>
+                        <Progress value={Math.min(used, 100)} />
+                        <div className="flex justify-between gap-2 text-xs text-muted-foreground">
+                          <span>Disponible {fmtMoney(card.available)}</span>
+                          {due ? (
+                            <span className="font-medium text-negative">
+                              Por pagar ya {fmtMoney(card.debt)}
+                            </span>
+                          ) : (
+                            <span>Cuota {fmtMoney(card.pending)}</span>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ahorro e inversión</CardTitle>
+              <CardDescription>Total {fmtMoney(investedTotal)}</CardDescription>
+              <SeeAll to="/settings" label="Gestionar" />
+            </CardHeader>
+            <CardContent>
+              {savingsList.length === 0 ? (
+                <EmptyLine>Sin bolsillos ni inversiones.</EmptyLine>
+              ) : (
+                <ul className="space-y-3">
+                  {savingsList.map((item) => {
+                    const value = Number(item.current_value ?? item.balance)
+                    const target = item.target ? Number(item.target) : 0
+                    return (
+                      <li key={item.id} className="space-y-1.5">
+                        <div className="flex items-center gap-3">
+                          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-base">
+                            {SAVINGS_KIND_META[item.kind].icon}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{item.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {SAVINGS_KIND_META[item.kind].label}
+                              {target > 0 && ` · meta ${fmtMoney(target)}`}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold">{fmtMoney(value)}</span>
+                        </div>
+                        {target > 0 && <Progress value={Math.min((value / target) * 100, 100)} />}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="p-4">
+            <Link to="/transactions" className="flex items-center justify-between text-sm font-medium">
+              <span className="flex items-center gap-2">
+                <Wallet className="size-4 text-muted-foreground" />
+                Ver movimientos del mes
+              </span>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </Link>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
