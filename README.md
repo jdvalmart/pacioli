@@ -198,8 +198,12 @@ Montos como strings `"1234.56"` para evitar `float64`.
 
 ```bash
 # Backend
-cd backend && .venv/bin/ruff check . && .venv/bin/mypy app && .venv/bin/pytest -q
-# 121 passed
+cd backend && .venv/bin/ruff check . && .venv/bin/mypy app tests && .venv/bin/pytest -q
+
+# Misma suite contra Postgres (¡borra el esquema public de esa BD!)
+docker run -d --rm --name pacioli-test-pg -e POSTGRES_USER=pacioli -e POSTGRES_PASSWORD=pacioli \
+  -e POSTGRES_DB=pacioli_test -p 127.0.0.1:55432:5432 postgres:16-alpine
+PACIOLI_TEST_DATABASE_URL=postgresql://pacioli:pacioli@127.0.0.1:55432/pacioli_test .venv/bin/pytest -q
 
 # Frontend
 cd frontend && npx tsc -b && npm run lint && npm run build
