@@ -226,7 +226,7 @@ function BudgetSetupDialog({
             <DialogHeader>
               <DialogTitle>Definir presupuesto</DialogTitle>
               <DialogDescription>
-                Planificá tu gasto en {monthLabel(month)}: repartí tu presupuesto total entre
+                Planifica tu gasto en {monthLabel(month)}: reparte tu presupuesto total entre
                 categorías.
               </DialogDescription>
             </DialogHeader>
@@ -369,7 +369,7 @@ export function BudgetsPage() {
         <div>
           <h1 className="text-xl font-extrabold">Presupuestos</h1>
           <p className="text-sm font-semibold text-muted-foreground">
-            Definí cuánto podés gastar por categoría en {monthLabel(month)}
+            Define cuánto puedes gastar por categoría en {monthLabel(month)}
           </p>
         </div>
         <Button onClick={() => setSetupOpen(true)}>

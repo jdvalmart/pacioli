@@ -215,15 +215,15 @@ function TransactionFormBody({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     if (kind !== 'transferencia' && !isSavingsKind && !categoryId) {
-      toast.error('Seleccioná una categoría')
+      toast.error('Selecciona una categoría')
       return
     }
     if (kind === 'gasto_tc' && !cardId) {
-      toast.error('Seleccioná una tarjeta de crédito')
+      toast.error('Selecciona una tarjeta de crédito')
       return
     }
     if (isSavingsKind && !savingsId) {
-      toast.error('Seleccioná el bolsillo o la inversión')
+      toast.error('Selecciona el bolsillo o la inversión')
       return
     }
     if (isSavingsKind && selectedSavingsLocked) {
@@ -231,12 +231,12 @@ function TransactionFormBody({
       return
     }
     if (needsAccount && !accountId) {
-      toast.error('Seleccioná una cuenta — todo movimiento sale o entra por una cuenta')
+      toast.error('Selecciona una cuenta — todo movimiento sale o entra por una cuenta')
       return
     }
     if (needsTwoAccounts) {
       if (!accountId || !toAccountId) {
-        toast.error('Seleccioná la cuenta de origen y la de destino')
+        toast.error('Selecciona la cuenta de origen y la de destino')
         return
       }
       if (accountId === toAccountId) {
@@ -278,7 +278,7 @@ function TransactionFormBody({
       <DialogHeader>
         <DialogTitle>{transaction ? 'Editar movimiento' : 'Nuevo movimiento'}</DialogTitle>
         <DialogDescription>
-          {transaction ? 'Actualizá los datos y guardá.' : 'Registrá un movimiento de este mes.'}
+          {transaction ? 'Actualiza los datos y guarda.' : 'Registra un movimiento de este mes.'}
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -366,7 +366,7 @@ function TransactionFormBody({
               {(savings.data ?? []).length > 0 && (
                 <Select value={savingsId} onValueChange={(v) => setSavingsId(v ?? '')}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccioná el bolsillo" />
+                    <SelectValue placeholder="Selecciona el bolsillo" />
                   </SelectTrigger>
                   <SelectContent>
                     {(savings.data ?? []).map((item) => {
@@ -393,7 +393,7 @@ function TransactionFormBody({
               </Button>
               {selectedSavingsLocked && (
                 <p className="text-xs font-bold text-amber-600">
-                  🔒 Bloqueado hasta {selectedSavings?.matures_on} — no podés mover el dinero hasta el vencimiento.
+                  🔒 Bloqueado hasta {selectedSavings?.matures_on} — no puedes mover el dinero hasta el vencimiento.
                 </p>
               )}
             </div>
@@ -401,12 +401,12 @@ function TransactionFormBody({
               <Label>{kind === 'ahorro' ? 'Cuenta origen' : 'Cuenta destino'}</Label>
               {!hasAccounts ? (
                 <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
-                  Todavía no tenés cuentas. Creá una en el Panel.
+                  Todavía no tienes cuentas. Crea una en Ajustes.
                 </div>
               ) : (
                 <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccioná una cuenta" />
+                    <SelectValue placeholder="Selecciona una cuenta" />
                   </SelectTrigger>
                   <SelectContent>
                     {accountList.map((account) => (
@@ -434,7 +434,7 @@ function TransactionFormBody({
               <Label>Categoría</Label>
               <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccioná una categoría" />
+                  <SelectValue placeholder="Selecciona una categoría" />
                 </SelectTrigger>
                 <SelectContent>
                   {visibleCategories.map((cat) => (
@@ -470,14 +470,14 @@ function TransactionFormBody({
                 <Label>Tarjeta de crédito</Label>
                 {(creditCards.data ?? []).length === 0 ? (
                   <div className="rounded-xl border border-dashed border-orange-400/60 bg-orange-500/10 p-3 text-sm font-semibold text-muted-foreground">
-                    💳 Todavía no tenés tarjetas. Creá una en el Panel (sección Tarjetas de
+                    💳 Todavía no tienes tarjetas. Crea una en Ajustes (sección Tarjetas de
                     crédito) para registrar compras con tarjeta.
                   </div>
                 ) : (
                   <>
                     <Select value={cardId} onValueChange={(v) => setCardId(v ?? '')}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Seleccioná la tarjeta" />
+                        <SelectValue placeholder="Selecciona la tarjeta" />
                       </SelectTrigger>
                       <SelectContent>
                         {(creditCards.data ?? []).map((card) => (
@@ -534,14 +534,14 @@ function TransactionFormBody({
                 <Label>{accountLabel}</Label>
                 {!hasAccounts ? (
                   <div className="rounded-xl border border-dashed border-primary/50 bg-primary/10 p-3 text-sm font-semibold text-muted-foreground">
-                    Todavía no tenés cuentas. Creá una en el Panel (billetera,
+                    Todavía no tienes cuentas. Crea una en Ajustes (billetera,
                     banco, ahorro…) para registrar movimientos.
                   </div>
                 ) : (
                   <>
                     <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Seleccioná una cuenta" />
+                        <SelectValue placeholder="Selecciona una cuenta" />
                       </SelectTrigger>
                       <SelectContent>
                         {accountList.map((account) => (

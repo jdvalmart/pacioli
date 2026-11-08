@@ -199,7 +199,7 @@ function SavingsFormBody({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Si la enlazás, el dinero apartado se muestra como "Reservado" en el presupuesto de
+              Si la enlazas, el dinero apartado se muestra como "Reservado" en el presupuesto de
               esa categoría.
             </p>
           </div>
@@ -227,7 +227,7 @@ function SavingsFormBody({
               onChange={(e) => setRate(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Interés que paga el bolsillo. Podés mover el dinero cuando quieras.
+              Interés que paga el bolsillo. Puedes mover el dinero cuando quieras.
             </p>
           </div>
         )}

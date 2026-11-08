@@ -212,8 +212,8 @@ export function AccountsSection({ readOnly = false }: { readOnly?: boolean } = {
           </>
         ) : accounts.data?.length === 0 ? (
           <Card className="col-span-full p-6 text-center text-sm font-semibold text-muted-foreground">
-            Todavía no tenés cuentas. Creá una billetera de efectivo, digital o de ahorros para
-            saber cuánto tenés y dónde.
+            Todavía no tienes cuentas. Crea una billetera de efectivo, digital o de ahorros para
+            saber cuánto tienes y dónde.
           </Card>
         ) : (
           [...(accounts.data ?? [])]

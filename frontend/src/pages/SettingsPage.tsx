@@ -9,7 +9,7 @@ export function SettingsPage() {
       <div>
         <h1 className="text-xl font-extrabold">Ajustes</h1>
         <p className="text-sm font-semibold text-muted-foreground">
-          Creá y gestioná tus cuentas y tarjetas de crédito, y configurá la app
+          Crea y gestiona tus cuentas y tarjetas de crédito, y configura la app
         </p>
       </div>
 

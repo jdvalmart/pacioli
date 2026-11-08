@@ -100,11 +100,11 @@ function MoveMoneyBody({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     if (!(Number(normalizeAmount(amount || '0')) > 0)) {
-      toast.error('Ingresá un monto')
+      toast.error('Ingresa un monto')
       return
     }
     if (!accountId) {
-      toast.error('Seleccioná una cuenta')
+      toast.error('Selecciona una cuenta')
       return
     }
     mutation.mutate()
@@ -115,7 +115,7 @@ function MoveMoneyBody({
       <DialogHeader>
         <DialogTitle>{item.name}</DialogTitle>
         <DialogDescription>
-          Movés dinero de una cuenta al bolsillo (apartar) o lo retirás de vuelta.
+          Mueves dinero de una cuenta al bolsillo (apartar) o lo retiras de vuelta.
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -151,7 +151,7 @@ function MoveMoneyBody({
           <Label>{direction === 'in' ? 'Desde la cuenta' : 'Hacia la cuenta'}</Label>
           <Select value={accountId} onValueChange={(v) => setAccountId(v ?? '')}>
             <SelectTrigger>
-              <SelectValue placeholder="Seleccioná una cuenta" />
+              <SelectValue placeholder="Selecciona una cuenta" />
             </SelectTrigger>
             <SelectContent>
               {(accounts.data ?? []).map((account) => (
