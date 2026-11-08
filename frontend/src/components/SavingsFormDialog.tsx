@@ -22,13 +22,7 @@ import { api } from '@/lib/api'
 import { useAccounts, useCategories, useInvalidate } from '@/lib/queries'
 import { normalizeAmount } from '@/lib/money'
 import type { SavingsItem, SavingsKind } from '@/lib/types'
-
-export const KIND_META: Record<SavingsKind, { label: string; icon: string }> = {
-  bolsillo: { label: 'Bolsillo', icon: '👝' },
-  bolsillo_programado: { label: 'Bolsillo programado', icon: '📆' },
-  cdt: { label: 'CDT', icon: '🏦' },
-  acciones: { label: 'Acciones', icon: '📈' },
-}
+import { SAVINGS_KIND_META } from '@/components/savingsKinds'
 
 export function SavingsFormDialog({
   open,
@@ -151,7 +145,7 @@ function SavingsFormBody({
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-4 gap-2">
-          {(Object.keys(KIND_META) as SavingsKind[]).map((k) => (
+          {(Object.keys(SAVINGS_KIND_META) as SavingsKind[]).map((k) => (
             <button
               key={k}
               type="button"
@@ -162,8 +156,8 @@ function SavingsFormBody({
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
               }`}
             >
-              <span className="text-base">{KIND_META[k].icon}</span>
-              {KIND_META[k].label}
+              <span className="text-base">{SAVINGS_KIND_META[k].icon}</span>
+              {SAVINGS_KIND_META[k].label}
             </button>
           ))}
         </div>

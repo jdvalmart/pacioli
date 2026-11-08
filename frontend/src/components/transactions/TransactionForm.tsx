@@ -1,7 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
-import { useState } from 'react'
 import { Plus } from 'lucide-react'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -19,22 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMonth } from '@/hooks/useMonth'
-import { api } from '@/lib/api'
-import {
-  useAccounts,
-  useCategories,
-  useCreditCards,
-  useInvalidate,
-  useSavings,
-  useSubcategories,
-} from '@/lib/queries'
 import { SavingsFormDialog } from '@/components/SavingsFormDialog'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
-import type { Transaction, TransactionInput, TransactionKind } from '@/lib/types'
-import { defaultMovementDate, todayISO } from '@/lib/dates'
+import type { Transaction } from '@/lib/types'
 
 import { FORM_KINDS, KIND_META } from '@/components/transactions/kinds'
+import { useTransactionForm } from '@/components/transactions/useTransactionForm'
 
 const FORM_OPTIONS = FORM_KINDS.map((value) => ({ value, ...KIND_META[value] }))
 
@@ -61,144 +48,53 @@ function TransactionFormBody({
   transaction: Transaction | null
   onOpenChange: (open: boolean) => void
 }) {
-  const { month } = useMonth()
-  const invalidate = useInvalidate()
-  const categories = useCategories()
-  const accounts = useAccounts()
-  const creditCards = useCreditCards()
-  const savings = useSavings()
-
-  const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'gasto')
-  const [date, setDate] = useState(
-    transaction?.date ?? defaultMovementDate(month),
-  )
-  const [amount, setAmount] = useState(transaction?.amount ?? '')
-  const [categoryId, setCategoryId] = useState(
-    transaction?.category_id ? String(transaction.category_id) : '',
-  )
-  const [subcategoryId, setSubcategoryId] = useState(
-    transaction?.subcategory_id ? String(transaction.subcategory_id) : 'none',
-  )
-  const [accountId, setAccountId] = useState(
-    transaction?.account_id ? String(transaction.account_id) : '',
-  )
-  const [toAccountId, setToAccountId] = useState(
-    transaction?.to_account_id ? String(transaction.to_account_id) : '',
-  )
-  const [cardId, setCardId] = useState(transaction?.card_id ? String(transaction.card_id) : '')
-  const [installments, setInstallments] = useState(String(transaction?.installments ?? 1))
-  const [interest, setInterest] = useState(
-    transaction?.interest_bp ? String(transaction.interest_bp / 100) : '',
-  )
-  const [savingsId, setSavingsId] = useState(
-    transaction?.savings_id ? String(transaction.savings_id) : '',
-  )
-  const [savingsFormOpen, setSavingsFormOpen] = useState(false)
-  const [description, setDescription] = useState(transaction?.description ?? '')
-  const [isRecurring, setIsRecurring] = useState(transaction?.is_recurring ?? false)
-  const [recurringDay, setRecurringDay] = useState(String(transaction?.recurring_day ?? 1))
-
-  const incomeCategories = (categories.data ?? []).filter((c) => c.type === 'income')
-  const expenseCategories = (categories.data ?? []).filter((c) => c.type === 'expense')
-  const visibleCategories = kind === 'ingreso' ? incomeCategories : expenseCategories
-  const selectedSavings = (savings.data ?? []).find((s) => String(s.id) === savingsId)
-  const savingsIsBolsillo = (selectedSavings?.kind ?? 'bolsillo') === 'bolsillo'
-  const todayStr = todayISO()
-  const selectedSavingsLocked =
-    selectedSavings?.matures_on != null && selectedSavings.matures_on > todayStr
-
-  const subcategories = useSubcategories(categoryId ? Number(categoryId) : null)
-
-  const mutation = useMutation({
-    mutationFn: async (payload: TransactionInput) => {
-      if (transaction) {
-        await api.updateTransaction(transaction.id, payload)
-      } else {
-        await api.createTransaction(payload)
-      }
-    },
-    onSuccess: () => {
-      toast.success(transaction ? 'Movimiento actualizado' : 'Movimiento creado')
-      onOpenChange(false)
-      void invalidate('movement')
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
-
-  const accountList = accounts.data ?? []
-  const hasAccounts = accountList.length > 0
-
-  const isSavingsKind = kind === 'ahorro' || kind === 'retiro'
-  const needsAccount = kind === 'ingreso' || kind === 'gasto' || isSavingsKind
-  const needsTwoAccounts = kind === 'transferencia'
-
-  const handleKindChange = (next: TransactionKind) => {
-    setKind(next)
-    setCategoryId('')
-    setSubcategoryId('none')
-    setSavingsId('')
-  }
-
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault()
-    if (kind !== 'transferencia' && !isSavingsKind && !categoryId) {
-      toast.error('Selecciona una categoría')
-      return
-    }
-    if (kind === 'gasto_tc' && !cardId) {
-      toast.error('Selecciona una tarjeta de crédito')
-      return
-    }
-    if (isSavingsKind && !savingsId) {
-      toast.error('Selecciona el bolsillo o la inversión')
-      return
-    }
-    if (isSavingsKind && selectedSavingsLocked) {
-      toast.error(`Este ahorro está bloqueado hasta ${selectedSavings?.matures_on}`)
-      return
-    }
-    if (needsAccount && !accountId) {
-      toast.error('Selecciona una cuenta — todo movimiento sale o entra por una cuenta')
-      return
-    }
-    if (needsTwoAccounts) {
-      if (!accountId || !toAccountId) {
-        toast.error('Selecciona la cuenta de origen y la de destino')
-        return
-      }
-      if (accountId === toAccountId) {
-        toast.error('La cuenta de origen y la de destino deben ser distintas')
-        return
-      }
-    }
-    mutation.mutate({
-      date,
-      amount: normalizeAmount(amount),
-      kind,
-      category_id: kind === 'transferencia' || isSavingsKind ? null : Number(categoryId),
-      subcategory_id: kind === 'transferencia' || subcategoryId === 'none' ? null : Number(subcategoryId),
-      account_id: kind === 'gasto_tc' ? null : Number(accountId),
-      to_account_id: kind === 'transferencia' ? Number(toAccountId) : null,
-      card_id: kind === 'gasto_tc' ? Number(cardId) : null,
-      savings_id: isSavingsKind ? Number(savingsId) : null,
-      installments: kind === 'gasto_tc' ? Number(installments) || 1 : 1,
-      interest_bp:
-        kind === 'gasto_tc' && Number(installments) > 1
-          ? Math.round(Number(interest || '0') * 100)
-          : 0,
-      description,
-      is_recurring: isRecurring,
-      recurring_day: isRecurring ? Number(recurringDay) : null,
-    })
-  }
-
-  const filteredSubcategories = subcategories.data ?? []
-  const subValue = filteredSubcategories.some((s) => String(s.id) === subcategoryId)
-    ? subcategoryId
-    : 'none'
-
-  const accountLabel =
-    kind === 'ingreso' ? 'Cuenta destino' : kind === 'gasto' ? 'Cuenta origen' : 'Cuenta'
+  const {
+    kind,
+    date,
+    setDate,
+    amount,
+    setAmount,
+    categoryId,
+    setCategoryId,
+    setSubcategoryId,
+    accountId,
+    setAccountId,
+    toAccountId,
+    setToAccountId,
+    cardId,
+    setCardId,
+    installments,
+    setInstallments,
+    interest,
+    setInterest,
+    savingsId,
+    setSavingsId,
+    description,
+    setDescription,
+    isRecurring,
+    setIsRecurring,
+    recurringDay,
+    setRecurringDay,
+    savingsFormOpen,
+    setSavingsFormOpen,
+    creditCards,
+    savings,
+    accountList,
+    hasAccounts,
+    visibleCategories,
+    filteredSubcategories,
+    subValue,
+    selectedSavings,
+    selectedSavingsLocked,
+    savingsIsBolsillo,
+    isSavingsKind,
+    needsAccount,
+    accountLabel,
+    todayStr,
+    mutation,
+    handleKindChange,
+    handleSubmit,
+  } = useTransactionForm(transaction, () => onOpenChange(false))
 
   return (
     <>

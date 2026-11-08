@@ -35,7 +35,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
 import { useAccounts, useInvalidate, useSavings } from '@/lib/queries'
 import { SectionCard } from '@/components/SectionCard'
-import { KIND_META, SavingsFormDialog } from '@/components/SavingsFormDialog'
+import { SavingsFormDialog } from '@/components/SavingsFormDialog'
+import { SAVINGS_KIND_META } from '@/components/savingsKinds'
 import { fmtCopDecimals, normalizeAmount } from '@/lib/money'
 import type { SavingsItem } from '@/lib/types'
 import { todayISO } from '@/lib/dates'
@@ -249,12 +250,12 @@ export function SavingsSection({ readOnly = false }: { readOnly?: boolean } = {}
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="flex size-11 items-center justify-center rounded-xl bg-amber-400 text-xl text-amber-950 shadow-[0_3px_0_0_#b45309]">
-                      {KIND_META[item.kind]?.icon ?? '💰'}
+                      {SAVINGS_KIND_META[item.kind]?.icon ?? '💰'}
                     </div>
                     <div>
                       <CardTitle className="text-sm leading-tight">{item.name}</CardTitle>
                       <p className="text-xs font-bold text-muted-foreground">
-                        {KIND_META[item.kind]?.label ?? item.kind}
+                        {SAVINGS_KIND_META[item.kind]?.label ?? item.kind}
                       </p>
                     </div>
                   </div>
