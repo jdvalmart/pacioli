@@ -54,8 +54,9 @@ def get_plan(
     month: int = Query(ge=1, le=12),
     year: int = Query(ge=2000, le=2100),
 ) -> BudgetPlanOut:
-    """Return the total budget set for a month (or None)."""
-    return BudgetPlanOut(month=month, year=year, total=budgets_db.get_monthly_plan(month, year))
+    """Return the total budget of a month and its source (saved, inherited, income average)."""
+    plan = budgets_db.get_budget_plan(month, year)
+    return BudgetPlanOut(month=month, year=year, total=plan.total, source=plan.source)
 
 
 @router.put("/plan", response_model=MessageOut)

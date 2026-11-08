@@ -10,7 +10,15 @@ from pathlib import Path
 import pytest
 
 from app.db.accounts import add_account, delete_account, get_accounts, update_account
-from app.db.budgets import get_budgets, get_monthly_plan, set_budget, set_monthly_plan
+from app.db.budgets import (
+    delete_budget,
+    get_budget_plan,
+    get_budgets,
+    get_monthly_plan,
+    set_budget,
+    set_budgets_bulk,
+    set_monthly_plan,
+)
 from app.db.cards import add_credit_card, delete_credit_card, get_credit_cards, update_credit_card
 from app.db.categories import (
     add_category,
@@ -895,7 +903,7 @@ class TestSavings:
         accounts = {a.name: a for a in get_accounts()}
         assert accounts["Banco"].balance == Decimal("2600000.00")
 
-    def test_savings_feed_ahorro_category(self, temp_db: None) -> None:
+    def test_savings_count_toward_the_goal_not_spending(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         # The system savings category is seeded; no need to create it.
         item_id = add_savings("Meta", "bolsillo")
@@ -915,13 +923,14 @@ class TestSavings:
             savings_id=item_id,
         )
 
-        # The Ahorro category shows the net amount moved to savings.
+        # The savings goal row (role "savings") shows the net amount saved.
         budget = {r["name"]: r for r in get_budget_vs_actual(10, 2026)}
         assert budget["Ahorro"]["actual"] == Decimal("130000.00")
+        assert budget["Ahorro"]["role"] == CATEGORY_ROLE_SAVINGS
 
+        # Savings are neither a cash expense nor part of the spending breakdown.
         summary = get_monthly_summary(10, 2026)
-        assert summary.by_category["Ahorro"] == Decimal("130000.00")
-        # Savings are not a cash expense.
+        assert "Ahorro" not in summary.by_category
         assert summary.total_expense == Decimal("0.00")
 
     def test_bolsillo_reserve_shows_in_budget(self, temp_db: None) -> None:
@@ -1044,7 +1053,8 @@ class TestCategoryRoles:
             kind="ahorro",
             savings_id=item_id,
         )
-        assert get_monthly_summary(10, 2026).by_category["Mis metas"] == Decimal("50000.00")
+        goal = {r["name"]: r for r in get_budget_vs_actual(10, 2026)}["Mis metas"]
+        assert (goal["actual"], goal["role"]) == (Decimal("50000.00"), CATEGORY_ROLE_SAVINGS)
 
     def test_savings_category_cannot_be_deleted(self, temp_db: None) -> None:
         (savings,) = self._savings_categories()
@@ -1132,3 +1142,72 @@ class TestMigrationV17:
             old.close()
         finally:
             set_db_path(None)
+
+
+class TestBudgetInheritance:
+    """A month that was never defined uses the latest defined month's budgets."""
+
+    @staticmethod
+    def _define(month: int, budgets: dict[int, str], total: str) -> None:
+        set_budgets_bulk(month, 2026, [(cat, Decimal(amount)) for cat, amount in budgets.items()])
+        set_monthly_plan(month, 2026, Decimal(total))
+
+    def test_new_month_inherits_budgets_and_total(
+        self, temp_db: None, sample_category: int
+    ) -> None:
+        self._define(9, {sample_category: "500000"}, "3000000")
+
+        (budget,) = get_budgets(11, 2026)
+        assert (budget.category_id, budget.amount, budget.inherited) == (
+            sample_category,
+            Decimal("500000.00"),
+            True,
+        )
+        plan = get_budget_plan(11, 2026)
+        assert (plan.total, plan.source) == (Decimal("3000000.00"), "inherited")
+        # Inherited budgets also drive budget vs actual.
+        row = {r["category_id"]: r for r in get_budget_vs_actual(11, 2026)}[sample_category]
+        assert row["budget"] == Decimal("500000.00")
+
+    def test_defined_month_keeps_its_own_budget(self, temp_db: None, sample_category: int) -> None:
+        self._define(9, {sample_category: "500000"}, "3000000")
+        self._define(10, {sample_category: "800000"}, "3500000")
+        assert get_budgets(10, 2026)[0].amount == Decimal("800000.00")
+        assert get_budgets(10, 2026)[0].inherited is False
+        assert get_budgets(11, 2026)[0].amount == Decimal("800000.00")  # latest defined
+        assert get_budgets(9, 2026)[0].amount == Decimal("500000.00")  # past untouched
+
+    def test_a_month_saved_empty_stays_empty(self, temp_db: None, sample_category: int) -> None:
+        """Saving zeros defines the month: it must not fall back to inheriting."""
+        self._define(9, {sample_category: "500000"}, "3000000")
+        self._define(10, {}, "0")
+        assert get_budgets(10, 2026) == []
+        assert get_budgets(11, 2026) == []  # inherits the (empty) October
+
+    def test_editing_one_category_keeps_the_inherited_ones(
+        self, temp_db: None, sample_category: int
+    ) -> None:
+        other = add_category("Otra", "expense")
+        self._define(9, {sample_category: "500000", other: "200000"}, "3000000")
+
+        set_budget(sample_category, 11, 2026, Decimal("650000"))
+        budgets = {b.category_id: b for b in get_budgets(11, 2026)}
+        assert budgets[sample_category].amount == Decimal("650000.00")
+        assert budgets[other].amount == Decimal("200000.00")
+        assert not budgets[other].inherited  # November is now defined
+        assert get_monthly_plan(11, 2026) == Decimal("3000000.00")
+
+        delete_budget(other, 12, 2026)  # December inherits November, minus one
+        assert [b.category_id for b in get_budgets(12, 2026)] == [sample_category]
+
+    def test_without_any_plan_the_total_is_recent_average_income(self, temp_db: None) -> None:
+        income = next(c.id for c in get_categories("income"))
+        account = add_account("Banco", "banco", Decimal("0"))
+        for month, amount in [(7, "3000000"), (8, "4000000"), (9, "5000000"), (10, "9000000")]:
+            add_transaction(
+                date(2026, month, 1), Decimal(amount), income, kind="ingreso", account_id=account
+            )
+        # November: no plan ever saved; average of Aug, Sep, Oct.
+        plan = get_budget_plan(11, 2026)
+        assert (plan.total, plan.source) == (Decimal("6000000.00"), "income_average")
+        assert get_budget_plan(1, 2026).source == "none"

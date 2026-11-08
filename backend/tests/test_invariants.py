@@ -172,7 +172,12 @@ class TestReportsAgree:
         bva = client.get(f"/api/reports/budget-vs-actual?month={month}&year=2026").json()
 
         spending_map = {row["name"]: _d(row["total"]) for row in spending}
-        bva_map = {row["name"]: _d(row["actual"]) for row in bva if _d(row["actual"]) > 0}
+        # The savings goal row is not spending (role "savings").
+        bva_map = {
+            row["name"]: _d(row["actual"])
+            for row in bva
+            if _d(row["actual"]) > 0 and row["role"] != "savings"
+        }
         assert spending_map == bva_map
         for name, total in spending_map.items():
             assert _d(by_category[name]) == total

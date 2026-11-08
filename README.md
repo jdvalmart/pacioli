@@ -25,9 +25,11 @@ Pacioli es una app web de finanzas personales para **presupuestar, registrar y e
 - **Ahorro:** selector de destino + botón **Crear bolsillo/CDT/acciones** (diálogo reutilizable). `CDT` y `bolsillo programado` quedan **bloqueados hasta vencimiento** (`matures_on`).
 
 ### Presupuestos
-- **Presupuesto total del mes** persistido (`monthly_plans`, migración v11) — editable, por defecto el ingreso del mes. `Sin asignar = total − asignado`.
-- **Categorías** en el orden pedido por el usuario: Vivienda → Alimentación → Servicios → Transporte → **Diezmo (🙏)** → **Ahorro (🐷)** → resto. `Asignado` incluye diezmo/ahorro como categorías normales.
-- Se puede **guardar en 0** para limpiar un mes (ej. septiembre de prueba). Barras corregidas (`indicatorClassName`) y riel sin borde.
+- **Presupuesto total del mes** y presupuesto por categoría (método de base cero: `Sin asignar = total − asignado`).
+- **Los meses heredan:** un mes que nunca definiste usa el presupuesto y el total del último mes definido (aviso "heredado"). Guardar el presupuesto define el mes, aunque sea en 0.
+- **Total por defecto:** el del mes; si no, el último guardado; si nunca hubo uno, el promedio de ingresos de los últimos 3 meses.
+- **Gastado** = todo el gasto real del mes (con o sin presupuesto; las cuotas de tarjeta cuentan en el mes en que se pagan). **Disponible** = total − gastado.
+- **Meta de ahorro:** la categoría de sistema 🐷 Ahorro es una meta, no un gasto: no suma a "Gastado" y superarla se muestra como logro.
 
 ### Reportes — 4 paneles parejos `h-[28rem]` en grilla 2×2
 | Panel | Qué muestra |

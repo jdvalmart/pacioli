@@ -3,6 +3,7 @@
 from decimal import Decimal
 from typing import Any
 
+from app.db.budgets import _effective_month
 from app.db.cards import CARD_CANDIDATES_SQL, _billed_in, card_candidates_params
 from app.db.categories import get_categories
 from app.db.connection import _to_dec, get_connection
@@ -63,14 +64,8 @@ def get_monthly_summary(month: int, year: int) -> MonthlySummary:
                 name = row["name"]
                 by_category[name] = by_category.get(name, Decimal("0.00")) + _to_dec(billed[1])
 
-        # Savings movements feed the "Ahorro" category (net of withdrawals)
-        # without counting as cash expenses.
-        savings_cat = _savings_category(conn)
-        if savings_cat is not None:
-            net = _savings_net_for_month(conn, month, year)
-            if net != 0:
-                name = savings_cat["name"]
-                by_category[name] = by_category.get(name, Decimal("0.00")) + net
+        # Savings are not spending: they are tracked against the savings goal
+        # in get_budget_vs_actual, never in this breakdown.
 
         # Cash totals: expenses are actual outflows. A card payment is
         # an outflow; the card purchase itself is not (yet).
@@ -192,41 +187,29 @@ def get_category_spending(
             else:
                 agg[cat_id] = [row["name"], _to_dec(billed[1]), row["color"], row["icon"]]
 
-        # Savings movements count in the "Ahorro" category, net of
-        # withdrawals, without being cash expenses.
-        savings_cat = _savings_category(conn)
-        if savings_cat is not None:
-            net = _savings_net_for_month(conn, month, year)
-            if net != 0:
-                cat_id = savings_cat["id"]
-                if cat_id in agg:
-                    agg[cat_id][1] += net
-                else:
-                    agg[cat_id] = [
-                        savings_cat["name"],
-                        net,
-                        savings_cat["color"],
-                        savings_cat["icon"],
-                    ]
-
         result = [(v[0], v[1], v[2], v[3]) for v in agg.values() if v[1] > 0]
         result.sort(key=lambda item: item[1], reverse=True)
         return result
 
 
 def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
-    """Return budget vs actual spending per expense category.
+    """Return budget vs actual per expense category for a month.
 
-    Card purchases count towards the budget of the month their statement
-    is paid, not the purchase month.
+    Budgets are inherited from the latest defined month when this one was
+    never defined. Card purchases count in the month their statement is
+    paid. The row with ``role == 'savings'`` is the savings goal, not
+    spending: its actual is the net amount saved this month.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
         start_date, end_date = _month_window(month, year)
+        # Budgets that apply to this month: inherited from the latest defined
+        # month when this one was never defined ((0, 0) matches nothing).
+        budget_source = _effective_month(conn, month, year) or (0, 0)
 
         cursor.execute(
             """
-            SELECT c.id, c.name, c.color, c.icon,
+            SELECT c.id, c.name, c.color, c.icon, c.role,
                    COALESCE(MAX(b.amount_cents), 0) as budget_cents,
                    COALESCE(SUM(t.amount_cents), 0) as actual_cents
             FROM categories c
@@ -234,9 +217,9 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
             LEFT JOIN transactions t ON c.id = t.category_id AND t.date >= ? AND t.date < ?
                 AND t.kind = 'gasto'
             WHERE c.type = 'expense'
-            GROUP BY c.id, c.name, c.color, c.icon
+            GROUP BY c.id, c.name, c.color, c.icon, c.role
         """,
-            (month, year, start_date, end_date),
+            (*budget_source, start_date, end_date),
         )
 
         rows: dict[int, dict[str, Any]] = {}
@@ -246,6 +229,7 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
                 "name": row["name"],
                 "color": row["color"],
                 "icon": row["icon"],
+                "role": row["role"],
                 "budget": _to_dec(row["budget_cents"]),
                 "actual": _to_dec(row["actual_cents"]),
                 "reserved": Decimal("0.00"),
@@ -270,7 +254,9 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
             if cat is not None:
                 cat["actual"] += _to_dec(billed[1])
 
-        # Savings movements fill the "Ahorro" category, net of withdrawals.
+        # The savings-role row is the savings GOAL: its "actual" is the net
+        # amount saved this month (ahorro minus retiro). Clients must not add
+        # it to spending; role tells them which row it is.
         savings_cat = _savings_category(conn)
         if savings_cat is not None:
             cat = rows.get(savings_cat["id"])
@@ -311,6 +297,7 @@ def get_budget_vs_actual(month: int, year: int) -> list[dict[str, Any]]:
                     "name": cat["name"],
                     "color": cat["color"],
                     "icon": cat["icon"],
+                    "role": cat["role"],
                     "budget": budget,
                     "actual": actual,
                     "reserved": reserved,

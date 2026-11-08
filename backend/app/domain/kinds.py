@@ -10,6 +10,8 @@ CategoryType = Literal["income", "expense"]
 CategoryRole = Literal["savings"]
 AccountType = Literal["efectivo", "digital", "ahorros", "banco"]
 SavingsKind = Literal["bolsillo", "bolsillo_programado", "cdt", "acciones"]
+# Where a month's total budget comes from (see app.db.budgets.get_budget_plan).
+BudgetPlanSource = Literal["saved", "inherited", "income_average", "none"]
 
 
 class TxKind(StrEnum):

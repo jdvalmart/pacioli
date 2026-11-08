@@ -109,7 +109,7 @@ export interface paths {
         };
         /**
          * Get Plan
-         * @description Return the total budget set for a month (or None).
+         * @description Return the total budget of a month and its source (saved, inherited, income average).
          */
         get: operations["get_plan_api_budgets_plan_get"];
         /**
@@ -622,6 +622,11 @@ export interface components {
             category_id: number;
             /** Id */
             id: number;
+            /**
+             * Inherited
+             * @default false
+             */
+            inherited?: boolean;
             /** Month */
             month: number;
             /** Year */
@@ -646,6 +651,12 @@ export interface components {
         BudgetPlanOut: {
             /** Month */
             month: number;
+            /**
+             * Source
+             * @default saved
+             * @enum {string}
+             */
+            source?: "saved" | "inherited" | "income_average" | "none";
             /** Total */
             total?: string | null;
             /** Year */
@@ -674,6 +685,8 @@ export interface components {
             remaining: string;
             /** Reserved */
             reserved: string;
+            /** Role */
+            role?: "savings" | null;
         };
         /**
          * CategoryIn

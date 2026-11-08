@@ -11,7 +11,14 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, PlainSerializer
 
-from app.domain.kinds import AccountType, CategoryRole, CategoryType, SavingsKind, TxKind
+from app.domain.kinds import (
+    AccountType,
+    BudgetPlanSource,
+    CategoryRole,
+    CategoryType,
+    SavingsKind,
+    TxKind,
+)
 
 Money = Annotated[Decimal, PlainSerializer(lambda v: f"{v:.2f}", return_type=str)]
 
@@ -214,6 +221,7 @@ class BudgetOut(BaseModel):
     month: int
     year: int
     amount: Money
+    inherited: bool = False  # the month was never defined: budgets of the latest defined month
 
 
 class BudgetPlanIn(BaseModel):
@@ -230,6 +238,9 @@ class BudgetPlanOut(BaseModel):
     month: int
     year: int
     total: Money | None = None
+    # saved: set for this month · inherited: latest saved total before it ·
+    # income_average: average income of the last 3 months · none: no data
+    source: BudgetPlanSource = "saved"
 
 
 class MonthlySummaryOut(BaseModel):
@@ -261,6 +272,7 @@ class BudgetVsActualOut(BaseModel):
     name: str
     color: str
     icon: str
+    role: CategoryRole | None = None  # 'savings': the savings goal row, not spending
     budget: Money
     actual: Money
     reserved: Money

@@ -79,6 +79,7 @@ class Budget:
     month: int  # 1-12
     year: int
     amount: Decimal
+    inherited: bool = False  # copied from the latest defined month
 
 
 @dataclass
