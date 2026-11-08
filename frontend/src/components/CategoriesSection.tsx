@@ -110,7 +110,7 @@ function CategoryFormBody({
         <DialogDescription>
           {category
             ? 'El tipo no se puede cambiar después de crearla.'
-            : 'Organizá tus movimientos en categorías.'}
+            : 'Organiza tus movimientos en categorías.'}
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -225,15 +225,21 @@ function CategoryRow({ category, total }: { category: Category; total: number })
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{category.name}</p>
           <p className="truncate text-xs font-bold text-muted-foreground">
-            {total > 0 ? `Este mes: ${fmtCopDecimals(total)}` : 'Sin movimientos'}
+            {total > 0
+              ? `Este mes: ${fmtCopDecimals(total)}`
+              : category.role === 'savings'
+                ? 'Agrupa tus movimientos de ahorro'
+                : 'Sin movimientos'}
           </p>
         </div>
         <Button variant="ghost" size="icon-xs" onClick={() => setEditing(true)}>
           <Pencil className="size-3.5" />
         </Button>
-        <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(true)}>
-          <Trash2 className="size-3.5 text-red-500" />
-        </Button>
+        {!category.role && (
+          <Button variant="ghost" size="icon-xs" onClick={() => setDeleting(true)}>
+            <Trash2 className="size-3.5 text-red-500" />
+          </Button>
+        )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -348,7 +354,7 @@ export function CategoriesSection() {
       <SectionCard
         icon={Tags}
         title="Categorías"
-        subtitle={`Organizá los movimientos de ${monthLabel(month)} con categorías y subcategorías`}
+        subtitle={`Organiza los movimientos de ${monthLabel(month)} con categorías y subcategorías`}
         action={
           <Button
             onClick={() => {

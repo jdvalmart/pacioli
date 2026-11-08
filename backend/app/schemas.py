@@ -41,6 +41,7 @@ class CategoryOut(BaseModel):
     type: str
     color: str
     icon: str
+    role: str | None = None  # 'savings': system category, cannot be deleted
 
 
 class SubcategoryIn(BaseModel):

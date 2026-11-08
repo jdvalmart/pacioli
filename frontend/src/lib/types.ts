@@ -13,6 +13,8 @@ export interface Category {
   type: CategoryType
   color: string
   icon: string
+  /** System role: 'savings' groups savings movements; such categories cannot be deleted. */
+  role?: string | null
 }
 
 export interface Subcategory {

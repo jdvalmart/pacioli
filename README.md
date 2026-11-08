@@ -56,7 +56,7 @@ Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con head
 
 | Capa | Tecnologías |
 |------|-------------|
-| **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v15), `uvicorn`, `psycopg` |
+| **Backend** | FastAPI, Pydantic, SQLite/PostgreSQL dual (`money` como `INTEGER`/`BIGINT cents`), migraciones `PRAGMA user_version` / `pacioli_schema_version` (v16), `uvicorn`, `psycopg` |
 | **Frontend** | React 19, TypeScript 5, Vite 6, Tailwind v4, shadcn/ui + Base UI, Recharts 3, TanStack Query 5, React Router 7 |
 | **Calidad** | `ruff`, `mypy`, `pytest`, `tsc -b`, `oxlint`, `vite build` |
 
@@ -68,9 +68,13 @@ Todo lo configurable vive aquí, envuelto en `SectionCard` (card grande con head
 pacioli/
 ├── backend/
 │   ├── app/
-│   │   ├── database.py      # 15 migraciones, cuentas/savings con apertura, tarjetas con ciclos/cuotas
-│   │   ├── main.py          # SPA + /api
-│   │   ├── routers/         # accounts, savings, transactions, budgets, credit_cards, reports
+│   │   ├── main.py          # SPA + /api, manejo central de errores de dominio
+│   │   ├── routers/         # solo HTTP: accounts, savings, transactions, budgets, credit_cards, reports
+│   │   ├── services/        # casos de uso (validación de movimientos)
+│   │   ├── domain/          # reglas puras: billing (ciclos, cuotas, FIFO), kinds (TxKind)
+│   │   ├── db/              # persistencia por agregado + connection, migrations (v16), backup
+│   │   ├── database.py      # fachada de compatibilidad sobre app/db
+│   │   ├── cli.py           # python -m app.cli backup
 │   │   └── schemas.py       # Pydantic (Money como string "1234.56")
 │   └── tests/
 ├── frontend/
@@ -152,12 +156,13 @@ Detén antes el servicio local (`systemctl --user stop pacioli`), porque ambos u
 
 - **Ubicación:** SQLite en `~/.local/share/pacioli/pacioli.db` (`XDG_DATA_HOME` o `PACIOLI_DATA_DIR` lo sobreescriben). Compatible con `data/budget.db` del desktop: se importa una vez. Con `DATABASE_URL` los datos viven en PostgreSQL (volúmen `pgdata` del compose).
 - **Backups diarios** con rotación (10) en `~/.local/share/pacioli/backups/`: al arrancar y con el timer `pacioli-backup` (`python -m app.cli backup`). Solo SQLite; Postgres no se respalda automáticamente.
-- **Migraciones** (`SCHEMA_VERSION = 15`):
+- **Migraciones** (`SCHEMA_VERSION = 16`). Antes de migrar una base SQLite existente se guarda una copia `backups/pre-migration_vN-to-vM_<fecha>.db` (fuera de la rotación):
   - v11 `monthly_plans` (total del mes)
   - v12 `accounts.starting_cents` / `savings.opening_cents` (saldos iniciales fuera de mes)
   - v13 `transactions.installments` / `interest_bp`
   - v14 `savings.dividends_cents` + `matures_on` (derivado de `created_at + term_days`)
   - v15 `savings.category_id` (bolsillos como reserva de una categoría del presupuesto)
+  - v16 `categories.role`: la categoría de sistema `savings` (🐷 Ahorro) agrupa los movimientos de ahorro; se busca por rol, se puede renombrar y no se puede borrar
 - **Reglas de saldo:**
   - **Cuenta:** `starting + ingresos − gastos − pago_tc ± transferencias − ahorro + retiro`. Cualquier movimiento a un ahorro (bolsillo, programado, CDT o acciones) sale del saldo disponible de la cuenta; el retiro lo devuelve.
   - **Resumen mensual:** `total_expense = gasto + pago_tc` (cuota de tarjeta no es gasto hasta pagarla). `gasto_tc` no mueve caja; para presupuestos, gasto por categoría y listado cada cuota se atribuye al **mes en que se paga** su extracto (no al mes de compra): una compra después del corte cae en el mes siguiente.
@@ -168,7 +173,7 @@ Detén antes el servicio local (`systemctl --user stop pacioli`), porque ambos u
 SQLite sigue siendo el valor por defecto en desarrollo local. El stack de producción corre **app + Postgres juntos** en Podman (compose), con Postgres publicado en el host en el puerto **5433** (5432 lo ocupa otro servicio):
 
 ```bash
-# 1) Levantá el stack completo (app 8000 + db host 5433)
+# 1) Levanta el stack completo (app 8000 + db host 5433)
 podman-compose up -d --wait   # usa docker-compose.yml
 
 # 2) (una vez) Migra tu SQLite actual a Postgres
@@ -181,7 +186,7 @@ curl -s http://localhost:8000/health
 
 Datos de conexión: `postgresql://pacioli:pacioli@localhost:5433/pacioli` (host `localhost`, puerto `5433`, usuario `pacioli`, password `pacioli`, DB `pacioli`). Sin `DATABASE_URL` la app sigue usando SQLite.
 
-En **VS Code**: instalá **PostgreSQL** (`cweijan.vscode-postgresql-client2`), `Ctrl+Shift+P` → **PostgreSQL: Add Connection** → host `localhost`, puerto `5433`, usuario `pacioli`, password `pacioli`, DB `pacioli`. Después: Schemas → public → Tables.
+En **VS Code**: instala **PostgreSQL** (`cweijan.vscode-postgresql-client2`), `Ctrl+Shift+P` → **PostgreSQL: Add Connection** → host `localhost`, puerto `5433`, usuario `pacioli`, password `pacioli`, DB `pacioli`. Después: Schemas → public → Tables.
 
 ---
 

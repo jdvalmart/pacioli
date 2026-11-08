@@ -1,5 +1,6 @@
 """Tests for the SQLite data layer."""
 
+import os
 import sqlite3
 from collections.abc import Iterator
 from datetime import date
@@ -9,8 +10,10 @@ from pathlib import Path
 import pytest
 
 from app.database import (
+    CATEGORY_ROLE_SAVINGS,
     LEGACY_DB_PATH,
     SCHEMA_VERSION,
+    Category,
     _migrate_v1_baseline,
     _migrate_v2_cents,
     _seed_defaults,
@@ -40,6 +43,7 @@ from app.database import (
     set_db_path,
     set_monthly_plan,
     update_account,
+    update_category,
     update_credit_card,
 )
 
@@ -906,7 +910,7 @@ class TestSavings:
 
     def test_savings_feed_ahorro_category(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
-        add_category("Ahorro", "expense", "#22C55E", "🐷")
+        # The system savings category is seeded; no need to create it.
         item_id = add_savings("Meta", "bolsillo")
 
         add_transaction(
@@ -1028,3 +1032,70 @@ class TestSavings:
                 "WHERE is_recurring = 1 AND generated_from IS NULL"
             ).fetchone()["n"]
             assert templates == 0
+
+
+class TestCategoryRoles:
+    """v16: the savings category is found by role, not by name."""
+
+    @staticmethod
+    def _savings_categories() -> list[Category]:
+        return [c for c in get_categories() if c.role == CATEGORY_ROLE_SAVINGS]
+
+    def test_fresh_database_seeds_one_savings_category(self, temp_db: None) -> None:
+        (savings,) = self._savings_categories()
+        assert (savings.name, savings.type) == ("Ahorro", "expense")
+
+    def test_renamed_savings_category_still_groups_savings(self, temp_db: None) -> None:
+        (savings,) = self._savings_categories()
+        update_category(savings.id or 0, "Mis metas", savings.color, savings.icon)
+        account_id = add_account("Banco", "banco", Decimal("0.00"))
+        item_id = add_savings("Meta", "bolsillo")
+        add_transaction(
+            date(2026, 10, 1),
+            Decimal("50000.00"),
+            account_id=account_id,
+            kind="ahorro",
+            savings_id=item_id,
+        )
+        assert get_monthly_summary(10, 2026).by_category["Mis metas"] == Decimal("50000.00")
+
+    def test_savings_category_cannot_be_deleted(self, temp_db: None) -> None:
+        (savings,) = self._savings_categories()
+        with pytest.raises(ValueError, match="categoría de sistema"):
+            delete_category(savings.id or 0)
+
+    def test_migration_adopts_existing_ahorro_category(self, tmp_path: Path) -> None:
+        """A v15 database with its own "Ahorro" keeps it (no duplicate is created)."""
+        db_path = tmp_path / "v15.db"
+        set_db_path(db_path)
+        try:
+            init_db()
+            conn = sqlite3.connect(db_path)
+            conn.execute("DROP INDEX idx_categories_role")
+            conn.execute("ALTER TABLE categories DROP COLUMN role")
+            conn.execute("DELETE FROM categories WHERE name = 'Ahorro'")
+            conn.execute(
+                "INSERT INTO categories (id, name, type, color, icon) "
+                "VALUES (99, 'ahorro', 'expense', '#000000', '🐷')"
+            )
+            conn.execute("PRAGMA user_version = 15")
+            conn.commit()
+            conn.close()
+
+            init_db()
+
+            (savings,) = self._savings_categories()
+            assert (savings.id, savings.name) == (99, "ahorro")
+            assert not any(c.name == "Ahorro" for c in get_categories())
+
+            # A pre-migration snapshot holds the database as it was (v15).
+            (snapshot,) = [
+                f
+                for f in os.listdir(tmp_path / "backups")
+                if f.startswith("pre-migration_v15-to-v16_")
+            ]
+            old = sqlite3.connect(tmp_path / "backups" / snapshot)
+            assert old.execute("PRAGMA user_version").fetchone()[0] == 15
+            old.close()
+        finally:
+            set_db_path(None)
