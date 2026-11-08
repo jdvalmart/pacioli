@@ -43,6 +43,19 @@ test('register an expense and see the account balance drop', async ({ page }) =>
   await expect(page.getByText('$750.000,00').first()).toBeVisible()
 })
 
+test('the floating button opens the new-movement form from any page', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Nuevo movimiento' }).click()
+  await expect(page).toHaveURL(/\/transactions\?new=1/)
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Nuevo movimiento' })).toBeVisible()
+
+  // Closing the form clears ?new=1 so a reload does not reopen it.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(page).not.toHaveURL(/new=1/)
+})
+
 test('edit and delete a movement', async ({ page }) => {
   await page.goto('/transactions')
   await page.getByRole('button', { name: 'Editar movimiento Mercado e2e' }).click()
