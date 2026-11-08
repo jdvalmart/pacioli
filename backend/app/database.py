@@ -23,6 +23,12 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
+import psycopg
+from psycopg.rows import dict_row
+
+from app import clock
+from app.errors import IntegrityViolation
+
 SCHEMA_VERSION = 15
 
 
@@ -196,13 +202,21 @@ class _PGConnWrapper:  # type: ignore[no-redef]
         return getattr(self._conn, name)
 
 
+# Constraint errors of every supported driver, normalised to IntegrityViolation.
+_DRIVER_INTEGRITY_ERRORS: tuple[type[Exception], ...] = (
+    sqlite3.IntegrityError,
+    psycopg.IntegrityError,
+)
+
+
 @contextmanager
 def get_connection():  # type: ignore[no-untyped-def]
-    """Yield a configured connection (SQLite or Postgres via DATABASE_URL)."""
-    if _is_postgres():
-        import psycopg
-        from psycopg.rows import dict_row
+    """Yield a configured connection (SQLite or Postgres via DATABASE_URL).
 
+    Constraint violations from either driver are re-raised as
+    ``IntegrityViolation`` so callers stay driver-agnostic.
+    """
+    if _is_postgres():
         database_url = os.getenv("DATABASE_URL")
         assert database_url is not None
         conn: Any = psycopg.connect(database_url, row_factory=dict_row)
@@ -210,6 +224,8 @@ def get_connection():  # type: ignore[no-untyped-def]
         try:
             yield wrapped  # type: ignore[misc]
             wrapped.commit()
+        except _DRIVER_INTEGRITY_ERRORS as exc:
+            raise IntegrityViolation(str(exc)) from exc
         finally:
             wrapped.close()
     else:
@@ -219,6 +235,8 @@ def get_connection():  # type: ignore[no-untyped-def]
         conn.execute("PRAGMA foreign_keys = ON")
         try:
             yield conn
+        except _DRIVER_INTEGRITY_ERRORS as exc:
+            raise IntegrityViolation(str(exc)) from exc
         finally:
             conn.close()
 
@@ -800,7 +818,7 @@ def _migrate_v6_account_starting_transactions(conn: sqlite3.Connection) -> None:
             "WHERE initial_balance_cents != 0"
         ).fetchall()
     for row in rows:
-        created_date = (row["created_at"] or "")[:10] or date.today().isoformat()
+        created_date = (row["created_at"] or "")[:10] or clock.today().isoformat()
         cursor.execute(
             """
             INSERT INTO transactions
@@ -1639,15 +1657,14 @@ def update_category(cat_id: int, name: str, color: str, icon: str) -> None:
 
 def delete_category(cat_id: int) -> None:
     """Delete a category, refusing if transactions or budgets reference it."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
+    try:
+        with get_connection() as conn:
+            conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
             conn.commit()
-        except sqlite3.IntegrityError:
-            raise ValueError(
-                "No se puede eliminar: la categoría tiene transacciones o presupuestos asociados."
-            ) from None
+    except IntegrityViolation:
+        raise ValueError(
+            "No se puede eliminar: la categoría tiene transacciones o presupuestos asociados."
+        ) from None
 
 
 # ── Subcategories ─────────────────────────────────────────────
@@ -1912,7 +1929,7 @@ def ensure_recurring(month: int, year: int) -> int:
     Returns:
         Number of new transactions created.
     """
-    today = date.today()
+    today = clock.today()
     if (year, month) > (today.year, today.month):
         return 0
     last_day = calendar.monthrange(year, month)[1]
@@ -2358,7 +2375,7 @@ def _row_to_card(row: sqlite3.Row, conn: sqlite3.Connection, today: date) -> Cre
 
 def get_credit_cards(today: date | None = None) -> list[CreditCard]:
     """Return all credit cards with their cycle, pending and outstanding amounts."""
-    today = today or date.today()
+    today = today or clock.today()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM credit_cards ORDER BY created_at, id")
@@ -2536,7 +2553,7 @@ def add_savings(
                 VALUES (?, ?, NULL, ?, 0, NULL, NULL, ?, 'ahorro', NULL, NULL, ?)
                 """,
                 (
-                    date.today().isoformat(),
+                    clock.today().isoformat(),
                     cents,
                     f"Ahorro inicial: {name}",
                     initial_account_id,
@@ -2545,7 +2562,7 @@ def add_savings(
             )
 
         if kind == "bolsillo_programado" and scheduled_day is not None:
-            template_date = date(date.today().year, date.today().month, scheduled_day)
+            template_date = date(clock.today().year, clock.today().month, scheduled_day)
             cursor.execute(
                 """
                 INSERT INTO transactions
@@ -2608,7 +2625,7 @@ def update_savings(
             ),
         )
         if kind == "bolsillo_programado" and scheduled_day is not None:
-            template_date = date(date.today().year, date.today().month, scheduled_day)
+            template_date = date(clock.today().year, clock.today().month, scheduled_day)
             cursor.execute(
                 """
                 UPDATE transactions
@@ -3048,7 +3065,7 @@ def auto_backup(keep: int = BACKUP_KEEP) -> str | None:
         return None
     if not os.path.exists(get_db_path()):
         return None
-    today = date.today()
+    today = clock.today()
     dest = os.path.join(get_backup_dir(), f"pacioli_{today.isoformat()}.db")
     created = None
     if not os.path.exists(dest):

@@ -1,20 +1,15 @@
 """Transaction endpoints, including recurring materialization."""
 
-import sqlite3
-from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app import clock
 from app import database as db
+from app.errors import IntegrityViolation
 from app.schemas import CreatedOut, MaterializeResult, MessageOut, TransactionIn, TransactionOut
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
-
-
-def _today() -> date:
-    """Return today's date (isolated for test monkeypatching)."""
-    return date.today()
 
 
 def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
@@ -37,7 +32,7 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
                 status_code=400,
                 detail="Card payments require account_id (source) and card_id",
             )
-        cards = {c.id: c for c in db.get_credit_cards(today=_today())}
+        cards = {c.id: c for c in db.get_credit_cards(today=clock.today())}
         card = cards.get(payload.card_id)
         if card is None:
             raise HTTPException(status_code=400, detail="Credit card does not exist")
@@ -70,12 +65,11 @@ def _validate_kind(payload: TransactionIn, categories: dict[int, str]) -> None:
         item = items.get(payload.savings_id)
         if item is None:
             raise HTTPException(status_code=400, detail="Savings item does not exist")
-        if item.matures_on is not None and item.matures_on > _today():
+        if item.matures_on is not None and item.matures_on > clock.today():
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "This savings item is locked until it matures on "
-                    f"{item.matures_on.isoformat()}"
+                    f"This savings item is locked until it matures on {item.matures_on.isoformat()}"
                 ),
             )
         accounts = {a.id: a for a in db.get_accounts()}
@@ -139,7 +133,7 @@ def create_transaction(payload: TransactionIn) -> CreatedOut:
             installments=payload.installments,
             interest_bp=payload.interest_bp,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(
             status_code=400, detail="Category, subcategory or account does not exist"
         ) from None
@@ -168,7 +162,7 @@ def update_transaction(trans_id: int, payload: TransactionIn) -> MessageOut:
             installments=payload.installments,
             interest_bp=payload.interest_bp,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(
             status_code=400, detail="Category, subcategory or account does not exist"
         ) from None

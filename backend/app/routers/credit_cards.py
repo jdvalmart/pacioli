@@ -1,12 +1,13 @@
 """Credit card endpoints."""
 
-import sqlite3
 from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 
+from app import clock
 from app import database as db
+from app.errors import IntegrityViolation
 from app.schemas import CreatedOut, CreditCardIn, CreditCardOut, MessageOut
 
 router = APIRouter(prefix="/credit-cards", tags=["credit-cards"])
@@ -41,9 +42,9 @@ def list_cards(
             debt=c.debt or Decimal("0.00"),
             outstanding=c.outstanding or Decimal("0.00"),
             available=c.available if c.available is not None else c.limit,
-            cycle_start=c.cycle_start or date.today(),
-            cycle_end=c.cycle_end or date.today(),
-            payment_date=c.payment_date or date.today(),
+            cycle_start=c.cycle_start or clock.today(),
+            cycle_end=c.cycle_end or clock.today(),
+            payment_date=c.payment_date or clock.today(),
         )
         for c in cards
     ]
@@ -59,7 +60,7 @@ def create_card(payload: CreditCardIn) -> CreatedOut:
             cutoff_day=payload.cutoff_day,
             payment_day=payload.payment_day,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityViolation:
         raise HTTPException(
             status_code=409, detail="A card with that name already exists"
         ) from None

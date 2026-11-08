@@ -1,8 +1,6 @@
 """Tests for the SQLite data layer."""
 
-import os
 import sqlite3
-import tempfile
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
@@ -47,18 +45,14 @@ from app.database import (
 
 
 @pytest.fixture
-def temp_db() -> Iterator[str]:
-    """Create a temporary database for the test."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
-        set_db_path(db_path)
-        init_db()
-        yield db_path
-        set_db_path(None)
+def temp_db(test_database: None) -> Iterator[None]:
+    """Provide a freshly migrated database (SQLite or Postgres, see conftest)."""
+    init_db()
+    yield
 
 
 @pytest.fixture
-def sample_category(temp_db: str) -> int:
+def sample_category(temp_db: None) -> int:
     """Create a sample expense category and return its id."""
     return add_category("Test", "expense", "#FF0000", "🧪")
 
@@ -66,7 +60,7 @@ def sample_category(temp_db: str) -> int:
 class TestTransactions:
     """Tests for transactions."""
 
-    def test_add_and_get_transaction(self, temp_db: str, sample_category: int) -> None:
+    def test_add_and_get_transaction(self, temp_db: None, sample_category: int) -> None:
         trans_id = add_transaction(
             date(2026, 1, 15), Decimal("100.50"), sample_category, "Test transaction"
         )
@@ -78,7 +72,7 @@ class TestTransactions:
         assert transactions[0].description == "Test transaction"
         assert transactions[0].date == date(2026, 1, 15)
 
-    def test_transaction_decimal_precision(self, temp_db: str, sample_category: int) -> None:
+    def test_transaction_decimal_precision(self, temp_db: None, sample_category: int) -> None:
         add_transaction(date(2026, 1, 1), Decimal("0.10"), sample_category, "A")
         add_transaction(date(2026, 1, 2), Decimal("0.20"), sample_category, "B")
 
@@ -86,7 +80,7 @@ class TestTransactions:
         # Must be exactly 0.30, never 0.30000000000000004
         assert summary.total_expense == Decimal("0.30")
 
-    def test_transactions_filtered_by_month(self, temp_db: str, sample_category: int) -> None:
+    def test_transactions_filtered_by_month(self, temp_db: None, sample_category: int) -> None:
         add_transaction(date(2026, 1, 31), Decimal("10.00"), sample_category, "January")
         add_transaction(date(2026, 2, 1), Decimal("20.00"), sample_category, "February")
 
@@ -98,14 +92,14 @@ class TestTransactions:
 class TestBudgets:
     """Tests for budgets."""
 
-    def test_set_and_get_budget(self, temp_db: str, sample_category: int) -> None:
+    def test_set_and_get_budget(self, temp_db: None, sample_category: int) -> None:
         set_budget(sample_category, 1, 2026, Decimal("500.00"))
         budgets = get_budgets(1, 2026)
 
         assert len(budgets) == 1
         assert budgets[0].amount == Decimal("500.00")
 
-    def test_budget_upsert(self, temp_db: str, sample_category: int) -> None:
+    def test_budget_upsert(self, temp_db: None, sample_category: int) -> None:
         set_budget(sample_category, 1, 2026, Decimal("500.00"))
         set_budget(sample_category, 1, 2026, Decimal("700.00"))
         budgets = get_budgets(1, 2026)
@@ -113,7 +107,7 @@ class TestBudgets:
         assert len(budgets) == 1
         assert budgets[0].amount == Decimal("700.00")
 
-    def test_budget_vs_actual(self, temp_db: str, sample_category: int) -> None:
+    def test_budget_vs_actual(self, temp_db: None, sample_category: int) -> None:
         set_budget(sample_category, 1, 2026, Decimal("1000.00"))
         add_transaction(date(2026, 1, 10), Decimal("250.00"), sample_category, "Spend")
 
@@ -124,7 +118,7 @@ class TestBudgets:
         assert rows[0]["remaining"] == Decimal("750.00")
         assert rows[0]["percent"] == 25.0
 
-    def test_monthly_plan_roundtrip(self, temp_db: str) -> None:
+    def test_monthly_plan_roundtrip(self, temp_db: None) -> None:
         assert get_monthly_plan(1, 2026) is None
 
         set_monthly_plan(1, 2026, Decimal("2500000.00"))
@@ -139,7 +133,7 @@ class TestRecurring:
     """Tests for recurring transactions."""
 
     def test_recurring_transaction_materialization(
-        self, temp_db: str, sample_category: int
+        self, temp_db: None, sample_category: int
     ) -> None:
         template_id = add_transaction(
             date(2026, 1, 15),
@@ -158,7 +152,7 @@ class TestRecurring:
         assert feb_transactions[0].generated_from == template_id
         assert feb_transactions[0].date == date(2026, 2, 15)
 
-    def test_recurring_skips_future_months(self, temp_db: str, sample_category: int) -> None:
+    def test_recurring_skips_future_months(self, temp_db: None, sample_category: int) -> None:
         add_transaction(
             date(2026, 1, 15),
             Decimal("1000.00"),
@@ -172,7 +166,7 @@ class TestRecurring:
         assert created == 0
         assert get_transactions(12, 2099) == []
 
-    def test_recurring_idempotency(self, temp_db: str, sample_category: int) -> None:
+    def test_recurring_idempotency(self, temp_db: None, sample_category: int) -> None:
         add_transaction(
             date(2026, 1, 15),
             Decimal("1000.00"),
@@ -188,7 +182,7 @@ class TestRecurring:
         assert created1 == 1
         assert created2 == 0
 
-    def test_recurring_inherits_account(self, temp_db: str, sample_category: int) -> None:
+    def test_recurring_inherits_account(self, temp_db: None, sample_category: int) -> None:
         account_id = add_account("Arriendo cuenta", "banco", Decimal("0.00"))
         add_transaction(
             date(2026, 1, 15),
@@ -205,7 +199,7 @@ class TestRecurring:
         assert feb_transactions[0].account_id == account_id
         assert feb_transactions[0].account_name == "Arriendo cuenta"
 
-    def test_recurring_day_adjustment(self, temp_db: str, sample_category: int) -> None:
+    def test_recurring_day_adjustment(self, temp_db: None, sample_category: int) -> None:
         add_transaction(
             date(2026, 1, 31),
             Decimal("500.00"),
@@ -226,20 +220,20 @@ class TestRecurring:
 class TestCategories:
     """Tests for category management."""
 
-    def test_default_categories_seeded(self, temp_db: str) -> None:
+    def test_default_categories_seeded(self, temp_db: None) -> None:
         categories = get_categories()
         names = {c.name for c in categories}
         assert "Vivienda" in names
         assert "Salario" in names
 
-    def test_default_subcategories_seeded(self, temp_db: str) -> None:
+    def test_default_subcategories_seeded(self, temp_db: None) -> None:
         categories = get_categories()
         alimentacion = next(c for c in categories if c.name == "Alimentación")
         subs = {s.name for s in get_subcategories(alimentacion.id or 0)}
         assert {"Supermercado", "No perecederos", "Verduras", "Carne", "Aseo"} <= subs
 
     def test_delete_category_with_transactions_raises(
-        self, temp_db: str, sample_category: int
+        self, temp_db: None, sample_category: int
     ) -> None:
         add_transaction(date(2026, 1, 10), Decimal("100.00"), sample_category, "Keep")
 
@@ -419,7 +413,7 @@ class TestCarryover:
     """Tests for the running balance (carryover) in monthly summaries."""
 
     def test_carryover_accumulates_previous_months(
-        self, temp_db: str, sample_category: int
+        self, temp_db: None, sample_category: int
     ) -> None:
         income_cat = add_category("Ingreso test", "income")
 
@@ -439,7 +433,7 @@ class TestCarryover:
         assert october.balance == Decimal("-500.00")
         assert october.accumulated_balance == Decimal("200.00")
 
-    def test_carryover_with_negative_balance(self, temp_db: str, sample_category: int) -> None:
+    def test_carryover_with_negative_balance(self, temp_db: None, sample_category: int) -> None:
         add_transaction(date(2026, 9, 1), Decimal("100.00"), sample_category, "Debt")
 
         october = get_monthly_summary(10, 2026)
@@ -451,7 +445,7 @@ class TestAccounts:
     """Tests for the accounts feature."""
 
     def test_account_starting_amount_is_an_opening_balance(
-        self, temp_db: str, sample_category: int
+        self, temp_db: None, sample_category: int
     ) -> None:
         income_cat = add_category("Ingreso test", "income")
         account_id = add_account("Billetera", "efectivo", Decimal("200.00"))
@@ -482,7 +476,7 @@ class TestAccounts:
         # It sits before all time as carryover.
         assert summary.carryover == Decimal("200.00")
 
-    def test_account_without_starting_amount(self, temp_db: str) -> None:
+    def test_account_without_starting_amount(self, temp_db: None) -> None:
         account_id = add_account("Nequi", "digital", Decimal("0.00"))
         accounts = get_accounts()
         account = next(a for a in accounts if a.id == account_id)
@@ -490,7 +484,7 @@ class TestAccounts:
         assert account.color == "#3B82F6"
         assert account.balance == Decimal("0.00")
 
-    def test_savings_leave_the_account(self, temp_db: str, sample_category: int) -> None:
+    def test_savings_leave_the_account(self, temp_db: None, sample_category: int) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         income_cat = add_category("Ingreso test", "income")
         add_transaction(
@@ -534,7 +528,7 @@ class TestAccounts:
         # 1.000.000 - 200.000 (bolsillo) - 300.000 (CDT) + 100.000 = 600.000.
         assert accounts["Banco"].balance == Decimal("600000.00")
 
-    def test_update_and_delete_account(self, temp_db: str) -> None:
+    def test_update_and_delete_account(self, temp_db: None) -> None:
         account_id = add_account("Ahorro", "ahorros", Decimal("50.00"))
         update_account(account_id, "Ahorro grande")
 
@@ -549,7 +543,7 @@ class TestAccounts:
 class TestTransfers:
     """Tests for transfer semantics between accounts."""
 
-    def test_transfer_moves_money_between_accounts(self, temp_db: str) -> None:
+    def test_transfer_moves_money_between_accounts(self, temp_db: None) -> None:
         savings = add_account("Ahorros", "ahorros", Decimal("1000.00"))
         wallet = add_account("Billetera", "efectivo", Decimal("0.00"))
 
@@ -566,7 +560,7 @@ class TestTransfers:
         assert accounts["Ahorros"].balance == Decimal("700.00")
         assert accounts["Billetera"].balance == Decimal("300.00")
 
-    def test_transfer_does_not_affect_summary(self, temp_db: str) -> None:
+    def test_transfer_does_not_affect_summary(self, temp_db: None) -> None:
         income_cat = add_category("Ingreso test", "income")
         savings = add_account("Ahorros", "ahorros", Decimal("0.00"))
         wallet = add_account("Billetera", "efectivo", Decimal("0.00"))
@@ -592,7 +586,7 @@ class TestTransfers:
         assert summary.total_expense == Decimal("0.00")
         assert summary.balance == Decimal("1000.00")
 
-    def test_gasto_tc_does_not_touch_accounts(self, temp_db: str, sample_category: int) -> None:
+    def test_gasto_tc_does_not_touch_accounts(self, temp_db: None, sample_category: int) -> None:
         add_account("Ahorros", "ahorros", Decimal("1000.00"))
 
         add_transaction(
@@ -668,7 +662,7 @@ class TestMigrationV7:
 class TestCreditCards:
     """Tests for the credit cards feature."""
 
-    def test_available_credit_from_open_cycle(self, temp_db: str, sample_category: int) -> None:
+    def test_available_credit_from_open_cycle(self, temp_db: None, sample_category: int) -> None:
         card_id = add_credit_card("Visa Bancolombia", Decimal("5000000.00"), 15, 30)
 
         add_transaction(
@@ -700,7 +694,7 @@ class TestCreditCards:
         assert cards[0].cycle_end == date(2026, 10, 15)
         assert cards[0].payment_date == date(2026, 10, 30)
 
-    def test_outstanding_spans_cycles(self, temp_db: str, sample_category: int) -> None:
+    def test_outstanding_spans_cycles(self, temp_db: None, sample_category: int) -> None:
         card_id = add_credit_card("Mastercard", Decimal("1000000.00"), 15, 30)
 
         add_transaction(
@@ -726,7 +720,7 @@ class TestCreditCards:
         assert cards[0].outstanding == Decimal("500000.00")
         assert cards[0].available == Decimal("500000.00")
 
-    def test_update_and_delete_card(self, temp_db: str) -> None:
+    def test_update_and_delete_card(self, temp_db: None) -> None:
         card_id = add_credit_card("Visa", Decimal("1000000.00"), 10, 25)
         update_credit_card(card_id, "Visa Oro", Decimal("2000000.00"), 12, 28)
 
@@ -737,7 +731,7 @@ class TestCreditCards:
         assert cards[0].payment_day == 28
 
     def test_card_purchase_counts_in_payment_month(
-        self, temp_db: str, sample_category: int
+        self, temp_db: None, sample_category: int
     ) -> None:
         # Cutoff on day 5, payment on day 15: a purchase after the 5th is
         # billed the next month, one on/before the 5th is billed this month.
@@ -782,7 +776,7 @@ class TestCardPayments:
     """Tests for credit card payments."""
 
     def test_payment_reduces_debt_and_restores_credit(
-        self, temp_db: str, sample_category: int
+        self, temp_db: None, sample_category: int
     ) -> None:
         card_id = add_credit_card("Visa", Decimal("1000000.00"), 15, 30)
         account_id = add_account("Banco", "banco", Decimal("0.00"))
@@ -822,7 +816,7 @@ class TestCardPayments:
         accounts = {a.name: a for a in get_accounts()}
         assert accounts["Banco"].balance == Decimal("2600000.00")
 
-    def test_partial_payment_keeps_debt(self, temp_db: str, sample_category: int) -> None:
+    def test_partial_payment_keeps_debt(self, temp_db: None, sample_category: int) -> None:
         card_id = add_credit_card("Mastercard", Decimal("1000000.00"), 15, 30)
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         income_cat = add_category("Ingreso test", "income")
@@ -855,7 +849,7 @@ class TestCardPayments:
         assert cards[0].debt == Decimal("300000.00")
         assert cards[0].available == Decimal("700000.00")
 
-    def test_debt_zero_before_cutoff(self, temp_db: str, sample_category: int) -> None:
+    def test_debt_zero_before_cutoff(self, temp_db: None, sample_category: int) -> None:
         card_id = add_credit_card("Visa", Decimal("1000000.00"), 20, 30)
         add_transaction(
             date(2026, 9, 10),
@@ -873,7 +867,7 @@ class TestCardPayments:
 class TestSavings:
     """Tests for the savings and investments feature."""
 
-    def test_bolsillo_balance_from_movements(self, temp_db: str) -> None:
+    def test_bolsillo_balance_from_movements(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         income_cat = add_category("Ingreso test", "income")
         add_transaction(
@@ -910,7 +904,7 @@ class TestSavings:
         accounts = {a.name: a for a in get_accounts()}
         assert accounts["Banco"].balance == Decimal("2600000.00")
 
-    def test_savings_feed_ahorro_category(self, temp_db: str) -> None:
+    def test_savings_feed_ahorro_category(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         add_category("Ahorro", "expense", "#22C55E", "🐷")
         item_id = add_savings("Meta", "bolsillo")
@@ -939,7 +933,7 @@ class TestSavings:
         # Savings are not a cash expense.
         assert summary.total_expense == Decimal("0.00")
 
-    def test_bolsillo_reserve_shows_in_budget(self, temp_db: str) -> None:
+    def test_bolsillo_reserve_shows_in_budget(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         cat = add_category("Transporte test", "expense", "#000000", "🚌")
         item_id = add_savings("Reserva transporte", "bolsillo", category_id=cat)
@@ -955,7 +949,7 @@ class TestSavings:
         assert rows["Transporte test"]["reserved"] == Decimal("160000.00")
         assert rows["Transporte test"]["actual"] == Decimal("0.00")
 
-    def test_initial_deposit_recorded(self, temp_db: str) -> None:
+    def test_initial_deposit_recorded(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("1000000.00"))
         add_savings(
             "Viaje",
@@ -970,7 +964,7 @@ class TestSavings:
         accounts = {a.name: a for a in get_accounts()}
         assert accounts["Banco"].balance == Decimal("800000.00")
 
-    def test_programmed_pocket_creates_recurring_template(self, temp_db: str) -> None:
+    def test_programmed_pocket_creates_recurring_template(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         item_id = add_savings(
             "Ahorro navidad",
@@ -991,7 +985,7 @@ class TestSavings:
             assert template["savings_id"] == item_id
             assert template["kind"] == "ahorro"
 
-    def test_acciones_gain_from_current_value(self, temp_db: str) -> None:
+    def test_acciones_gain_from_current_value(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         income_cat = add_category("Ingreso test", "income")
         add_transaction(
@@ -1015,7 +1009,7 @@ class TestSavings:
         assert items[0].invested == Decimal("1000000.00")
         assert items[0].current_value == Decimal("1300000.00")
 
-    def test_delete_removes_template(self, temp_db: str) -> None:
+    def test_delete_removes_template(self, temp_db: None) -> None:
         account_id = add_account("Banco", "banco", Decimal("0.00"))
         item_id = add_savings(
             "Meta",
@@ -1030,6 +1024,7 @@ class TestSavings:
         assert get_savings() == []
         with get_connection() as conn:
             templates = conn.execute(
-                "SELECT COUNT(*) FROM transactions WHERE is_recurring = 1 AND generated_from IS NULL"
-            ).fetchone()[0]
+                "SELECT COUNT(*) AS n FROM transactions "
+                "WHERE is_recurring = 1 AND generated_from IS NULL"
+            ).fetchone()["n"]
             assert templates == 0

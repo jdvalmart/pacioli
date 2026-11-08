@@ -1,5 +1,7 @@
 """Integration tests for the Pacioli API."""
 
+from datetime import date
+
 from fastapi.testclient import TestClient
 
 
@@ -479,7 +481,9 @@ class TestCreditCards:
         assert cards[0]["pending"] == "0.00"
         assert cards[0]["outstanding"] == "0.00"
 
-    def test_available_credit_reflects_tc_spending(self, client: TestClient) -> None:
+    def test_available_credit_reflects_tc_spending(self, client: TestClient, freeze_today) -> None:
+        # Sep 20 sits inside the Sep 10 -> Oct 10 cycle that bills the purchase.
+        freeze_today(date(2026, 9, 20))
         card_id = client.post(
             "/api/credit-cards",
             json={"name": "Mastercard", "limit": "1000000.00", "cutoff_day": 10, "payment_day": 25},
@@ -550,15 +554,8 @@ class TestCreditCards:
 class TestCardPayments:
     """Tests for the credit card payment flow."""
 
-    def test_pay_card_moves_money_and_clears_debt(self, client: TestClient, monkeypatch) -> None:
-        from datetime import date as _date
-
-        class FakeDate:
-            @staticmethod
-            def today() -> _date:
-                return _date(2026, 9, 20)
-
-        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+    def test_pay_card_moves_money_and_clears_debt(self, client: TestClient, freeze_today) -> None:
+        freeze_today(date(2026, 9, 20))
 
         card_id = client.post(
             "/api/credit-cards",
@@ -602,15 +599,8 @@ class TestCardPayments:
         accounts = client.get("/api/accounts").json()
         assert accounts[0]["balance"] == "2600000.00"
 
-    def test_payment_rejected_without_funds(self, client: TestClient, monkeypatch) -> None:
-        from datetime import date as _date
-
-        class FakeDate:
-            @staticmethod
-            def today() -> _date:
-                return _date(2026, 9, 20)
-
-        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+    def test_payment_rejected_without_funds(self, client: TestClient, freeze_today) -> None:
+        freeze_today(date(2026, 9, 20))
 
         card_id = client.post(
             "/api/credit-cards",
@@ -648,15 +638,8 @@ class TestCardPayments:
         assert response.status_code == 400
         assert "Insufficient balance" in response.json()["detail"]
 
-    def test_payment_without_debt_rejected(self, client: TestClient, monkeypatch) -> None:
-        from datetime import date as _date
-
-        class FakeDate:
-            @staticmethod
-            def today() -> _date:
-                return _date(2026, 9, 10)
-
-        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+    def test_payment_without_debt_rejected(self, client: TestClient, freeze_today) -> None:
+        freeze_today(date(2026, 9, 10))
 
         card_id = client.post(
             "/api/credit-cards",
@@ -680,15 +663,8 @@ class TestCardPayments:
         assert response.status_code == 400
         assert "Nothing to pay" in response.json()["detail"]
 
-    def test_payment_exceeding_debt_rejected(self, client: TestClient, monkeypatch) -> None:
-        from datetime import date as _date
-
-        class FakeDate:
-            @staticmethod
-            def today() -> _date:
-                return _date(2026, 9, 20)
-
-        monkeypatch.setattr("app.routers.transactions.date", FakeDate)
+    def test_payment_exceeding_debt_rejected(self, client: TestClient, freeze_today) -> None:
+        freeze_today(date(2026, 9, 20))
 
         card_id = client.post(
             "/api/credit-cards",
