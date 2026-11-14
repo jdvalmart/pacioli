@@ -21,7 +21,8 @@ Antes de refactorizar la capa de datos hay que fijar qué significa cada número
 | **Balance acumulado** | `Σ aperturas de cuentas + Σ (ingreso − gasto − pago_tc)` hasta fin de mes | `summary.accumulated_balance` |
 | **Invariante** | `balance acumulado = Σ saldos de cuentas + Σ (saldo − apertura) de ahorros` | test `test_equals_accounts_plus_net_savings` |
 | **Encadenamiento** | `carryover(m+1) = accumulated_balance(m)` | test `test_months_chain` |
-| **Patrimonio (dashboard)** | `Σ cuentas + Σ ahorros (valor actual o saldo)` | `DashboardPage.tsx` (cliente) |
+| **Patrimonio (dashboard)** | `Σ cuentas + Σ ahorros (valor actual o saldo) − Σ saldos de créditos` | `DashboardPage.tsx` (cliente) |
+| **Saldo de crédito** | `saldo confirmado (as_of) + intereses causados (diario, tasa EA) − pagos`; sin tasa: `saldo − pagos` | `GET /api/loans` |
 | **Deuda total** | `outstanding = Σ compras con interés − Σ pagos`; `available = límite − outstanding` | `GET /api/credit-cards` |
 | **Por pagar ya** | `debt = Σ cuotas de extractos cerrados − Σ pagos` (mínimo 0) | idem |
 | **Cuota del ciclo** | `pending = cuotas del ciclo abierto − pagos anticipados` (pagos que exceden lo ya facturado) | idem |
@@ -76,3 +77,12 @@ tiempo era construir el cronograma completo de cada compra histórica, no el SQL
 - Cualquier refactor de `database.py` debe mantener verde `test_invariants.py` en SQLite **y** Postgres.
 - Cambiar una regla de tarjeta implica actualizar este ADR, `test_billing.py` y
   `test_installments_spread_over_their_payment_months` / `test_debt_is_unpaid_closed_statements`.
+
+## Créditos (2026-11-14, migración v18)
+
+Un pago de crédito es un `gasto` normal con `loan_id`: sale de la cuenta y cuenta en la categoría
+del crédito el mes en que se paga (misma idea que las cuotas de tarjeta: se reconoce cuando se paga).
+El saldo parte del último valor confirmado con el banco (`balance` en `as_of`); editarlo re-ancla
+la proyección. Los intereses se causan día a día con la tasa EA y cada pago cubre primero el interés.
+Reglas puras en `backend/app/domain/loans.py`, probadas en `tests/test_loans_domain.py`.
+
