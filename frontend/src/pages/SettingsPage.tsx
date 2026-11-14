@@ -1,5 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { AccountsSection } from '@/components/AccountsSection'
+import { LoansSection } from '@/components/LoansSection'
 import { CreditCardsSection } from '@/components/CreditCardsSection'
 import { SavingsSection } from '@/components/SavingsSection'
 import { CategoriesSection } from '@/components/CategoriesSection'
@@ -15,6 +16,8 @@ export function SettingsPage() {
       <AccountsSection />
 
       <CreditCardsSection />
+
+      <LoansSection />
 
       <SavingsSection />
 

@@ -23,6 +23,7 @@ from app.routers import (
     budgets,
     categories,
     credit_cards,
+    loans,
     reports,
     savings,
     transactions,
@@ -65,6 +66,7 @@ app.include_router(reports.router, prefix=api_prefix)
 app.include_router(accounts.router, prefix=api_prefix)
 app.include_router(credit_cards.router, prefix=api_prefix)
 app.include_router(savings.router, prefix=api_prefix)
+app.include_router(loans.router, prefix=api_prefix)
 
 
 @app.get("/health")

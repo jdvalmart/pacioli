@@ -84,6 +84,7 @@ class TransactionIn(BaseModel):
     to_account_id: int | None = None
     card_id: int | None = None
     savings_id: int | None = None
+    loan_id: int | None = None  # this gasto pays a loan (cuota or extra payment)
     description: str = Field(default="", max_length=500)
     is_recurring: bool = False
     recurring_day: int | None = Field(default=None, ge=1, le=31)
@@ -123,6 +124,8 @@ class TransactionOut(BaseModel):
     interest_bp: int
     savings_id: int | None
     savings_name: str | None
+    loan_id: int | None = None
+    loan_name: str | None = None
     installment_number: int | None = None
     billed_amount: Money | None = None
 
@@ -362,3 +365,37 @@ class MessageOut(BaseModel):
     """Generic message response."""
 
     message: str
+
+
+class LoanIn(BaseModel):
+    """Payload to create or edit a loan.
+
+    ``balance`` is what the bank shows on ``as_of``; editing them re-anchors
+    the loan to a fresh bank statement.
+    """
+
+    name: str = Field(min_length=1, max_length=100)
+    balance: Money = Field(ge=0)
+    as_of: date
+    installment: Money = Field(gt=0)
+    rate_bp: int | None = Field(default=None, ge=0, le=20000)  # effective annual, e.g. 2400 = 24%
+    payment_day: int | None = Field(default=None, ge=1, le=31)
+    category_id: int | None = None
+
+
+class LoanOut(BaseModel):
+    """A loan with its balance today and payoff projection."""
+
+    id: int
+    name: str
+    balance: Money
+    as_of: date
+    installment: Money
+    rate_bp: int | None
+    payment_day: int | None
+    category_id: int | None
+    current_balance: Money
+    paid: Money
+    interest: Money
+    remaining_installments: int | None  # None: the installment never clears the debt
+    payoff: date | None

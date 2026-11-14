@@ -874,3 +874,106 @@ class TestBudgetBulk:
             },
         )
         assert response.status_code == 400
+
+
+class TestLoans:
+    """A loan payment is a gasto linked to the loan: it lowers the loan balance,
+    leaves the account and counts in the loan's budget category."""
+
+    def _setup(self, client: TestClient) -> tuple[int, int, int]:
+        account = client.post(
+            "/api/accounts", json={"name": "Lulo", "type": "banco", "starting_amount": "1000000"}
+        ).json()["id"]
+        category = client.post(
+            "/api/categories", json={"name": "Crédito", "type": "expense"}
+        ).json()["id"]
+        loan = client.post(
+            "/api/loans",
+            json={
+                "name": "Davivienda",
+                "balance": "8900000",
+                "as_of": "2026-11-14",
+                "installment": "300000",
+                "payment_day": 5,
+                "category_id": category,
+            },
+        ).json()["id"]
+        return account, category, loan
+
+    def test_paying_the_installment_lowers_the_balance(
+        self, client: TestClient, freeze_today
+    ) -> None:
+        freeze_today(date(2026, 12, 20))
+        account, category, loan = self._setup(client)
+        response = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-12-05",
+                "amount": "300000",
+                "kind": "gasto",
+                "category_id": category,
+                "account_id": account,
+                "loan_id": loan,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+        (status,) = client.get("/api/loans").json()
+        assert status["current_balance"] == "8600000.00"  # no rate: balance − payments
+        assert status["paid"] == "300000.00"
+        assert status["remaining_installments"] == 29
+        assert client.get("/api/accounts").json()[0]["balance"] == "700000.00"
+        budget = client.get("/api/reports/budget-vs-actual?month=12&year=2026").json()
+        assert {r["name"]: r["actual"] for r in budget}["Crédito"] == "300000.00"
+        listed = client.get("/api/transactions?month=12&year=2026").json()
+        assert listed[0]["loan_name"] == "Davivienda"
+
+    def test_a_loan_payment_must_be_an_expense_on_an_existing_loan(
+        self, client: TestClient
+    ) -> None:
+        account, category, loan = self._setup(client)
+        base = {"date": "2026-12-05", "amount": "300000", "account_id": account}
+        wrong_kind = {**base, "kind": "transferencia", "to_account_id": account, "loan_id": loan}
+        assert client.post("/api/transactions", json=wrong_kind).status_code == 400
+        missing = {**base, "kind": "gasto", "category_id": category, "loan_id": 999}
+        response = client.post("/api/transactions", json=missing)
+        assert (response.status_code, response.json()["detail"]) == (400, "Loan does not exist")
+
+    def test_recurring_installment_keeps_paying_the_loan(
+        self, client: TestClient, freeze_today
+    ) -> None:
+        freeze_today(date(2027, 1, 20))
+        account, category, loan = self._setup(client)
+        client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-12-05",
+                "amount": "300000",
+                "kind": "gasto",
+                "category_id": category,
+                "account_id": account,
+                "loan_id": loan,
+                "is_recurring": True,
+                "recurring_day": 5,
+            },
+        )
+        client.post("/api/transactions/materialize?month=1&year=2027")
+        january = client.get("/api/transactions?month=1&year=2027").json()
+        assert [t["loan_id"] for t in january] == [loan]
+        assert client.get("/api/loans").json()[0]["current_balance"] == "8300000.00"
+
+    def test_rebasing_to_the_bank_balance_and_deleting(self, client: TestClient) -> None:
+        _, category, loan = self._setup(client)
+        payload = {
+            "name": "Davivienda",
+            "balance": "8750000",
+            "as_of": "2026-11-15",
+            "installment": "300000",
+            "rate_bp": 2400,
+            "category_id": category,
+        }
+        assert client.put(f"/api/loans/{loan}", json=payload).status_code == 200
+        (status,) = client.get("/api/loans").json()
+        assert (status["balance"], status["rate_bp"]) == ("8750000.00", 2400)
+        assert client.delete(f"/api/loans/{loan}").status_code == 200
+        assert client.get("/api/loans").json() == []

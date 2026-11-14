@@ -25,6 +25,7 @@ export const queryKeys = {
   categories: () => ['categories'] as const,
   subcategories: (categoryId: number) => ['subcategories', categoryId] as const,
   savings: () => ['savings'] as const,
+  loans: () => ['loans'] as const,
   /** Without a month the card is computed as of today. */
   creditCards: (month?: Month) => ['creditCards', month ? m(month) : 'today'] as const,
   transactions: (month: Month) => ['transactions', m(month)] as const,
@@ -47,6 +48,7 @@ const MOVEMENT_VIEWS: Resource[] = [
   'accounts',
   'creditCards',
   'savings',
+  'loans',
   'summary',
   'yearly',
   'categorySpending',
@@ -66,6 +68,8 @@ export const STALE_AFTER = {
   category: ['categories', 'subcategories', 'budgets', ...MOVEMENT_VIEWS],
   subcategory: ['subcategories', 'transactions'],
   budget: ['budgets', 'budgetPlan', 'budgetVsActual'],
+  /** Balance, rate or installment changed: the loan list and net worth. */
+  loan: ['loans'],
 } satisfies Record<string, Resource[]>
 
 export type Change = keyof typeof STALE_AFTER
@@ -96,6 +100,8 @@ export const useSubcategories = (categoryId: number | null) =>
     queryFn: () => api.listSubcategories(categoryId ?? 0),
     enabled: categoryId != null,
   })
+
+export const useLoans = () => useQuery({ queryKey: queryKeys.loans(), queryFn: api.listLoans })
 
 export const useSavings = () =>
   useQuery({ queryKey: queryKeys.savings(), queryFn: api.listSavings })

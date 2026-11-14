@@ -43,7 +43,7 @@ function context(tx: Transaction): string {
     case 'retiro':
       return `${tx.savings_name ?? 'Ahorro'} → ${account}`
     default:
-      return tx.account_name ?? ''
+      return tx.loan_name ? `${account} → ${tx.loan_name}` : (tx.account_name ?? '')
   }
 }
 

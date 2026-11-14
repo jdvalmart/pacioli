@@ -270,6 +270,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/loans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Loans
+         * @description List loans with their balance today and payoff projection.
+         */
+        get: operations["list_loans_api_loans_get"];
+        put?: never;
+        /**
+         * Create Loan
+         * @description Register a loan from the balance the bank shows.
+         */
+        post: operations["create_loan_api_loans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/loans/{loan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Loan
+         * @description Edit a loan (a new balance and date re-anchor it to the bank).
+         */
+        put: operations["update_loan_api_loans__loan_id__put"];
+        post?: never;
+        /**
+         * Delete Loan
+         * @description Delete a loan; its payments remain as ordinary expenses.
+         */
+        delete: operations["delete_loan_api_loans__loan_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/budget-vs-actual": {
         parameters: {
             query?: never;
@@ -836,6 +884,67 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * LoanIn
+         * @description Payload to create or edit a loan.
+         *
+         *     ``balance`` is what the bank shows on ``as_of``; editing them re-anchors
+         *     the loan to a fresh bank statement.
+         */
+        LoanIn: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Balance */
+            balance: number | string;
+            /** Category Id */
+            category_id?: number | null;
+            /** Installment */
+            installment: number | string;
+            /** Name */
+            name: string;
+            /** Payment Day */
+            payment_day?: number | null;
+            /** Rate Bp */
+            rate_bp?: number | null;
+        };
+        /**
+         * LoanOut
+         * @description A loan with its balance today and payoff projection.
+         */
+        LoanOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Balance */
+            balance: string;
+            /** Category Id */
+            category_id: number | null;
+            /** Current Balance */
+            current_balance: string;
+            /** Id */
+            id: number;
+            /** Installment */
+            installment: string;
+            /** Interest */
+            interest: string;
+            /** Name */
+            name: string;
+            /** Paid */
+            paid: string;
+            /** Payment Day */
+            payment_day: number | null;
+            /** Payoff */
+            payoff: string | null;
+            /** Rate Bp */
+            rate_bp: number | null;
+            /** Remaining Installments */
+            remaining_installments: number | null;
+        };
+        /**
          * MaterializeResult
          * @description Result of materializing recurring transactions.
          */
@@ -1060,6 +1169,8 @@ export interface components {
             is_recurring?: boolean;
             /** @default gasto */
             kind?: components["schemas"]["TxKind"];
+            /** Loan Id */
+            loan_id?: number | null;
             /** Recurring Day */
             recurring_day?: number | null;
             /** Savings Id */
@@ -1118,6 +1229,10 @@ export interface components {
             /** Is Recurring */
             is_recurring: boolean;
             kind: components["schemas"]["TxKind"];
+            /** Loan Id */
+            loan_id?: number | null;
+            /** Loan Name */
+            loan_name?: string | null;
             /** Recurring Day */
             recurring_day: number | null;
             /** Savings Id */
@@ -1817,6 +1932,125 @@ export interface operations {
             header?: never;
             path: {
                 card_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_loans_api_loans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoanOut"][];
+                };
+            };
+        };
+    };
+    create_loan_api_loans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_loan_api_loans__loan_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loan_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_loan_api_loans__loan_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loan_id: number;
             };
             cookie?: never;
         };

@@ -20,7 +20,7 @@ from app.db.connection import (
 )
 from app.db.models import CATEGORY_ROLE_SAVINGS
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 # Historical location (repo/data/budget.db); imported once if present.
@@ -914,6 +914,40 @@ def _migrate_v17_drop_ai_tables(conn: sqlite3.Connection) -> None:
     _set_version(conn, 17)
 
 
+def _migrate_v18_loans(conn: sqlite3.Connection) -> None:
+    """v17 -> v18: loans (credits other than cards) and payments linked to them.
+
+    A loan stores the balance the user confirmed with the bank (``balance_cents``
+    on ``as_of``), its effective annual rate (optional), the regular installment
+    and the budget category its payments count in. A payment is an ordinary
+    ``gasto`` with ``transactions.loan_id`` set. Runs on SQLite and Postgres.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        _ddl(
+            """
+        CREATE TABLE IF NOT EXISTS loans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            balance_cents INTEGER NOT NULL,
+            as_of TEXT NOT NULL,
+            rate_bp INTEGER,
+            installment_cents INTEGER NOT NULL,
+            payment_day INTEGER CHECK(payment_day BETWEEN 1 AND 31),
+            category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """
+        )
+    )
+    if not _has_column(conn, "transactions", "loan_id"):
+        cursor.execute(
+            "ALTER TABLE transactions ADD COLUMN loan_id INTEGER "
+            "REFERENCES loans(id) ON DELETE SET NULL"
+        )
+    _set_version(conn, 18)
+
+
 def _create_postgres_schema(conn) -> None:  # type: ignore[no-untyped-def]
     """Create the final schema on a fresh Postgres database.
 
@@ -1041,6 +1075,7 @@ def _create_postgres_schema(conn) -> None:  # type: ignore[no-untyped-def]
     # the transactions FK is validated only on write; order above is fine.
     for statement in ddl:
         conn.execute(_ddl(statement))
+    _migrate_v18_loans(conn)
 
 
 def _ensure_savings_category(cursor: Any) -> None:
@@ -1357,6 +1392,8 @@ def init_db() -> None:
             _migrate_v16_category_roles(conn)
         if v < 17:
             _migrate_v17_drop_ai_tables(conn)
+        if v < 18:
+            _migrate_v18_loans(conn)
         conn.commit()
         _seed_defaults(conn)
         conn.commit()

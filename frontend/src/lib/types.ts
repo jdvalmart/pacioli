@@ -35,3 +35,6 @@ export type BudgetPlan = Schemas['BudgetPlanOut']
 export type MonthlySummary = Schemas['MonthlySummaryOut']
 export type CategorySpending = Schemas['CategorySpendingOut']
 export type BudgetVsActual = Schemas['BudgetVsActualOut']
+
+export type Loan = Schemas['LoanOut']
+export type LoanInput = Schemas['LoanIn']

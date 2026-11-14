@@ -65,6 +65,8 @@ class Transaction:
     installments: int = 1  # Cuotas for a gasto_tc purchase
     interest_bp: int = 0  # Total interest for the plan, in basis points
     savings_id: int | None = None  # Savings/investment item for ahorro/retiro
+    loan_id: int | None = None  # Loan this gasto pays (cuota or extra payment)
+    loan_name: str | None = None
     savings_name: str | None = None
     installment_number: int | None = None  # gasto_tc: cuota billed in the listed month
     billed_amount: Decimal | None = None  # gasto_tc: that cuota's amount, interest included
@@ -192,3 +194,22 @@ class MonthlySummary:
 
 # System role of the category that groups savings movements (categories.role).
 CATEGORY_ROLE_SAVINGS = "savings"
+
+
+@dataclass
+class Loan:
+    """A credit other than a card (e.g. libre inversión), with derived status."""
+
+    id: int
+    name: str
+    balance: Decimal  # confirmed with the bank on as_of
+    as_of: date
+    rate_bp: int | None  # effective annual rate; None = unknown
+    installment: Decimal
+    payment_day: int | None
+    category_id: int | None
+    current_balance: Decimal  # today, accrued interest included
+    paid: Decimal  # since as_of
+    interest: Decimal  # since as_of
+    remaining_installments: int | None
+    payoff: date | None

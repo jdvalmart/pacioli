@@ -45,7 +45,7 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
                    a.name as account_name, a.icon as account_icon,
                    a2.name as to_account_name, a2.icon as to_account_icon,
                    cc.name as card_name, cc.cutoff_day, cc.payment_day,
-                   sv.name as savings_name
+                   sv.name as savings_name, ln.name as loan_name
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN subcategories s ON t.subcategory_id = s.id
@@ -53,6 +53,7 @@ def get_transactions(month: int, year: int) -> list[Transaction]:
             LEFT JOIN accounts a2 ON t.to_account_id = a2.id
             LEFT JOIN credit_cards cc ON t.card_id = cc.id
             LEFT JOIN savings sv ON t.savings_id = sv.id
+            LEFT JOIN loans ln ON t.loan_id = ln.id
             WHERE (t.kind <> 'gasto_tc' AND t.date >= ? AND t.date < ?)
                OR ("""
             + CARD_CANDIDATES_SQL
@@ -93,6 +94,7 @@ def add_transaction(
     savings_id: int | None = None,
     installments: int = 1,
     interest_bp: int = 0,
+    loan_id: int | None = None,
 ) -> int:
     """Create a transaction and return its id."""
     with get_connection() as conn:
@@ -101,8 +103,8 @@ def add_transaction(
             INSERT INTO transactions
                 (date, amount_cents, category_id, description, is_recurring,
                  recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id,
-                 installments, interest_bp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 installments, interest_bp, loan_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """)
         new_id = _insert_get_id(
             cursor,
@@ -122,6 +124,7 @@ def add_transaction(
                 savings_id,
                 installments,
                 interest_bp,
+                loan_id,
             ),
         )
         conn.commit()
@@ -144,6 +147,7 @@ def update_transaction(
     savings_id: int | None = None,
     installments: int = 1,
     interest_bp: int = 0,
+    loan_id: int | None = None,
 ) -> None:
     """Update an existing transaction."""
     with get_connection() as conn:
@@ -154,7 +158,7 @@ def update_transaction(
             SET date = ?, amount_cents = ?, category_id = ?, description = ?,
                 is_recurring = ?, recurring_day = ?, subcategory_id = ?,
                 account_id = ?, kind = ?, to_account_id = ?, card_id = ?, savings_id = ?,
-                installments = ?, interest_bp = ?
+                installments = ?, interest_bp = ?, loan_id = ?
             WHERE id = ?
         """,
             (
@@ -172,6 +176,7 @@ def update_transaction(
                 savings_id,
                 installments,
                 interest_bp,
+                loan_id,
                 trans_id,
             ),
         )
@@ -212,7 +217,7 @@ def ensure_recurring(month: int, year: int) -> int:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date, amount_cents, category_id, description,
-                   recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id
+                   recurring_day, subcategory_id, account_id, kind, to_account_id, card_id, savings_id, loan_id
             FROM transactions
             WHERE is_recurring = 1 AND generated_from IS NULL
               AND recurring_day IS NOT NULL
@@ -233,8 +238,8 @@ def ensure_recurring(month: int, year: int) -> int:
                 """
                 INSERT INTO transactions
                     (date, amount_cents, category_id, description,
-                     is_recurring, recurring_day, subcategory_id, generated_from, account_id, kind, to_account_id, card_id, savings_id)
-                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?, ?)
+                     is_recurring, recurring_day, subcategory_id, generated_from, account_id, kind, to_account_id, card_id, savings_id, loan_id)
+                VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     f"{year:04d}-{month:02d}-{day:02d}",
@@ -248,6 +253,7 @@ def ensure_recurring(month: int, year: int) -> int:
                     t["to_account_id"],
                     t["card_id"],
                     t["savings_id"],
+                    t["loan_id"],
                 ),
             )
             cursor.execute(

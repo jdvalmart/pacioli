@@ -73,6 +73,8 @@ def _ddl(sql: str) -> str:
             "starting_cents",
             "limit_cents",
             "total_cents",
+            "balance_cents",
+            "installment_cents",
         ):
             sql = sql.replace(f"{col} INTEGER", f"{col} BIGINT")
         return sql

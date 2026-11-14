@@ -1133,9 +1133,7 @@ class TestMigrationV17:
 
             assert not self._tables(db_path) & set(AI_LEFTOVER_TABLES)
             (snapshot,) = [
-                f
-                for f in os.listdir(tmp_path / "backups")
-                if f.startswith("pre-migration_v16-to-v17_")
+                f for f in os.listdir(tmp_path / "backups") if f.startswith("pre-migration_v16-to-")
             ]
             old = sqlite3.connect(tmp_path / "backups" / snapshot)
             assert old.execute("SELECT message FROM chat_history").fetchall() == [("hola",)]

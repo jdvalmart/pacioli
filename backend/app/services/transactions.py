@@ -12,6 +12,7 @@ from app import clock
 from app.db import accounts as accounts_db
 from app.db import cards as cards_db
 from app.db import categories as categories_db
+from app.db import loans as loans_db
 from app.db import savings as savings_db
 from app.db import transactions as transactions_db
 from app.domain.kinds import TxKind
@@ -28,6 +29,12 @@ def validate(payload: TransactionIn) -> None:
         ValidationFailed: with a user-facing message.
     """
     kind = payload.kind
+
+    if payload.loan_id is not None:
+        if kind != TxKind.GASTO:
+            raise ValidationFailed("Loan payments must be expenses (gasto)")
+        if all(loan.id != payload.loan_id for loan in loans_db.get_loans()):
+            raise ValidationFailed("Loan does not exist")
 
     if kind == TxKind.TRANSFERENCIA:
         if payload.account_id is None or payload.to_account_id is None:
@@ -121,6 +128,7 @@ class _TransactionFields(TypedDict):
     to_account_id: int | None
     card_id: int | None
     savings_id: int | None
+    loan_id: int | None
     installments: int
     interest_bp: int
 
@@ -139,6 +147,7 @@ def _fields(payload: TransactionIn) -> _TransactionFields:
         "to_account_id": payload.to_account_id,
         "card_id": payload.card_id,
         "savings_id": payload.savings_id,
+        "loan_id": payload.loan_id,
         "installments": payload.installments,
         "interest_bp": payload.interest_bp,
     }

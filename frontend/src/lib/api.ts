@@ -7,6 +7,8 @@
 import type { components } from '@/lib/api-schema'
 import type {
   Account,
+  Loan,
+  LoanInput,
   Budget,
   BudgetPlan,
   BudgetVsActual,
@@ -155,6 +157,14 @@ export const api = {
     }),
   deleteSavings: (id: number) =>
     request<Message>(`/savings/${id}`, { method: 'DELETE' }),
+
+  // Loans
+  listLoans: () => request<Loan[]>('/loans'),
+  createLoan: (payload: LoanInput) =>
+    request<Created>('/loans', { method: 'POST', body: JSON.stringify(payload) }),
+  updateLoan: (id: number, payload: LoanInput) =>
+    request<Message>(`/loans/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteLoan: (id: number) => request<Message>(`/loans/${id}`, { method: 'DELETE' }),
 
   // Reports
   summary: (month: number, year: number) =>

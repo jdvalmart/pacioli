@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, ChevronRight, CreditCard, PiggyBank, Scale, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, CreditCard, Landmark, PiggyBank, Scale, Wallet } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 
@@ -16,6 +16,7 @@ import {
   useBudgetVsActual,
   useCategorySpending,
   useCreditCards,
+  useLoans,
   useSavings,
   useSummary,
 } from '@/lib/queries'
@@ -50,6 +51,7 @@ export function DashboardPage() {
   const accounts = useAccounts()
   const savings = useSavings()
   const cards = useCreditCards(month)
+  const loans = useLoans()
 
   const accountList = accounts.data ?? []
   const accountsTotal = accountList.reduce((sum, account) => sum + Number(account.balance), 0)
@@ -60,7 +62,10 @@ export function DashboardPage() {
     (sum, item) => sum + Number(item.current_value ?? item.balance),
     0,
   )
-  const netWorth = accountsTotal + investedTotal
+  const loanList = loans.data ?? []
+  const debtTotal = loanList.reduce((sum, loan) => sum + Number(loan.current_balance), 0)
+  // Loans are owed money: they reduce net worth.
+  const netWorth = accountsTotal + investedTotal - debtTotal
 
   const chartData = (spending.data ?? []).map((row) => ({
     name: row.name,
@@ -109,7 +114,7 @@ export function DashboardPage() {
         <StatCard
           title="Patrimonio"
           value={fmtMoney(netWorth)}
-          detail={`Cuentas ${fmtMoney(accountsTotal)} · Ahorros ${fmtMoney(investedTotal)}`}
+          detail={`Cuentas ${fmtMoney(accountsTotal)} · Ahorros ${fmtMoney(investedTotal)}${debtTotal > 0 ? ` · Deudas −${fmtMoney(debtTotal)}` : ''}`}
           icon={PiggyBank}
           tone="neutral"
         />
@@ -347,6 +352,43 @@ export function DashboardPage() {
               )}
             </CardContent>
           </Card>
+
+          {loanList.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Créditos</CardTitle>
+                <CardDescription>Debes {fmtMoney(debtTotal)}</CardDescription>
+                <SeeAll to="/settings" label="Pagar" />
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-4">
+                  {loanList.map((loan) => {
+                    const start = Number(loan.balance)
+                    const paidPct = start > 0 ? Math.max(0, (1 - Number(loan.current_balance) / start) * 100) : 100
+                    return (
+                      <li key={loan.id} className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                            <Landmark className="size-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{loan.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {loan.remaining_installments != null
+                                ? `${loan.remaining_installments} cuotas restantes`
+                                : 'La cuota no cubre los intereses'}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold">{fmtMoney(loan.current_balance)}</span>
+                        </div>
+                        <Progress value={Math.min(paidPct, 100)} />
+                      </li>
+                    )
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
